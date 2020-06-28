@@ -1,6 +1,6 @@
 # Merkbot.py containing Chaosbot
 # author: MerkMore
-# version 26 june 2020
+# version 28 june 2020
 # Burny style
 import sc2
 from sc2 import run_game, maps, Race, Difficulty
@@ -16,7 +16,7 @@ class Chaosbot(sc2.BotAI):
 #   ############### CHANGE VALUE AD LIB
     do_log_success = True
     do_log_workers = True
-    do_log_population = True
+    do_log_population = False
     do_log_armysize = False
     do_log_gasminer = False
     do_log_resource = False
@@ -44,7 +44,7 @@ class Chaosbot(sc2.BotAI):
     mim_speed = 1.0
     walk_speed = 4.0
     stocksize = 4
-    miner_bound = 13
+    miner_bound = 10
 #   ############### GAMESTATE
 #   gamestate values constant in this iteration after gamestate_repair:  
     itera = -1
@@ -577,7 +577,10 @@ class Chaosbot(sc2.BotAI):
                         strtags.add(strt)
                 have = len(strtags)        
             else:
-                have = self.already_pending(barra)+self.structures(barra).amount
+#               armyunit
+                have = self.already_pending(barra)+self.units(barra).amount
+                if barra == SIEGETANK:
+                    have = have + self.units(SIEGETANKSIEGED).amount
         return have
 
 
@@ -605,6 +608,27 @@ class Chaosbot(sc2.BotAI):
                 cost = self.calculate_cost(building)
                 self.reserved_minerals = self.reserved_minerals + cost.minerals
                 self.reserved_vespene = self.reserved_vespene + cost.vespene
+
+
+    def bug_can_pay(self,upg,urgent) -> bool:
+#       circumvent a bug
+        cost_minerals = 999
+        cost_vespene = 999
+#       numbers correct jun 2020
+        if up == TERRANVEHICLEANDSHIPARMORSLEVEL1:
+            cost_minerals = 100
+            cost_vespene = 100
+        if up == TERRANVEHICLEANDSHIPARMORSLEVEL2:
+            cost_minerals = 175
+            cost_vespene = 175
+        if up == TERRANVEHICLEANDSHIPARMORSLEVEL3:
+            cost_minerals = 250
+            cost_vespene = 250
+        if urgent:
+            return (self.minerals >= cost_minerals) and (self.vespene >= cost_vespene)
+        else:
+            return (self.minerals >= self.reserved_minerals+cost_minerals) and (self.vespene >= self.reserved_vespene+cost_vespene)
+
 
 
 
@@ -1194,16 +1218,63 @@ class Chaosbot(sc2.BotAI):
                             await self.add_to_workstock(thing)
                 ri=ri+1
         else:
-#           advice on game situation
-            if (self.supply_left < 12) and (self.supply_cap<200):
+#           advice on midgame stuck situations
+            scvs = len(self.units(SCV))
+            if (self.supply_left < 2+self.supply_used//7) and (self.supply_cap<200)\
+            and (SUPPLYDEPOT not in self.structure_of_scvt.values()):
                 await self.blunt_to_workstock(SUPPLYDEPOT)
-            elif (self.minerals > 1500):
+            wanted_ccs = 1+(scvs+7)//22
+            if (self.we_started_amount(COMMANDCENTER)+self.structures(PLANETARYFORTRESS).amount\
+            +self.structures(ORBITALCOMMAND).amount < wanted_ccs):
                 await self.blunt_to_workstock(COMMANDCENTER)
-            elif (self.minerals > 700) and (self.vespene < self.minerals-700):
+            if (self.we_started_amount(SIEGETANK)<3) and (self.supply_used<100):
+                await self.blunt_to_workstock(SIEGETANK)
+            if (not self.we_started_a(MISSILETURRET)) or (self.supply_used>100):
+                await self.blunt_to_workstock(MISSILETURRET)
+            if (not self.we_started_a(ENGINEERINGBAY)) and (self.supply_used>40):
+                await self.blunt_to_workstock(ENGINEERINGBAY)
+            if (self.supply_army*3 < self.supply_used):
+                await self.blunt_to_workstock(MARINE)
+            if (self.minerals-self.reserved_minerals > 1500):
+                await self.blunt_to_workstock(PLANETARYFORTRESS)
+                await self.blunt_to_workstock(COMMANDCENTER)
+                await self.blunt_to_workstock(MISSILETURRET)
+                await self.blunt_to_workstock(STARPORT)
+            if (self.minerals > 500) and (self.vespene < self.minerals-500):
                 await self.blunt_to_workstock(REFINERY)
+            if (len(self.structures(STARPORT).ready.idle)>0):
+                await self.blunt_to_workstock(BATTLECRUISER)
+            for sp in self.structures(STARPORT).ready:
+                if not sp.has_add_on:
+                    await self.blunt_to_workstock(STARPORTTECHLAB)
+            if not self.we_started_a(FACTORYTECHLAB):
+                for sp in self.structures(FACTORY).ready:
+                    if not sp.has_add_on:
+                        await self.blunt_to_workstock(FACTORYTECHLAB)
+            if (len(self.structures(FUSIONCORE))==0):
+                await self.blunt_to_workstock(FUSIONCORE)
+            if (len(self.structures(STARPORT))==0):
+                await self.blunt_to_workstock(STARPORT)
+            if (len(self.structures(FACTORY))==0):
+                await self.blunt_to_workstock(FACTORY)
+            if (len(self.structures(BARRACKS))==0):
+                await self.blunt_to_workstock(BARRACKS)
+            if (len(self.structures(SUPPLYDEPOT))==0):
+                await self.blunt_to_workstock(SUPPLYDEPOT)
+            if (len(self.structures(STARPORT).ready.idle)==0) and (len(self.structures(FUSIONCORE).ready)>0) \
+            and (STARPORT not in self.structure_of_scvt.values()):
+                await self.blunt_to_workstock(STARPORT)
+            if (self.we_started_amount(BATTLECRUISER) >= 3):
+                await self.blunt_to_workstock(ARMORY)
+                await self.blunt_to_workstock(RAVEN)
+            if (len(self.structures(ARMORY).ready.idle) > 0):
+                for pair in self.cradle:
+                    if pair[1] == ARMORY:
+                        await self.blunt_to_workstock(pair[0])
+#           
 #           phase of happy producing
-            for thing in self.anything:
-                await self.blunt_to_workstock(thing)
+#           for thing in self.anything:
+#               await self.blunt_to_workstock(thing)
 #       
         stri = ''
         for workstock in self.thing_of_workstock:
@@ -1396,13 +1467,13 @@ class Chaosbot(sc2.BotAI):
     async def attack(self):
         self.routine = 'attack'
         if self.attack_phase == 'harrass':
-            tp = self.mineral_field.random.position
+            tp = Point2((random.randrange(0,200),random.randrange(0,200)))
         elif self.attack_phase == 'gather':
             tp = self.game_info.map_center
         elif self.attack_phase == 'coordinated':
             tp = self.enemy_start_locations[0].position
         sent = 0
-        for srt in [BATTLECRUISER,MARINE,MARAUDER,VIKINGFIGHTER,SIEGETANK]:
+        for srt in [BATTLECRUISER,MARINE,MARAUDER,VIKINGFIGHTER]:
             for ar in self.units(srt).ready.idle:
                 if not (ar.tag in self.bct_in_repair):
                     if (self.attack_phase == 'gather') and (self.near(ar.position,self.game_info.map_center,10)):
@@ -1422,7 +1493,7 @@ class Chaosbot(sc2.BotAI):
         elif self.attack_phase == 'gather':
             reached = 0
             total = 0
-            for srt in [BATTLECRUISER,MARINE,MARAUDER,VIKINGFIGHTER,SIEGETANK]:
+            for srt in [BATTLECRUISER,MARINE,MARAUDER,VIKINGFIGHTER]:
                 for ar in self.units(srt).ready:
                     total = total+1
                     if self.near(ar.position,self.game_info.map_center,10):
@@ -1522,7 +1593,8 @@ class Chaosbot(sc2.BotAI):
         for bc in self.units(BATTLECRUISER).ready:
             found = False
 #           missing some
-            for kind in (ARCHON,BATTLECRUISER,CARRIER,QUEEN,VIKINGFIGHTER,MISSILETURRET,SPORECRAWLER,PHOTONCANNON,INFESTOR,HYDRALISK,THOR):
+            for kind in (ARCHON,BATTLECRUISER,CARRIER,QUEEN,VIKINGFIGHTER,MISSILETURRET,SPORECRAWLER,PHOTONCANNON,\
+            INFESTOR,HYDRALISK,THOR,VIPER):
                 for ene in self.enemy_units(kind):
                     if self.near(ene.position,bc.position,8):
                         target = ene
@@ -1534,7 +1606,8 @@ class Chaosbot(sc2.BotAI):
         for ra in self.units(RAVEN).ready:
             found = False
 #           missing some
-            for kind in (ARCHON,BATTLECRUISER,CARRIER,QUEEN,VIKINGFIGHTER,MISSILETURRET,SPORECRAWLER,PHOTONCANNON,INFESTOR,HYDRALISK,THOR):
+            for kind in (ARCHON,BATTLECRUISER,CARRIER,QUEEN,VIKINGFIGHTER,MISSILETURRET,SPORECRAWLER,PHOTONCANNON,\
+            INFESTOR,HYDRALISK,THOR,VIPER):
                 for ene in self.enemy_units(kind):
                     if self.near(ene.position,ra.position,8):
                         target = ene
@@ -1558,8 +1631,7 @@ class Chaosbot(sc2.BotAI):
                             cra = pair[1]
                             for ar in self.structures(cra).ready:
                                 if ar.tag in self.idle_structure_tags:
-                                    if self.can_pay(upg,False) or (upg in \
-                                    (TERRANVEHICLEANDSHIPARMORSLEVEL1,TERRANVEHICLEANDSHIPARMORSLEVEL2,TERRANVEHICLEANDSHIPARMORSLEVEL3)):
+                                    if self.can_pay(upg,False) or self.bug_can_pay(upg,False):
                                         didit = True
                                         self.log_success(upg.name)
 #                                       circumvent some bugs
@@ -1654,7 +1726,7 @@ class Chaosbot(sc2.BotAI):
                         self.log_workers('fleeing '+job+' '+self.name(scvt))
                         self.job_of_scvt[scvt] = 'fleeer'
                         self.promotionsite_of_scvt[scvt] = scv.position
-                        place = self.mineral_field.random.position
+                        place = Point2((random.randrange(0,200),random.randrange(0,200)))
                         scv(MOVE_MOVE,place)
 #       jobhaters 
         for scv in self.units(SCV).idle:
@@ -1676,6 +1748,10 @@ class Chaosbot(sc2.BotAI):
                     if scv.position != self.promotionsite_of_scvt[scvt]:
                         self.log_workers('fired slacking '+job+' '+self.name(scvt))
                         self.job_of_scvt[scvt] = 'idler'
+                elif job == 'traveller':
+                    if not self.near(scv.position,self.goal_of_scvt[scvt],3):
+#                       this can occur if the traveller has been blocked
+                        scv(MOVE_MOVE,self.goal_of_scvt[scvt])
 #       builders start to mine after building a geyser
         for scv in self.units(SCV):
             scvt = scv.tag
@@ -2059,5 +2135,5 @@ class Chaosbot(sc2.BotAI):
 #       Easy/Medium/Hard/VeryHard
 run_game(maps.get('ThunderbirdLE'), [
     Bot(Race.Terran, Chaosbot()),
-    Computer(Race.Terran, Difficulty.VeryHard)
-    ], realtime=False)
+    Computer(Race.Protoss, Difficulty.Hard)
+    ], realtime=True)
