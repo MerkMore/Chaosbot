@@ -1,6 +1,6 @@
 # Merkbot.py containing Chaosbot
 # author: MerkMore
-# version 28 june 2020
+# version 29 june 2020
 # Burny style
 import sc2
 from sc2 import run_game, maps, Race, Difficulty
@@ -15,7 +15,7 @@ from math import sqrt
 class Chaosbot(sc2.BotAI):
 #   ############### CHANGE VALUE AD LIB
     do_log_success = True
-    do_log_workers = True
+    do_log_workers = False
     do_log_population = False
     do_log_armysize = False
     do_log_gasminer = False
@@ -23,7 +23,7 @@ class Chaosbot(sc2.BotAI):
     do_log_limbo = False
     do_log_buildposition = False
     do_log_wish = False
-    do_log_workstock = True
+    do_log_workstock = False
     do_log_time = False
 #   ############### CONSTANT
 #   constant over the iterations after iteration 0:
@@ -62,7 +62,10 @@ class Chaosbot(sc2.BotAI):
 #   the supplydepot used as a gate:
     updown = -1
 #   army coodination
-    attack_phase = 'harrass'
+    agressivebctag = -1
+    attack_phase = 'agressive'
+    cruisercount = 0
+    lastcruisercount = 0
     tried_coordinated_attack = False
     home_of_flying_struct = {}
     bct_in_repair = []
@@ -615,13 +618,13 @@ class Chaosbot(sc2.BotAI):
         cost_minerals = 999
         cost_vespene = 999
 #       numbers correct jun 2020
-        if up == TERRANVEHICLEANDSHIPARMORSLEVEL1:
+        if upg == TERRANVEHICLEANDSHIPARMORSLEVEL1:
             cost_minerals = 100
             cost_vespene = 100
-        if up == TERRANVEHICLEANDSHIPARMORSLEVEL2:
+        if upg == TERRANVEHICLEANDSHIPARMORSLEVEL2:
             cost_minerals = 175
             cost_vespene = 175
-        if up == TERRANVEHICLEANDSHIPARMORSLEVEL3:
+        if upg == TERRANVEHICLEANDSHIPARMORSLEVEL3:
             cost_minerals = 250
             cost_vespene = 250
         if urgent:
@@ -1006,7 +1009,12 @@ class Chaosbot(sc2.BotAI):
                 looppri = looppri - 1
             if len(self.wish_now)>0:
                 self.log_wish(lin)
-#    
+#        
+#   Count battlecruisers
+        self.lastcruisercount = self.cruisercount
+        self.cruisercount = self.units(BATTLECRUISER).ready.amount
+#   
+#   scv 
 #   The tag of existing own scvs, in this iteration
 #       complication is the scv in a refinery, which does not exist temporarily
         limbo = self.supply_workers - self.units(SCV).amount
@@ -1220,14 +1228,14 @@ class Chaosbot(sc2.BotAI):
         else:
 #           advice on midgame stuck situations
             scvs = len(self.units(SCV))
-            if (self.supply_left < 2+self.supply_used//7) and (self.supply_cap<200)\
-            and (SUPPLYDEPOT not in self.structure_of_scvt.values()):
-                await self.blunt_to_workstock(SUPPLYDEPOT)
+            if (self.supply_left < 2+self.supply_used//6) and (self.supply_cap<200):
+                if (SUPPLYDEPOT not in self.structure_of_scvt.values()) or (self.supply_left<2):
+                    await self.blunt_to_workstock(SUPPLYDEPOT)
             wanted_ccs = 1+(scvs+7)//22
             if (self.we_started_amount(COMMANDCENTER)+self.structures(PLANETARYFORTRESS).amount\
             +self.structures(ORBITALCOMMAND).amount < wanted_ccs):
                 await self.blunt_to_workstock(COMMANDCENTER)
-            if (self.we_started_amount(SIEGETANK)<3) and (self.supply_used<100):
+            if (self.we_started_amount(SIEGETANK)<3) and (self.supply_used<120):
                 await self.blunt_to_workstock(SIEGETANK)
             if (not self.we_started_a(MISSILETURRET)) or (self.supply_used>100):
                 await self.blunt_to_workstock(MISSILETURRET)
@@ -1267,10 +1275,12 @@ class Chaosbot(sc2.BotAI):
             if (self.we_started_amount(BATTLECRUISER) >= 3):
                 await self.blunt_to_workstock(ARMORY)
                 await self.blunt_to_workstock(RAVEN)
+                await self.blunt_to_workstock(BATTLECRUISERENABLESPECIALIZATIONS)
             if (len(self.structures(ARMORY).ready.idle) > 0):
                 for pair in self.cradle:
                     if pair[1] == ARMORY:
                         await self.blunt_to_workstock(pair[0])
+
 #           
 #           phase of happy producing
 #           for thing in self.anything:
@@ -1466,7 +1476,26 @@ class Chaosbot(sc2.BotAI):
 
     async def attack(self):
         self.routine = 'attack'
-        if self.attack_phase == 'harrass':
+        if self.attack_phase == 'agressive':
+            if self.agressivebctag == -1:
+                for bc in self.units(BATTLECRUISER).ready.idle:
+                    self.agressivebctag = bc.tag
+                if self.agressivebctag != -1:
+                    self.log_success('jumping in a bc')
+                    place = Point2((random.randrange(0,200),random.randrange(0,200)))
+                    while not self.near(place,self.enemy_start_locations[0].position,15):
+                        place = Point2((random.randrange(0,200),random.randrange(0,200)))
+                    bc(EFFECT_TACTICALJUMP,place)
+            else:
+                for bc in self.units(BATTLECRUISER).ready:
+                    if bc.tag == self.agressivebctag:
+                        if self.near(bc.position,self.enemy_start_locations[0].position,50):
+                            self.log_success('hold this bc there')
+                            bc(HOLDPOSITION_BATTLECRUISER)
+#                           and when ready, release it. Oh it does not become idle?!
+                            self.agressivebctag = -1
+            tp = Point2((random.randrange(0,200),random.randrange(0,200)))
+        elif self.attack_phase == 'harrass':
             tp = Point2((random.randrange(0,200),random.randrange(0,200)))
         elif self.attack_phase == 'gather':
             tp = self.game_info.map_center
@@ -1474,18 +1503,23 @@ class Chaosbot(sc2.BotAI):
             tp = self.enemy_start_locations[0].position
         sent = 0
         for srt in [BATTLECRUISER,MARINE,MARAUDER,VIKINGFIGHTER]:
-            for ar in self.units(srt).ready.idle:
-                if not (ar.tag in self.bct_in_repair):
-                    if (self.attack_phase == 'gather') and (self.near(ar.position,self.game_info.map_center,10)):
-                        pass
-                    else:
-                        sent = sent + 1
-                        ar.attack(tp)
-        if sent > 0:
-            self.log_success(' with '+str(sent))
+            if (self.attack_phase != 'agressive') or (srt != BATTLECRUISER):
+                for ar in self.units(srt).ready.idle:
+                    if not (ar.tag in self.bct_in_repair):
+                        if (self.attack_phase == 'gather') and (self.near(ar.position,self.game_info.map_center,10)):
+                            pass
+                        else:
+                            sent = sent + 1
+                            ar.attack(tp)
+            if sent > 0:
+                self.log_armysize(' with '+str(sent))
 #       
 #       attack_phase changes
-        if self.attack_phase == 'harrass':
+        if self.attack_phase == 'agressive':
+            if (self.cruisercount<self.lastcruisercount) or (self.units(BATTLECRUISER).ready.amount >= 3):
+                self.attack_phase = 'harrass'
+                self.log_success('spreading the army')
+        elif self.attack_phase == 'harrass':
             if not self.tried_coordinated_attack:
                 if self.supply_used > 190:
                     self.attack_phase = 'gather'
@@ -1594,7 +1628,7 @@ class Chaosbot(sc2.BotAI):
             found = False
 #           missing some
             for kind in (ARCHON,BATTLECRUISER,CARRIER,QUEEN,VIKINGFIGHTER,MISSILETURRET,SPORECRAWLER,PHOTONCANNON,\
-            INFESTOR,HYDRALISK,THOR,VIPER):
+            INFESTOR,HYDRALISK,THOR,VIPER,PHOENIX):
                 for ene in self.enemy_units(kind):
                     if self.near(ene.position,bc.position,8):
                         target = ene
@@ -1607,7 +1641,7 @@ class Chaosbot(sc2.BotAI):
             found = False
 #           missing some
             for kind in (ARCHON,BATTLECRUISER,CARRIER,QUEEN,VIKINGFIGHTER,MISSILETURRET,SPORECRAWLER,PHOTONCANNON,\
-            INFESTOR,HYDRALISK,THOR,VIPER):
+            INFESTOR,HYDRALISK,THOR,VIPER,PHOENIX):
                 for ene in self.enemy_units(kind):
                     if self.near(ene.position,ra.position,8):
                         target = ene
@@ -1878,7 +1912,7 @@ class Chaosbot(sc2.BotAI):
                         if scv.tag == scvt:
                             self.job_of_scvt[scvt] = 'applicant'
                             self.promotionsite_of_scvt[scvt] = scv.position
-                            scv(MOVE_MOVE,cc.position)
+                            scv(MOVE_MOVE,cc.position.towards(self.game_info.map_center,-3))
                             self.log_workers('new applicant group '+self.name(scvt))
                             self.vision_of_scvt[scvt] = cc.tag
         else:
@@ -1891,7 +1925,7 @@ class Chaosbot(sc2.BotAI):
                             self.wanted_of_cct[cc.tag] = self.wanted_of_cct[cc.tag]-1
                             self.job_of_scvt[scvt] = 'applicant'
                             self.promotionsite_of_scvt[scvt] = scv.position
-                            scv(MOVE_MOVE,cc.position)
+                            scv(MOVE_MOVE,cc.position.towards(self.game_info.map_center,-3))
                             self.log_workers('new applicant '+self.name(scvt))
                             self.vision_of_scvt[scvt] = cc.tag
 
@@ -2135,5 +2169,5 @@ class Chaosbot(sc2.BotAI):
 #       Easy/Medium/Hard/VeryHard
 run_game(maps.get('ThunderbirdLE'), [
     Bot(Race.Terran, Chaosbot()),
-    Computer(Race.Protoss, Difficulty.Hard)
+    Computer(Race.Terran, Difficulty.VeryHard)
     ], realtime=True)
