@@ -1,6 +1,6 @@
 # Merkbot.py containing Chaosbot
 # author: MerkMore
-# version 29 june 2020
+# version 1 july 2020
 # Burny style
 import sc2
 from sc2 import run_game, maps, Race, Difficulty
@@ -18,6 +18,7 @@ class Chaosbot(sc2.BotAI):
     do_log_workers = False
     do_log_population = False
     do_log_armysize = False
+    do_log_army = True
     do_log_gasminer = False
     do_log_resource = False
     do_log_limbo = False
@@ -32,6 +33,7 @@ class Chaosbot(sc2.BotAI):
     all_structures_tobuildwalk = []
     all_army = []
     buildtime_of_structure = {}
+    size_of_structure = {}
     liftable = []
     techtree = []
     anything = []
@@ -45,6 +47,7 @@ class Chaosbot(sc2.BotAI):
     walk_speed = 4.0
     stocksize = 4
     miner_bound = 10
+    enemyloc = None
 #   ############### GAMESTATE
 #   gamestate values constant in this iteration after gamestate_repair:  
     itera = -1
@@ -62,17 +65,18 @@ class Chaosbot(sc2.BotAI):
 #   the supplydepot used as a gate:
     updown = -1
 #   army coodination
-    agressivebctag = -1
-    attack_phase = 'agressive'
+    frozenbctags = set()
+    attack_type = 'chaos'
     cruisercount = 0
     lastcruisercount = 0
-    tried_coordinated_attack = False
+    never_had_a_bc = True
     home_of_flying_struct = {}
     bct_in_repair = []
     bestbctag = -1
     bc_fear = 250
     ambition_of_strt = {}
     towt_of_tnkt = {}
+    army_center_point = None 
 #   ############### SCV MANAGEMENT
 #   traveller and builder scvs have a goal
 #   traveller and builder scvs have a structure to build
@@ -175,21 +179,21 @@ class Chaosbot(sc2.BotAI):
         self.liftable = [BARRACKS,FACTORY,STARPORT,COMMANDCENTER]
         self.landable = [BARRACKSFLYING,FACTORYFLYING,STARPORTFLYING,COMMANDCENTERFLYING]
         self.all_army = [RAVEN,VIKINGFIGHTER,MARINE,MARAUDER,SIEGETANK,BATTLECRUISER,SIEGETANKSIEGED]
-#       list of most structures, with buildtime
-        self.init_structures(SUPPLYDEPOT, 50)
-        self.init_structures(BARRACKS, 60)
-        self.init_structures(REFINERY, 60)
-        self.init_structures(BARRACKSTECHLAB, 40)
-        self.init_structures(FACTORY, 60)
-        self.init_structures(FACTORYTECHLAB, 40)
-        self.init_structures(STARPORT, 60)
-        self.init_structures(STARPORTTECHLAB, 40)
-        self.init_structures(FUSIONCORE, 80)
-        self.init_structures(COMMANDCENTER, 90)
-        self.init_structures(PLANETARYFORTRESS, 30)
-        self.init_structures(ENGINEERINGBAY, 40)
-        self.init_structures(MISSILETURRET,30)
-        self.init_structures(ARMORY, 40)
+#       list of most structures, with buildtime, size
+        self.init_structures(SUPPLYDEPOT, 50, 2)
+        self.init_structures(BARRACKS, 60, 3)
+        self.init_structures(REFINERY, 60, 3)
+        self.init_structures(BARRACKSTECHLAB, 40, 2)
+        self.init_structures(FACTORY, 60, 3)
+        self.init_structures(FACTORYTECHLAB, 40, 2)
+        self.init_structures(STARPORT, 60, 3)
+        self.init_structures(STARPORTTECHLAB, 40, 2)
+        self.init_structures(FUSIONCORE, 80, 3)
+        self.init_structures(COMMANDCENTER, 90, 5)
+        self.init_structures(PLANETARYFORTRESS, 30, 5)
+        self.init_structures(ENGINEERINGBAY, 40, 3)
+        self.init_structures(MISSILETURRET,30, 2)
+        self.init_structures(ARMORY, 40, 3)
 #       things that, to be built, need a cradle (a free building)
         self.init_cradle(RAVEN,STARPORT)
         self.init_cradle(VIKINGFIGHTER,STARPORT)
@@ -246,6 +250,7 @@ class Chaosbot(sc2.BotAI):
         self.compute_anything()
 #       shipyard
         self.shipyard = self.start_location.position.towards(self.game_info.map_center,4)
+        self.enemyloc = self.enemy_start_locations[0].position
         self.fix_count_of_job()
 #       priority strategy
         await self.rush(BATTLECRUISER,1)
@@ -302,9 +307,12 @@ class Chaosbot(sc2.BotAI):
         elif thing == REFINERY:
             return 2*bases
         elif thing == SUPPLYDEPOT:
-            return 3*bases-1
+            return battlecruisers+3*bases-1
         elif thing == MISSILETURRET:
-            return 3*bases-2
+            if self.supply_used < 190:
+                return 3*bases-2
+            else:
+                return 5*bases
         elif thing == COMMANDCENTER:
             return 5+(self.minerals-500)//500
         elif thing == MARINE:
@@ -312,7 +320,7 @@ class Chaosbot(sc2.BotAI):
         elif thing == MARAUDER:
             return 5-battlecruisers
         elif thing == SIEGETANK:
-            return bases//2
+            return (2*bases)//3
         elif thing == BATTLECRUISER:
             return 32
         elif thing == STARPORT:
@@ -334,6 +342,10 @@ class Chaosbot(sc2.BotAI):
     def log_success(self,stri):
         if self.do_log_success:
             print(f' On {self.itera} success {self.routine} '+stri) 
+
+    def log_army(self,stri):
+        if self.do_log_army:
+            print(f' On {self.itera} army {self.routine} '+stri) 
 
     def log_workers(self,stri):
         if self.do_log_workers:
@@ -447,11 +459,12 @@ class Chaosbot(sc2.BotAI):
 
 
 #   techtree
-    def init_structures(self,barra,buildtime):
+    def init_structures(self,barra,buildtime, size):
         self.routine = 'init_structures'
         self.log_fail((type(barra) == UnitTypeId),'')
         self.all_structures.append(barra)
         self.buildtime_of_structure[barra] = buildtime
+        self.size_of_structure[barra] = size
         if barra not in (BARRACKSTECHLAB,FACTORYTECHLAB,STARPORTTECHLAB,PLANETARYFORTRESS):
             self.all_structures_tobuildwalk.append(barra)
 
@@ -854,6 +867,7 @@ class Chaosbot(sc2.BotAI):
 #   async routines
 
     async def find_building_a_place(self,building) -> bool:
+        self.routine = 'find_building_a_place'
 #       get a random place
 #       if no place could be found, return False
         found = False
@@ -863,7 +877,7 @@ class Chaosbot(sc2.BotAI):
             while searc and (tried<10):
                 place = random.choice(self.expansion_locations_list)
                 searc = False
-                searc = searc or (self.near(place,self.enemy_start_locations[0].position,50))
+                searc = searc or (self.near(place,self.enemyloc,50))
                 searc = searc or (place in [tow.position for tow in self.all_bases])
                 searc = searc or (place in self.goal_of_scvt.values())
                 tried = tried+1
@@ -935,7 +949,14 @@ class Chaosbot(sc2.BotAI):
 #   
 #   All existing not-flying ready commandcenters and orbitalcommands and all planetary fortresses
 #       pf and oc morphing from cc are included
-        self.all_bases = (self.structures(COMMANDCENTER).ready+self.structures(ORBITALCOMMAND)+self.structures(PLANETARYFORTRESS))
+#       the pluscharacter appends lists
+        self.all_bases = self.structures(COMMANDCENTER).ready+self.structures(ORBITALCOMMAND)+self.structures(PLANETARYFORTRESS)
+#       ccs in construction nearly finished are included
+        for cc in self.structures(COMMANDCENTER):
+            if cc.build_progress>0.85:
+                if cc not in self.all_bases:
+                    self.all_bases.append(cc)
+                
 #
 #   All idle structures
         self.idle_structure_tags = []
@@ -1332,19 +1353,21 @@ class Chaosbot(sc2.BotAI):
         if self.check_maxam(ship):
             if self.check_techtree(ship):
                 if self.can_pay(ship,False):
-                    for pair in self.cradle:
-                        if pair[0] == ship:
-                            hangar = pair[1]
-                            todo = 1                    
-                            for sp in self.structures(hangar).ready:
-                                if sp.tag in self.idle_structure_tags:
-                                    if sp.tag not in self.ambition_of_strt:
-                                        if todo>0:
-                                            todo = todo-1
-                                            self.log_success(ship.name)
-                                            sp.train(ship)
-                                            self.idle_structure_tags.remove(sp.tag)
-                                            didit = True
+                    if self.supply_left >= 6:
+                        for pair in self.cradle:
+                            if pair[0] == ship:
+                                hangar = pair[1]
+                                todo = 1                    
+                                for sp in self.structures(hangar).ready:
+                                    if sp.tag in self.idle_structure_tags:
+                                        if (sp.has_add_on) or (ship == MARINE):
+                                            if sp.tag not in self.ambition_of_strt:
+                                                if todo>0:
+                                                    todo = todo-1
+                                                    self.log_success(ship.name)
+                                                    sp.train(ship)
+                                                    self.idle_structure_tags.remove(sp.tag)
+                                                    didit = True
         return didit
 
 
@@ -1472,80 +1495,118 @@ class Chaosbot(sc2.BotAI):
                             didit = True
         return didit
 
-
+    def good_army_position(self,point) -> bool:
+        good = False
+        if self.attack_type == 'center':
+            good = self.near(point,self.army_center_point,10)
+        elif self.attack_type == 'arc':
+            good = self.near(point,self.enemyloc,100) and (not self.near(point,self.enemyloc,80))
+        elif self.attack_type == 'agressive':
+            good = self.near(point,self.enemyloc,15)
+        return good
 
     async def attack(self):
         self.routine = 'attack'
-        if self.attack_phase == 'agressive':
-            if self.agressivebctag == -1:
-                for bc in self.units(BATTLECRUISER).ready.idle:
-                    self.agressivebctag = bc.tag
-                if self.agressivebctag != -1:
-                    self.log_success('jumping in a bc')
+        if self.attack_type == 'agressive':
+            for bc in self.units(BATTLECRUISER).ready:
+                if self.good_army_position(bc.position):
+                    if bc.tag not in self.frozenbctags:
+                        self.log_army('holding bc there')
+                        bc(HOLDPOSITION_BATTLECRUISER)
+                        self.frozenbctags.add(bc.tag)
+            for bc in self.units(BATTLECRUISER).ready.idle:
+                if not self.good_army_position(bc.position):
                     place = Point2((random.randrange(0,200),random.randrange(0,200)))
-                    while not self.near(place,self.enemy_start_locations[0].position,15):
+                    while not self.good_army_position(place):
                         place = Point2((random.randrange(0,200),random.randrange(0,200)))
-                    bc(EFFECT_TACTICALJUMP,place)
-            else:
-                for bc in self.units(BATTLECRUISER).ready:
-                    if bc.tag == self.agressivebctag:
-                        if self.near(bc.position,self.enemy_start_locations[0].position,50):
-                            self.log_success('hold this bc there')
-                            bc(HOLDPOSITION_BATTLECRUISER)
-#                           and when ready, release it. Oh it does not become idle?!
-                            self.agressivebctag = -1
+                    abilities = (await self.get_available_abilities([bc]))[0]
+                    if EFFECT_TACTICALJUMP in abilities:
+                        bc(EFFECT_TACTICALJUMP,place)
+                        self.log_army('jumping in a bc')
+                    else:
+                        bc.attack(place)
+                        self.log_army('attacking with a bc')
+            tp = self.enemyloc
+        elif self.attack_type == 'chaos':
             tp = Point2((random.randrange(0,200),random.randrange(0,200)))
-        elif self.attack_phase == 'harrass':
+        elif self.attack_type == 'arc':
             tp = Point2((random.randrange(0,200),random.randrange(0,200)))
-        elif self.attack_phase == 'gather':
-            tp = self.game_info.map_center
-        elif self.attack_phase == 'coordinated':
-            tp = self.enemy_start_locations[0].position
+            while not self.good_army_position(tp):
+                tp = Point2((random.randrange(0,200),random.randrange(0,200)))
+        elif self.attack_type == 'arcpoint':
+            tp = self.enemyloc
+        elif self.attack_type == 'center':
+            tp = self.army_center_point
+        elif self.attack_type == 'centerpoint':
+            tp = self.enemyloc
         sent = 0
         for srt in [BATTLECRUISER,MARINE,MARAUDER,VIKINGFIGHTER]:
-            if (self.attack_phase != 'agressive') or (srt != BATTLECRUISER):
+            if (self.attack_type != 'agressive') or (srt != BATTLECRUISER):
                 for ar in self.units(srt).ready.idle:
                     if not (ar.tag in self.bct_in_repair):
-                        if (self.attack_phase == 'gather') and (self.near(ar.position,self.game_info.map_center,10)):
-                            pass
-                        else:
+                        if not self.good_army_position(ar.position):
                             sent = sent + 1
                             ar.attack(tp)
-            if sent > 0:
-                self.log_armysize(' with '+str(sent))
+        if sent > 0:
+            self.log_army(' with '+str(sent))
 #       
-#       attack_phase changes
-        if self.attack_phase == 'agressive':
-            if (self.cruisercount<self.lastcruisercount) or (self.units(BATTLECRUISER).ready.amount >= 3):
-                self.attack_phase = 'harrass'
-                self.log_success('spreading the army')
-        elif self.attack_phase == 'harrass':
-            if not self.tried_coordinated_attack:
-                if self.supply_used > 190:
-                    self.attack_phase = 'gather'
-                    self.log_success('gathering the army for a coordinated attack')
-        elif self.attack_phase == 'gather':
+#       attack_type changes
+        if self.attack_type == 'agressive':
+            if (self.cruisercount<self.lastcruisercount) or (len(self.frozenbctags) >= 3):
+                self.attack_type = 'chaos'
+                self.log_army('spreading the army')
+#               unfreeze
+                for bc in self.units(BATTLECRUISER).ready:
+                    if bc.tag in self.frozenbctags:
+                        bc(STOP)
+                self.frozenbctags = set()
+        elif self.attack_type == 'chaos':
+            if self.supply_used > 190:
+                self.attack_type = 'arc'
+                self.log_army('arcing the army for a point attack')
+            if (self.cruisercount == 1) and (self.never_had_a_bc):
+                self.never_had_a_bc = False
+                self.attack_type = 'agressive'
+                self.log_army('first bc, turning agressive.') 
+        elif self.attack_type == 'arc':
             reached = 0
             total = 0
             for srt in [BATTLECRUISER,MARINE,MARAUDER,VIKINGFIGHTER]:
                 for ar in self.units(srt).ready:
                     total = total+1
-                    if self.near(ar.position,self.game_info.map_center,10):
+                    if self.good_army_position(ar.position):
                         if ar in self.units(srt).ready.idle:
                             reached = reached+1
             if reached*5 > total*4:
-                self.attack_phase = 'coordinated'
-                self.log_success('starting a coordinated attack')
-        elif self.attack_phase == 'coordinated':
-            self.attack_phase = 'harrass'
-            self.tried_coordinated_attack = True
+                self.attack_type = 'arcpoint'
+                self.log_army('starting a arcpoint attack')
+        elif self.attack_type == 'arcpoint':
+            self.attack_type = 'center'
+            tp = Point2((random.randrange(0,200),random.randrange(0,200)))
+            while self.near(tp,self.enemyloc,80) or (not self.near(tp,self.enemyloc,100)): 
+                tp = Point2((random.randrange(0,200),random.randrange(0,200)))
+            self.army_center_point = tp    
+        elif self.attack_type == 'center':
+            reached = 0
+            total = 0
+            for srt in [BATTLECRUISER,MARINE,MARAUDER,VIKINGFIGHTER]:
+                for ar in self.units(srt).ready:
+                    total = total+1
+                    if self.good_army_position(ar.position):
+                        if ar in self.units(srt).ready.idle:
+                            reached = reached+1
+            if reached*5 > total*4:
+                self.attack_type = 'centerpoint'
+                self.log_army('starting a center-to-point attack')
+        elif self.attack_type == 'centerpoint':
+            self.attack_type = 'agressive'
 #       
 #       ravens should attack the best battlecruiser
         for rv in self.units(RAVEN).ready.idle:
             for bc in self.units(BATTLECRUISER).ready:
                 if bc.tag == self.bestbctag:
                     rv.attack(bc)
-                    self.log_success('raven will follow a bc')
+                    self.log_army('raven will follow a bc')
 #       suicider scvs
         if self.count_of_job['suicider'] > 0:
             for scv in self.units(SCV).idle:
@@ -1628,7 +1689,7 @@ class Chaosbot(sc2.BotAI):
             found = False
 #           missing some
             for kind in (ARCHON,BATTLECRUISER,CARRIER,QUEEN,VIKINGFIGHTER,MISSILETURRET,SPORECRAWLER,PHOTONCANNON,\
-            INFESTOR,HYDRALISK,THOR,VIPER,PHOENIX):
+            INFESTOR,HYDRALISK,THOR,VIPER,PHOENIX,RAVAGER):
                 for ene in self.enemy_units(kind):
                     if self.near(ene.position,bc.position,8):
                         target = ene
@@ -1641,7 +1702,7 @@ class Chaosbot(sc2.BotAI):
             found = False
 #           missing some
             for kind in (ARCHON,BATTLECRUISER,CARRIER,QUEEN,VIKINGFIGHTER,MISSILETURRET,SPORECRAWLER,PHOTONCANNON,\
-            INFESTOR,HYDRALISK,THOR,VIPER,PHOENIX):
+            INFESTOR,HYDRALISK,THOR,VIPER,PHOENIX,RAVAGER):
                 for ene in self.enemy_units(kind):
                     if self.near(ene.position,ra.position,8):
                         target = ene
@@ -1887,7 +1948,8 @@ class Chaosbot(sc2.BotAI):
                         for bc in self.units(BATTLECRUISER).ready:
                             bct = bc.tag
                             if bct == self.bct_in_repair[0]:
-                                scv.repair(bc)
+                                if self.near(bc.position,self.shipyard,15):
+                                    scv.repair(bc)
 #       keep the bc in the shipyard
         if len(self.bct_in_repair) > 0:
             for bc in self.units(BATTLECRUISER).ready:
@@ -2079,7 +2141,7 @@ class Chaosbot(sc2.BotAI):
                         self.log_workers('suiciding idler '+self.name(scvt))
                         self.job_of_scvt[scvt] = 'suicider'
                         self.promotionsite_of_scvt[scvt] = scv.position
-                        scv.attack(self.enemy_start_locations[0].position)
+                        scv.attack(self.enemyloc)
 #       job-swap for late game
         if (self.count_of_job['idler'] == 0) and (self.itera % 9 == 0):
             if self.minerals > self.vespene + 1000:
@@ -2109,7 +2171,7 @@ class Chaosbot(sc2.BotAI):
             if (self.job_of_scvt[scvt] == 'escorter'):
                 for scv in self.units(SCV):
                     if scvt == scv.tag:
-                        if self.near(scv.position,self.enemy_start_locations[0].position,50):
+                        if self.near(scv.position,self.enemyloc,50):
                             self.job_of_scvt[scvt] = 'idler'
                             self.log_workers('Enemy fear stops escorter '+self.name(scvt))
                             scv(STOP) 
@@ -2169,5 +2231,5 @@ class Chaosbot(sc2.BotAI):
 #       Easy/Medium/Hard/VeryHard
 run_game(maps.get('ThunderbirdLE'), [
     Bot(Race.Terran, Chaosbot()),
-    Computer(Race.Terran, Difficulty.VeryHard)
-    ], realtime=True)
+    Computer(Race.Protoss, Difficulty.VeryHard)
+    ], realtime=False)
