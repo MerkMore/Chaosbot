@@ -14,7 +14,6 @@ startx = 0
 starty = 0
 
 
-img = None
 #   
 grey = (125,125,125)
 white = (255,255,255)
@@ -46,6 +45,8 @@ def save_layout():
 
 
 def load_layout():
+    global layout,startx,starty,mapname
+    
     layout = []
     text = open('layout.txt','r')
     stri=text.readline().rstrip()

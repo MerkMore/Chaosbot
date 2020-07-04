@@ -1,27 +1,261 @@
 #####
+map: Simulacrum LE 161.5 44.5
+position SUPPLYDEPOT 155 60
+position SUPPLYDEPOT 158 57
+position BARRACKS 155.5 57.5
+position FUSIONCORE * 176.5 109.5
+position FUSIONCORE * 138.5 37.5
+position FUSIONCORE * 174.5 96.5
+position FUSIONCORE * 171.5 80.5
+position FUSIONCORE * 120.5 32.5
+position FUSIONCORE * 94.5 32.5
+position FUSIONCORE * 108.5 34.5
+position STARPORT * 174.5 106.5
+position STARPORT * 115.5 32.5
+position STARPORT * 170.5 94.5
+position STARPORT * 125.5 39.5
+position STARPORT * 93.5 35.5
+position STARPORT * 136.5 45.5
+position STARPORT * 165.5 114.5
+#####
+map: Simulacrum LE 54.5 139.5
+position SUPPLYDEPOT 58 127
+position SUPPLYDEPOT 60 127
+position BARRACKS 61.5 124.5
+position FUSIONCORE * 39.5 74.5
+position FUSIONCORE * 39.5 112.5
+position FUSIONCORE * 40.5 86.5
+position FUSIONCORE * 51.5 71.5
+position FUSIONCORE * 124.5 151.5
+position FUSIONCORE * 46.5 102.5
+position FUSIONCORE * 52.5 83.5
+position STARPORT * 42.5 72.5
+position STARPORT * 39.5 109.5
+position STARPORT * 43.5 87.5
+position STARPORT * 54.5 71.5
+position STARPORT * 119.5 151.5
+position STARPORT * 50.5 103.5
+position STARPORT * 95.5 151.5
+#####
 map: Thunderbird LE 38.5 133.5
-position SUPPLYDEPOT 37.0 118.0
-position SUPPLYDEPOT 38.0 122.0
-position BARRACKS 35.5 120.5
-position FACTORY 40.5 122.5
-position SUPPLYDEPOT 34.0 129.0
-position BARRACKS 36.5 128.5
-position STARPORT 38.0 124.0
-position STARPORT 55.5 139.5
-position FUSIONCORE 74.0 116.0
-position MISSILETURRET 33.0 128.0
-position MISSILETURRET 43.0 138.0
-position MISSILETURRET 33.0 140.0
+position SUPPLYDEPOT 37 118
+position SUPPLYDEPOT 37 120
+position BARRACKS 39.5 121.5
+position FUSIONCORE * 27.5 66.5
+position FUSIONCORE * 39.5 65.5
+position FUSIONCORE * 31.5 96.5
+position FUSIONCORE * 51.5 68.5
+position FUSIONCORE * 43.5 93.5
+position FUSIONCORE * 48.5 80.5
+position FUSIONCORE * 64.5 137.5
+position STARPORT * 28.5 69.5
+position STARPORT * 40.5 68.5
+position STARPORT * 34.5 94.5
+position STARPORT * 48.5 77.5
+position STARPORT * 59.5 72.5
+position STARPORT * 53.5 88.5
+position STARPORT * 69.5 139.5
 #####
 map: Thunderbird LE 153.5 22.5
-position SUPPLYDEPOT 155.0 38.0
-position SUPPLYDEPOT 152.0 35.0
-position MISSILETURRET 159.0 16.0
-position MISSILETURRET 149.0 19.0
-position MISSILETURRET 163.0 24.0
-position FACTORY 154.5 32.5
-position STARPORT 119.5 16.5
+position SUPPLYDEPOT 152 35
+position SUPPLYDEPOT 155 38
 position BARRACKS 154.5 35.5
-position FUSIONCORE 115.5 18.5
-position ENGINEERINGBAY 154.5 29.5
+position FUSIONCORE * 91.5 14.5
+position FUSIONCORE * 122.5 16.5
+position FUSIONCORE * 102.5 20.5
+position FUSIONCORE * 128.5 27.5
+position FUSIONCORE * 114.5 25.5
+position FUSIONCORE * 89.5 26.5
+position FUSIONCORE * 104.5 32.5
+position STARPORT * 126.5 18.5
+position STARPORT * 86.5 17.5
+position STARPORT * 98.5 16.5
+position STARPORT * 114.5 19.5
+position STARPORT * 128.5 31.5
+position STARPORT * 93.5 27.5
+position STARPORT * 115.5 31.5
+#####
+map: Eternal Empire LE 33.5 31.5
+position SUPPLYDEPOT 28 50
+position SUPPLYDEPOT 29 48
+position BARRACKS 31.5 46.5
+position FUSIONCORE * 61.5 26.5
+position FUSIONCORE * 87.5 18.5
+position FUSIONCORE * 99.5 21.5
+position FUSIONCORE * 76.5 25.5
+position FUSIONCORE * 24.5 101.5
+position FUSIONCORE * 59.5 38.5
+position FUSIONCORE * 88.5 30.5
+position STARPORT * 90.5 18.5
+position STARPORT * 60.5 29.5
+position STARPORT * 79.5 23.5
+position STARPORT * 103.5 22.5
+position STARPORT * 27.5 100.5
+position STARPORT * 72.5 33.5
+position STARPORT * 58.5 41.5
+#####
+map: Eternal Empire LE 142.5 140.5
+position SUPPLYDEPOT 144 125
+position SUPPLYDEPOT 147 122
+position BARRACKS 146.5 124.5
+position FUSIONCORE * 74.5 149.5
+position FUSIONCORE * 147.5 72.5
+position FUSIONCORE * 86.5 153.5
+position FUSIONCORE * 149.5 99.5
+position FUSIONCORE * 97.5 148.5
+position FUSIONCORE * 114.5 145.5
+position FUSIONCORE * 75.5 137.5
+position STARPORT * 77.5 150.5
+position STARPORT * 89.5 152.5
+position STARPORT * 142.5 72.5
+position STARPORT * 117.5 143.5
+position STARPORT * 99.5 145.5
+position STARPORT * 78.5 138.5
+position STARPORT * 130.5 73.5
+#####
+map: Ever Dream LE 60.5 48.5
+position SUPPLYDEPOT 56 61
+position SUPPLYDEPOT 59 64
+position BARRACKS 58.5 61.5
+position FUSIONCORE * 128.5 40.5
+position FUSIONCORE * 35.5 98.5
+position FUSIONCORE * 108.5 40.5
+position FUSIONCORE * 42.5 88.5
+position FUSIONCORE * 43.5 107.5
+position FUSIONCORE * 96.5 43.5
+position FUSIONCORE * 118.5 47.5
+position STARPORT * 130.5 43.5
+position STARPORT * 38.5 91.5
+position STARPORT * 38.5 106.5
+position STARPORT * 99.5 42.5
+position STARPORT * 111.5 43.5
+position STARPORT * 120.5 51.5
+position STARPORT * 48.5 98.5
+#####
+map: Ever Dream LE 139.5 163.5
+position SUPPLYDEPOT 141 148
+position SUPPLYDEPOT 144 151
+position BARRACKS 141.5 150.5
+position FUSIONCORE * 71.5 171.5
+position FUSIONCORE * 91.5 171.5
+position FUSIONCORE * 103.5 168.5
+position FUSIONCORE * 81.5 164.5
+position FUSIONCORE * 164.5 113.5
+position FUSIONCORE * 157.5 123.5
+position FUSIONCORE * 92.5 159.5
+position STARPORT * 71.5 168.5
+position STARPORT * 87.5 169.5
+position STARPORT * 103.5 165.5
+position STARPORT * 79.5 159.5
+position STARPORT * 159.5 120.5
+position STARPORT * 159.5 106.5
+position STARPORT * 91.5 156.5
+#####
+map: Golden Wall LE 175.5 50.5
+position FUSIONCORE * 167.5 24.5
+position FUSIONCORE * 156.5 18.5
+position FUSIONCORE * 145.5 24.5
+position FUSIONCORE * 125.5 20.5
+position FUSIONCORE * 178.5 76.5
+position FUSIONCORE * 134.5 29.5
+position FUSIONCORE * 177.5 114.5
+position STARPORT * 160.5 20.5
+position STARPORT * 148.5 22.5
+position STARPORT * 117.5 19.5
+position STARPORT * 130.5 25.5
+position STARPORT * 147.5 34.5
+position STARPORT * 175.5 83.5
+position STARPORT * 176.5 110.5
+#####
+map: Golden Wall LE 32.5 50.5
+position FUSIONCORE * 45.5 20.5
+position FUSIONCORE * 57.5 19.5
+position FUSIONCORE * 82.5 20.5
+position FUSIONCORE * 58.5 31.5
+position FUSIONCORE * 71.5 28.5
+position FUSIONCORE * 93.5 25.5
+position FUSIONCORE * 29.5 76.5
+position STARPORT * 40.5 24.5
+position STARPORT * 51.5 18.5
+position STARPORT * 61.5 25.5
+position STARPORT * 88.5 19.5
+position STARPORT * 75.5 25.5
+position STARPORT * 30.5 83.5
+position STARPORT * 95.5 29.5
+#####
+map: Nightshade LE 150.5 33.5
+position SUPPLYDEPOT 150 49
+position SUPPLYDEPOT 152 49
+position BARRACKS 153.5 51.5
+position FUSIONCORE * 85.5 20.5
+position FUSIONCORE * 95.5 27.5
+position FUSIONCORE * 118.5 29.5
+position FUSIONCORE * 82.5 32.5
+position FUSIONCORE * 106.5 32.5
+position FUSIONCORE * 126.5 38.5
+position FUSIONCORE * 92.5 39.5
+position STARPORT * 82.5 23.5
+position STARPORT * 109.5 28.5
+position STARPORT * 90.5 32.5
+position STARPORT * 120.5 34.5
+position STARPORT * 101.5 37.5
+position STARPORT * 85.5 44.5
+position STARPORT * 112.5 43.5
+#####
+map: Nightshade LE 41.5 138.5
+position SUPPLYDEPOT 39 120
+position SUPPLYDEPOT 42 123
+position BARRACKS 39.5 122.5
+position FUSIONCORE * 29.5 71.5
+position FUSIONCORE * 33.5 98.5
+position FUSIONCORE * 41.5 70.5
+position FUSIONCORE * 53.5 71.5
+position FUSIONCORE * 45.5 96.5
+position FUSIONCORE * 106.5 151.5
+position FUSIONCORE * 73.5 142.5
+position STARPORT * 30.5 76.5
+position STARPORT * 42.5 73.5
+position STARPORT * 36.5 97.5
+position STARPORT * 53.5 91.5
+position STARPORT * 67.5 136.5
+position STARPORT * 109.5 149.5
+position STARPORT * 78.5 142.5
+#####
+map: Zen LE 49.5 32.5
+position SUPPLYDEPOT 57 42
+position SUPPLYDEPOT 60 39
+position BARRACKS 57.5 39.5
+position FUSIONCORE * 74.5 16.5
+position FUSIONCORE * 117.5 18.5
+position FUSIONCORE * 98.5 18.5
+position FUSIONCORE * 85.5 21.5
+position FUSIONCORE * 108.5 26.5
+position FUSIONCORE * 32.5 72.5
+position FUSIONCORE * 119.5 31.5
+position STARPORT * 77.5 16.5
+position STARPORT * 118.5 21.5
+position STARPORT * 106.5 20.5
+position STARPORT * 94.5 22.5
+position STARPORT * 82.5 27.5
+position STARPORT * 32.5 75.5
+position STARPORT * 111.5 31.5
+#####
+map: Zen LE 142.5 139.5
+position SUPPLYDEPOT 132 133
+position SUPPLYDEPOT 135 130
+position BARRACKS 134.5 132.5
+position FUSIONCORE * 156.5 72.5
+position FUSIONCORE * 159.5 90.5
+position FUSIONCORE * 75.5 153.5
+position FUSIONCORE * 117.5 155.5
+position FUSIONCORE * 156.5 102.5
+position FUSIONCORE * 90.5 153.5
+position FUSIONCORE * 144.5 71.5
+position STARPORT * 151.5 71.5
+position STARPORT * 157.5 97.5
+position STARPORT * 74.5 150.5
+position STARPORT * 112.5 155.5
+position STARPORT * 152.5 85.5
+position STARPORT * 86.5 151.5
+position STARPORT * 139.5 72.5
 #####
