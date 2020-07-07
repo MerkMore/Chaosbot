@@ -1,16 +1,73 @@
 # Merkbot.py containing Chaosbot
 # author: MerkMore
-# version 4 july 2020
+# version 6 july 2020
 # Burny style
 import sc2
 from sc2 import run_game, maps, Race, Difficulty
 from sc2.player import Bot, Computer
-from sc2.constants import *
+from sc2.ids.ability_id import AbilityId
+from sc2.ids.unit_typeid import UnitTypeId
+from sc2.ids.upgrade_id import UpgradeId
+from sc2.ids.effect_id import EffectId
+from sc2.ids.buff_id import BuffId
 from sc2.position import Point2
 import random
-from math import sqrt
+from math import sqrt,cos,sin
 from sc2.game_info import GameInfo
 import layout_if
+# from sc2.constants import *
+from sc2.ids.unit_typeid import SCV
+from sc2.ids.unit_typeid import RAVEN
+from sc2.ids.unit_typeid import STARPORT
+from sc2.ids.unit_typeid import VIKINGFIGHTER
+from sc2.ids.unit_typeid import MARINE
+from sc2.ids.unit_typeid import BARRACKS
+from sc2.ids.unit_typeid import MARAUDER
+from sc2.ids.unit_typeid import SIEGETANK
+from sc2.ids.unit_typeid import FACTORY
+from sc2.ids.unit_typeid import BATTLECRUISER
+from sc2.ids.unit_typeid import BARRACKSTECHLAB
+from sc2.ids.unit_typeid import FACTORYTECHLAB
+from sc2.ids.unit_typeid import STARPORTTECHLAB
+from sc2.ids.upgrade_id import PUNISHERGRENADES
+from sc2.ids.upgrade_id import TERRANSHIPWEAPONSLEVEL1
+from sc2.ids.unit_typeid import ARMORY
+from sc2.ids.upgrade_id import TERRANSHIPWEAPONSLEVEL2
+from sc2.ids.upgrade_id import TERRANSHIPWEAPONSLEVEL3
+from sc2.ids.upgrade_id import TERRANVEHICLEANDSHIPARMORSLEVEL1
+from sc2.ids.upgrade_id import TERRANVEHICLEANDSHIPARMORSLEVEL2
+from sc2.ids.upgrade_id import TERRANVEHICLEANDSHIPARMORSLEVEL3
+from sc2.ids.upgrade_id import TERRANBUILDINGARMOR
+from sc2.ids.unit_typeid import ENGINEERINGBAY
+from sc2.ids.upgrade_id import TERRANINFANTRYWEAPONSLEVEL1
+from sc2.ids.upgrade_id import TERRANINFANTRYWEAPONSLEVEL2
+from sc2.ids.upgrade_id import TERRANINFANTRYWEAPONSLEVEL3
+from sc2.ids.unit_typeid import PLANETARYFORTRESS
+from sc2.ids.unit_typeid import ORBITALCOMMAND
+from sc2.ids.unit_typeid import COMMANDCENTER
+from sc2.ids.upgrade_id import BATTLECRUISERENABLESPECIALIZATIONS
+from sc2.ids.unit_typeid import FUSIONCORE
+from sc2.ids.unit_typeid import SUPPLYDEPOT
+from sc2.ids.unit_typeid import SUPPLYDEPOTLOWERED
+from sc2.ids.unit_typeid import REFINERY
+from sc2.ids.unit_typeid import REFINERYRICH
+from sc2.ids.unit_typeid import MISSILETURRET
+from sc2.ids.unit_typeid import BARRACKSFLYING
+from sc2.ids.unit_typeid import FACTORYFLYING
+from sc2.ids.unit_typeid import STARPORTFLYING
+from sc2.ids.unit_typeid import COMMANDCENTERFLYING
+from sc2.ids.unit_typeid import SIEGETANKSIEGED
+from sc2.ids.unit_typeid import ARCHON
+from sc2.ids.unit_typeid import CARRIER
+from sc2.ids.unit_typeid import QUEEN
+from sc2.ids.unit_typeid import SPORECRAWLER
+from sc2.ids.unit_typeid import PHOTONCANNON
+from sc2.ids.unit_typeid import INFESTOR
+from sc2.ids.unit_typeid import HYDRALISK
+from sc2.ids.unit_typeid import THOR
+from sc2.ids.unit_typeid import VIPER
+from sc2.ids.unit_typeid import PHOENIX
+from sc2.ids.unit_typeid import RAVAGER
 
 
 
@@ -27,9 +84,9 @@ class Chaosbot(sc2.BotAI):
     do_log_limbo = False
     do_log_wish = True
     do_log_workstock = True
-    do_log_placing = True
+    do_log_placing = False
     do_log_time = False
-    do_log_layout = False
+    do_log_layout = True
 #   ############### CONSTANT
 #   constant over the iterations after iteration 0:
 #   other
@@ -44,19 +101,21 @@ class Chaosbot(sc2.BotAI):
     anything = []
     cradle = []
     shipyard = None
+    bc_enemies = None
 #   squareroots of integers from 0 to 200*200*2, 0<=x<400
     stored_root = []
 #   timing constants
     gas_speed = 1.0
     mim_speed = 1.0
     walk_speed = 4.0
-    stocksize = 4
+    stocksize = 3
     miner_bound = 10
     enemyloc = None
     map_left = 0
     map_right = 0
     map_bottom = 0
     map_top = 0
+    dummytag = -1
 #   ############### GAMESTATE
 #   gamestate values constant in this iteration after gamestate:  
     itera = -1
@@ -73,7 +132,7 @@ class Chaosbot(sc2.BotAI):
     last_log_workstock_string = ''
 #   ############### ARMY AND STRUCTURE MANAGEMENT
 #   the supplydepot used as a gate:
-    updown = -1
+    updown = dummytag
 #   army coodination
     frozenbctags = set()
     attack_type = 'chaos'
@@ -82,14 +141,16 @@ class Chaosbot(sc2.BotAI):
     never_had_a_bc = True
     home_of_flying_struct = {}
     bct_in_repair = []
-    bestbctag = -1
+    bestbctag = dummytag
     bc_fear = 250
 #   ambition contains commandcenters becoming a planetaryfortress, factories getting a techlab, etc.
     ambition_of_strt = {}
 #   the barracks in the wall could be placed such as not to be able to get a techlab
     add_on_denied = []
     towt_of_tnkt = {}
-    army_center_point = None 
+    army_center_point = None
+#   (struc,place,tag) for tobuildwalk plans with a layout. Administrate to enable erasing.
+    designs = [] 
 #   ############### SCV MANAGEMENT
 #   traveller and builder scvs have a goal
 #   traveller and builder scvs have a structure to build
@@ -129,25 +190,22 @@ class Chaosbot(sc2.BotAI):
     all_names = []
     name_of_scvt = {}
 #   ############### PLAY CHOICES
-#   wish for rush
-    rushing = True
-    enddemand_am_of_th = {}
+#   wish for early_game
+    early_gameing = True
     endwish_am_of_th = {}
     wish_am_of_th = {}
     wish_pri_of_th = {}
     wish_now = []
-    also_wish_now = []
+    demand_now = []
     log_wish_history = ''
 #   money handling with reservations
     reserved_minerals = 0
     reserved_vespene = 0
-#   workstock of a few (building,place) combinations.
+#   workstock is a list of a few (building,place) combinations.
 #   workstock can also contain things that don't need a place. Then place = nowhere.
-#   workstock is 0, 1, 2 or 3  (see the constant stocksize)
-#   work to be removed from the workstock when the order is started
+#   work has to be removed from the workstock when the order is started
 #   workstock contains work we will do, it just is not clear when to start it, money is not reserved yet
-    thing_of_workstock = {}
-    place_of_workstock = {}
+    workstock = []
 
 
     async def on_step(self, iteration: int):
@@ -169,6 +227,7 @@ class Chaosbot(sc2.BotAI):
         await self.siege_tank()
         await self.fire_yamato()
         await self.battle_jump_home()
+        await self.battle_dodge_bile()
         await self.ruin()
         await self.repair_it()
         await self.lift()
@@ -192,7 +251,8 @@ class Chaosbot(sc2.BotAI):
 #       liftable
         self.liftable = [BARRACKS,FACTORY,STARPORT,COMMANDCENTER]
         self.landable = [BARRACKSFLYING,FACTORYFLYING,STARPORTFLYING,COMMANDCENTERFLYING]
-        self.all_army = [RAVEN,VIKINGFIGHTER,MARINE,MARAUDER,SIEGETANK,BATTLECRUISER,SIEGETANKSIEGED]
+        self.all_army = [RAVEN,VIKINGFIGHTER,MARINE,MARAUDER,\
+                         SIEGETANK,BATTLECRUISER,SIEGETANKSIEGED]
 #       list of most structures, with buildtime, size
         self.init_structures(SUPPLYDEPOT, 50, 2)
         self.init_structures(BARRACKS, 60, 3)
@@ -262,18 +322,35 @@ class Chaosbot(sc2.BotAI):
         self.init_techtree(TERRANINFANTRYWEAPONSLEVEL2,TERRANINFANTRYWEAPONSLEVEL1)
         self.init_techtree(TERRANINFANTRYWEAPONSLEVEL3,TERRANINFANTRYWEAPONSLEVEL2)
         self.compute_anything()
+#       bootstrap code   after initial    from sc2constants import *
+        for thing in self.anything:
+            if type(thing) == UnitTypeId:
+                print('from sc2.ids.unit_typeid import '+thing.name)
+            if type(thing) == UpgradeId:
+                print('from sc2.ids.upgrade_id import '+thing.name)
 #       shipyard
         self.shipyard = self.start_location.position.towards(self.game_info.map_center,4)
         self.enemyloc = self.enemy_start_locations[0].position
         self.fix_count_of_job()
-#       priority strategy
-        await self.rush(BATTLECRUISER,1)
-        await self.rush(SIEGETANK,1)
-        await self.rush(MARINE,7)
-        await self.rush(COMMANDCENTER,2)
-        await self.rush(REFINERY,4)
-        await self.rush(SUPPLYDEPOT,2)
-        await self.rush_stop(BATTLECRUISER,1)
+#       priority strategy (you can change this at your own risk)
+#               await self.early_game(BATTLECRUISER,1)
+#               await self.early_game(SIEGETANK,1)
+#               await self.early_game(MARINE,7)
+#               await self.early_game(COMMANDCENTER,2)
+#               await self.early_game(REFINERY,4)
+#               await self.early_game(SUPPLYDEPOT,2)
+#               await self.early_game_stop(BATTLECRUISER,1)
+        await self.early_game(BATTLECRUISER,1)
+        await self.early_game(SIEGETANK,1)
+        await self.early_game(MARINE,4)
+        await self.early_game(REFINERY,2)
+        await self.early_game(SUPPLYDEPOT,2)
+        await self.early_game_stop(BATTLECRUISER,1)
+#       circle
+        self.make_circle()
+#
+        self.bc_enemies = (ARCHON, BATTLECRUISER, CARRIER, QUEEN, VIKINGFIGHTER, MISSILETURRET, SPORECRAWLER, \
+            PHOTONCANNON, INFESTOR, HYDRALISK, THOR, VIPER, PHOENIX, RAVAGER)
 #       layout
         self.map_left = self.game_info.playable_area.x
         self.map_right = self.game_info.playable_area.width+self.game_info.playable_area.x
@@ -304,60 +381,13 @@ class Chaosbot(sc2.BotAI):
 #       feedback the tips
         for nr in range(0,len(self.tips)):
             ti = self.tips[nr]
-            print(ti)
+            self.log_placing(ti)
 #       name_of_scvt: fun translation of scvt to english boy name
         pl = open('names.txt','r')
         self.all_names = pl.read().splitlines()
         pl.close()
 
 
-#   a lot of the strategy is in this maximumamount function
-    def maxam(self,thing) -> int:
-        bases = len(self.all_bases)
-        battlecruisers = self.units(BATTLECRUISER).ready.amount
-        onetwo = min(2,battlecruisers+1)
-        if thing == ENGINEERINGBAY:
-            return onetwo
-        elif thing == BARRACKS:
-            return onetwo
-        elif thing == FACTORY:
-            return onetwo
-        elif thing == FUSIONCORE:
-            return onetwo
-        elif thing == ARMORY:
-            return min(2,battlecruisers)
-        elif thing == RAVEN:
-            return min(1,battlecruisers-1)
-        elif thing == VIKINGFIGHTER:
-            return 1
-        elif thing == REFINERY:
-            return 2*bases
-        elif thing == SUPPLYDEPOT:
-            return battlecruisers+3*bases-1
-        elif thing == MISSILETURRET:
-            if self.supply_used < 190:
-                return 3*bases-2
-            else:
-                return 5*bases
-        elif thing == COMMANDCENTER:
-            return 5+(self.minerals-500)//500
-        elif thing == MARINE:
-            return 10-battlecruisers
-        elif thing == MARAUDER:
-            return 5-battlecruisers
-        elif thing == SIEGETANK:
-            return (2*bases)//3
-        elif thing == BATTLECRUISER:
-            return 32
-        elif thing == STARPORT:
-            return bases
-        elif thing == PLANETARYFORTRESS:
-            return 10
-        elif thing in (BARRACKSTECHLAB,FACTORYTECHLAB,STARPORTTECHLAB):
-            return 10
-        else:
-#           e.g. upgrades
-            return min(1,bases-3)
 
 
 #   logging
@@ -479,10 +509,12 @@ class Chaosbot(sc2.BotAI):
 
     def write_layout(self,struc,place):
         self.put_on_the_grid(struc,place)
-        x = self.function_result_Point2.x
-        y = self.function_result_Point2.y
+        place = self.function_result_Point2
+        x = place.x
+        y = place.y
         if struc in self.all_structures_tobuildwalk:
-            self.log_layout('write position '+struc.name+' '+str(place.x)+' '+str(place.y))
+            self.designs.append((struc,place,self.dummytag))
+            self.log_layout('write position '+struc.name+' '+str(x)+' '+str(y))
             siz = self.size_of_structure[struc]
             for vakx in range(round(x-siz/2),round(x+siz/2)):
                 for vaky in range(round(y-siz/2),round(y+siz/2)):
@@ -495,13 +527,26 @@ class Chaosbot(sc2.BotAI):
                     for vaky in range(round(y-siz/2),round(y+siz/2)):
                         layout_if.layout[vakx][vaky] = 4
 
+    def erase_layout(self,struc,place):
+        self.put_on_the_grid(struc,place)
+        place = self.function_result_Point2
+        x = place.x
+        y = place.y
+        if struc in self.all_structures_tobuildwalk:
+            self.log_layout('erase position '+struc.name+' '+str(x)+' '+str(y))
+            siz = self.size_of_structure[struc]
+            for vakx in range(round(x-siz/2),round(x+siz/2)):
+                for vaky in range(round(y-siz/2),round(y+siz/2)):
+                    layout_if.layout[vakx][vaky] = 0
+#           the add-on could still be there
+
+
     def check_layout(self,struc,place) -> bool:
         placable = True
         self.put_on_the_grid(struc,place)
         x = self.function_result_Point2.x
         y = self.function_result_Point2.y
-        if (struc in self.all_structures_tobuildwalk) and (struc != REFINERY):
-            self.log_layout('check position '+struc.name+' '+str(place.x)+' '+str(place.y))
+        if (struc in self.all_structures_tobuildwalk) and (struc not in (REFINERY,REFINERYRICH)):
             siz = self.size_of_structure[struc]
             for vakx in range(round(x-siz/2),round(x+siz/2)):
                 for vaky in range(round(y-siz/2),round(y+siz/2)):
@@ -516,6 +561,28 @@ class Chaosbot(sc2.BotAI):
         return placable
 
 
+    def check_maxam(self,thing) -> bool:
+        if thing in self.all_structures_tobuildwalk:
+            maxam = 100
+            if thing in (ARMORY,FUSIONCORE,ENGINEERINGBAY,BARRACKS,FACTORY):
+                maxam = 2
+            if thing == MISSILETURRET:
+                maxam = self.all_bases.amount*5
+        elif thing in self.all_structures:
+            maxam = 100
+        elif type(thing) == UpgradeId:
+            maxam = 1
+        else:
+#           army
+            maxam = 100
+            if thing in (RAVEN,VIKINGFIGHTER):
+                maxam = 1
+            if thing in (MARAUDER,SIEGETANK):
+                maxam = 5
+        started = self.we_started_amount(thing)
+        return (started<maxam)
+
+        
 #   distance
     def sdist(self,p,q) -> int:
         return (p[0]-q[0])**2 + (p[1]-q[1])**2
@@ -527,6 +594,7 @@ class Chaosbot(sc2.BotAI):
         return self.squareroot(round(sd))
  
     def near(self,p,q,supdist) -> bool:
+#       works for integers as well as for floats
         return (self.sdist(p,q) < supdist**2)
 
     def squareroot(self,x):
@@ -540,6 +608,19 @@ class Chaosbot(sc2.BotAI):
            return self.stored_root[x]
         else:
            return self.stored_root[x//400]*20.0 + (x%400)*self.hulp_root[x//400]        
+
+    def make_circle(self):
+#       10 points on the unitcircle
+        self.circle = []
+        for i in range(0,10):
+            alfa = 0.63*i
+            point = Point2((cos(alfa),sin(alfa)))
+            self.circle.append(point)
+
+    def flee(self,posi,dist) -> Point2:
+#       get a random point at distance 'dist' from your point 'posi' 
+        offset = random.choice(self.circle)
+        return Point2((posi.x+offset.x*dist,posi.y+offset.y*dist))
 
 
 
@@ -753,6 +834,17 @@ class Chaosbot(sc2.BotAI):
             here = mim.position
             layout_if.layout[round(here.x-1)][round(here.y-0.5)] = 1
             layout_if.layout[round(here.x+0)][round(here.y-0.5)] = 1
+        for gas in self.vespene_geyser:
+            here = gas.position
+            layout_if.layout[round(here.x-1.5)][round(here.y-1.5)] = 1
+            layout_if.layout[round(here.x-1.5)][round(here.y-0.5)] = 1
+            layout_if.layout[round(here.x-1.5)][round(here.y+0.5)] = 1
+            layout_if.layout[round(here.x-0.5)][round(here.y-1.5)] = 1
+            layout_if.layout[round(here.x-0.5)][round(here.y-0.5)] = 1
+            layout_if.layout[round(here.x-0.5)][round(here.y+0.5)] = 1
+            layout_if.layout[round(here.x+0.5)][round(here.y-1.5)] = 1
+            layout_if.layout[round(here.x+0.5)][round(here.y-0.5)] = 1
+            layout_if.layout[round(here.x+0.5)][round(here.y+0.5)] = 1
 
 
 #   fix secondary information
@@ -946,14 +1038,6 @@ class Chaosbot(sc2.BotAI):
 
 
 
-    def check_maxam(self,thing) -> bool:
-        amount = self.maxam(thing)
-        have = self.we_started_amount(thing)
-        todo = amount - have
-        return (todo > 0)
-
-
-
     def check_cradle_idle(self,thing) -> bool:
 #       for things without a cradle return True
 #       the cradle should not be blocked by an ambition for things except enlargements
@@ -990,18 +1074,17 @@ class Chaosbot(sc2.BotAI):
             found = not searc
         elif building == REFINERY:
 #           no check_layout for there is a geyser
-#           but please prevent doubles in workstock
+#           but please prevent repeated adding to workstock
             places = []
             for gey in self.vespene_geyser:
                 free = True
                 for gb in self.gas_buildings:
-                    free = free and not self.near(gb.position,gey.position,2)
-#                   free = free and (gb.position != gey.position)
+                   free = free and (gb.position != gey.position)
                 if free:
                     for cc in self.all_bases:
                         if self.near(gey.position,cc.position,12):
                             if gey.position not in self.goal_of_trabu_scvt.values():
-                                if gey.position not in self.place_of_workstock.values():
+                                if (building,gey.position) not in self.workstock:
                                     places.append(gey.position)
             if len(places) > 0:
                 place = random.choice(places)
@@ -1012,9 +1095,7 @@ class Chaosbot(sc2.BotAI):
                 found = False
                 while not found:
                     cc = random.choice(self.all_bases)
-                    dist = 12
-                    if building == STARPORT:
-                        dist = 6
+                    dist = 6
                     if building == MISSILETURRET:
                         dist = random.randrange(-10,10) 
                     fixplace = cc.position.towards(self.game_info.map_center, dist)
@@ -1022,8 +1103,8 @@ class Chaosbot(sc2.BotAI):
                     fixplace = self.function_result_Point2
                     place = fixplace
                     while not self.check_layout(building,place):
-                        x = fixplace.x+random.randrange(-15,15)
-                        y = fixplace.y+random.randrange(-15,15)
+                        x = fixplace.x+random.randrange(-8,8)
+                        y = fixplace.y+random.randrange(-8,8)
                         place = Point2((x,y))
                     found = True 
             else:
@@ -1090,10 +1171,7 @@ class Chaosbot(sc2.BotAI):
 
 
     def add_to_workstock(self,thing):
-        if len(self.thing_of_workstock) < self.stocksize:
-            workstock = 0
-            while workstock in self.thing_of_workstock:
-                workstock = workstock+1
+        if len(self.workstock) < self.stocksize:
             if thing in self.all_structures:
                 if self.find_building_a_place(thing):
 #                   now already should it be put in layout, otherwise plans could clash
@@ -1101,86 +1179,81 @@ class Chaosbot(sc2.BotAI):
                     self.write_layout(thing,goal)
                     if self.do_log_layout:
                         layout_if.photo_layout()
-                    self.thing_of_workstock[workstock] = thing
-                    self.place_of_workstock[workstock] = goal
+                    self.workstock.append((thing,goal))
             else:
-                self.thing_of_workstock[workstock] = thing
-                self.place_of_workstock[workstock] = self.nowhere
+                self.workstock.append((thing,self.nowhere))
 
 
     def blunt_to_workstock(self,thing):
-        if thing not in self.thing_of_workstock.values():
-            if self.check_techtree(thing):
-               if self.check_maxam(thing):
-                   if self.check_cradle_idle(thing):
-                       self.add_to_workstock(thing)
+        if self.check_maxam(thing):
+#           this time, no doubles. This still enables building mutiple ships at a moment.
+            if thing not in [thing for (thing,place) in self.workstock]:
+                if self.check_techtree(thing):
+                    self.add_to_workstock(thing)
 
     def fill_workstock(self):
-        if self.rushing:
-#           make in_stock, the indices in wish_now of the things in thing_of_workstock
-#           make also_in_stock, the indices in also_wish_now of the things in thing_of_workstock
-#           make to_cancel, workstocks that are neither in wish_now nor in also_wish_now 
-            in_stock = []
-            also_in_stock = []
+#       The workstock combines wishes and demands.
+#       A place is chosen for each wished structure.
+        if self.early_gameing:
+#           make wish_in_stock, the indices in wish_now of the things in workstock
+#           make demand_in_stock, the indices in demand_now of the things in workstock
+#           make to_cancel, workstock that are neither in wish_now nor in demand_now 
+            wish_in_stock = []
+            demand_in_stock = []
             to_cancel = []
-            for workstock in self.thing_of_workstock:
-                orderedthing = self.thing_of_workstock[workstock]
+            for (orderedthing,orderedplace) in self.workstock:
                 found_somewhere = False
                 searc = True
                 ri = 0
-                while (ri<len(self.also_wish_now)) and searc:
-                    thing = self.also_wish_now[ri]
-                    if thing == orderedthing:
+                while (ri<len(self.demand_now)) and searc:
+                    if self.demand_now[ri] == orderedthing:
                         searc = False
                         found_somewhere = True
-                        also_in_stock.append(ri)
+                        demand_in_stock.append(ri)
                     ri=ri+1
                 searc = True
                 ri = 0
                 while (ri<len(self.wish_now)) and searc:
-                    thing = self.wish_now[ri]
-                    if thing == orderedthing:
+                    if self.wish_now[ri] == orderedthing:
                         searc = False
                         found_somewhere = True
-                        in_stock.append(ri)
+                        wish_in_stock.append(ri)
                     ri=ri+1
                 if not found_somewhere:
-                    to_cancel.append(workstock)
+                    to_cancel.append((orderedthing,orderedplace))
                     self.log_workstock('cancelled '+orderedthing.name)
 #           effect cancellations
-            for workstock in to_cancel:
-                del self.thing_of_workstock[workstock]
-                del self.place_of_workstock[workstock]
-#           now add the first things from also_wish_now to workstock
+            for (thing, place) in to_cancel:
+                del self.workstock[self.workstock.index((thing,place))]
+#           now add the first things from demand_now to workstock
             ri = 0
-            while (ri<len(self.also_wish_now)):
-                if ri not in also_in_stock:
-                    thing = self.also_wish_now[ri]
+            while (ri<len(self.demand_now)):
+                if ri not in demand_in_stock:
+                    thing = self.demand_now[ri]
                     if self.check_future_techtree(thing):
-                        if self.check_cradle_idle(thing):
-                            self.add_to_workstock(thing)
-#                           and add the thing to in_stock at the same time                  
-                            searc = True
-                            ra = 0
-                            while (ra<len(self.wish_now)) and searc:
-                               if ra not in in_stock:
-                                   otherthing = self.wish_now[ra]
-                                   if thing == otherthing:
-                                       searc = False
-                                       in_stock.append(ra)
-                               ra=ra+1
+                        self.add_to_workstock(thing)
                 ri=ri+1
+#           as the workstock has changed, remake wish_in_stock
+            wish_in_stock = []
+            for (orderedthing,orderedplace) in self.workstock:
+                searc = True
+                ri = 0
+                while (ri<len(self.wish_now)) and searc:
+                    if self.wish_now[ri] == orderedthing:
+                        searc = False
+                        wish_in_stock.append(ri)
+                    ri=ri+1
 #           now add the first things from wish_now to workstock                  
             ri = 0
             while (ri<len(self.wish_now)):
-                if ri not in in_stock:
+                if ri not in wish_in_stock:
                     thing = self.wish_now[ri]
                     if self.check_future_techtree(thing):
-                        if self.check_cradle_idle(thing):
-                            self.add_to_workstock(thing)
+                        self.add_to_workstock(thing)
                 ri=ri+1
         else:
 #           advice on midgame stuck situations
+#           the order of these advices matters.
             scvs = len(self.units(SCV))
             if (self.supply_left < 2+self.supply_used//6) and (self.supply_cap<200):
                 if (SUPPLYDEPOT not in self.structure_of_trabu_scvt.values()) or (self.supply_left<2):
@@ -1189,30 +1262,8 @@ class Chaosbot(sc2.BotAI):
             if (self.we_started_amount(COMMANDCENTER)+self.structures(PLANETARYFORTRESS).amount\
             +self.structures(ORBITALCOMMAND).amount < wanted_ccs):
                 self.blunt_to_workstock(COMMANDCENTER)
-            if (self.we_started_amount(SIEGETANK)<3) and (self.supply_used<120):
-                self.blunt_to_workstock(SIEGETANK)
-            if (not self.we_started_a(MISSILETURRET)) or (self.supply_used>100):
-                self.blunt_to_workstock(MISSILETURRET)
-            if (not self.we_started_a(ENGINEERINGBAY)) and (self.supply_used>40):
-                self.blunt_to_workstock(ENGINEERINGBAY)
-            if (self.supply_army*3 < self.supply_used):
-                self.blunt_to_workstock(MARINE)
-            if (self.minerals-self.reserved_minerals > 1500):
-                self.blunt_to_workstock(PLANETARYFORTRESS)
-                self.blunt_to_workstock(COMMANDCENTER)
-                self.blunt_to_workstock(MISSILETURRET)
-                self.blunt_to_workstock(STARPORT)
-            if (self.minerals > 500) and (self.vespene < self.minerals-500):
-                self.blunt_to_workstock(REFINERY)
             if (len(self.structures(STARPORT).ready.idle)>0):
                 self.blunt_to_workstock(BATTLECRUISER)
-            for sp in self.structures(STARPORT).ready:
-                if not sp.has_add_on:
-                    self.blunt_to_workstock(STARPORTTECHLAB)
-            if not self.we_started_a(FACTORYTECHLAB):
-                for sp in self.structures(FACTORY).ready:
-                    if not sp.has_add_on:
-                        self.blunt_to_workstock(FACTORYTECHLAB)
             if (len(self.structures(FUSIONCORE))==0):
                 self.blunt_to_workstock(FUSIONCORE)
             if (len(self.structures(STARPORT))==0):
@@ -1223,20 +1274,42 @@ class Chaosbot(sc2.BotAI):
                 self.blunt_to_workstock(BARRACKS)
             if (len(self.structures(SUPPLYDEPOT))==0):
                 self.blunt_to_workstock(SUPPLYDEPOT)
+            for sp in self.structures(STARPORT).ready:
+                if not sp.has_add_on:
+                    self.blunt_to_workstock(STARPORTTECHLAB)
+            if (self.minerals > 500) and (self.vespene < self.minerals-500):
+                self.blunt_to_workstock(REFINERY)
+            if (self.minerals-self.reserved_minerals > 1500):
+                self.blunt_to_workstock(PLANETARYFORTRESS)
+                self.blunt_to_workstock(COMMANDCENTER)
+                self.blunt_to_workstock(MISSILETURRET)
+                self.blunt_to_workstock(STARPORT)
+            if (self.supply_used<120):
+                self.blunt_to_workstock(SIEGETANK)
             if (len(self.structures(STARPORT).ready.idle)==0) and (len(self.structures(FUSIONCORE).ready)>0) \
             and (STARPORT not in self.structure_of_trabu_scvt.values()):
                 self.blunt_to_workstock(STARPORT)
+            if (not self.we_started_a(MISSILETURRET)) or (self.supply_used>130):
+                self.blunt_to_workstock(MISSILETURRET)
+            if (not self.we_started_a(ENGINEERINGBAY)) and (self.supply_used>40):
+                self.blunt_to_workstock(ENGINEERINGBAY)
+            if (self.supply_army*3 < self.supply_used):
+                self.blunt_to_workstock(MARINE)
+            if not self.we_started_a(FACTORYTECHLAB):
+                for sp in self.structures(FACTORY).ready:
+                    if not sp.has_add_on:
+                        self.blunt_to_workstock(FACTORYTECHLAB)
+            if (self.we_started_amount(BATTLECRUISER) >= 4):
+                self.blunt_to_workstock(RAVEN)
             if (self.we_started_amount(BATTLECRUISER) >= 3):
                 self.blunt_to_workstock(ARMORY)
-                self.blunt_to_workstock(RAVEN)
                 self.blunt_to_workstock(BATTLECRUISERENABLESPECIALIZATIONS)
             if (len(self.structures(ARMORY).ready.idle) > 0):
                 for pair in self.cradle:
                     if pair[1] == ARMORY:
                         self.blunt_to_workstock(pair[0])
         stri = ''
-        for workstock in self.thing_of_workstock:
-            thing = self.thing_of_workstock[workstock]
+        for (thing,place) in self.workstock:
             stri = stri+' '+thing.name
         self.log_workstock(stri)
 
@@ -1284,8 +1357,8 @@ class Chaosbot(sc2.BotAI):
                 new_bct_in_repair.append(bc.tag)
         self.bct_in_repair = new_bct_in_repair
 #       
-#   bestbctag is -1 or a tag of a living battlecruiser
-        just_one_bctag = -1
+#   bestbctag is dummytag or a tag of a living battlecruiser
+        just_one_bctag = self.dummytag
         seen = False
         for bc in self.units(BATTLECRUISER).ready:
             just_one_bctag = bc.tag
@@ -1300,15 +1373,18 @@ class Chaosbot(sc2.BotAI):
                 new_ambition_of_strt[cc.tag] = self.ambition_of_strt[cc.tag]
         self.ambition_of_strt = new_ambition_of_strt
 #       
-#   rushing depends on endwish_am_of_th
-#       only once per game toggle to True
-        if self.rushing:
+#   early_gameing depends on endwish_am_of_th
+#       only once per game toggled
+        if self.early_gameing:
             rr = True
-            for thing in self.enddemand_am_of_th:
-                rr = rr and (self.we_started_amount(thing) >= self.enddemand_am_of_th[thing])
+            for thing in self.endwish_am_of_th:
+                rr = rr and (self.we_started_amount(thing) >= self.endwish_am_of_th[thing])
             if rr: 
-                self.rushing = False
-                self.log_success('rush reached!')
+                self.early_gameing = False
+                self.log_success('early_game ended!')
+#               for the new phase, more parallel plans
+                self.stocksize = 5
+
 #   
 #   wish_now is the reachable part of wish_am_of_th
 #           this list contains doubles, and the first elements are most important
@@ -1327,13 +1403,16 @@ class Chaosbot(sc2.BotAI):
                                 self.wish_now.append(thing)
                                 lin = lin+' '+thing.name
                 looppri = looppri - 1
-            if len(self.wish_now)>0:
-                self.log_wish(lin)
-#   also_wish_now contains a supplydepot if supplyblock is near
-            self.also_wish_now = []
-            if (self.supply_left < 12) and (self.supply_cap<200):
-                if SUPPLYDEPOT not in self.structure_of_trabu_scvt.values():
-                        self.also_wish_now.append(SUPPLYDEPOT)
+#   demand_now contains a supplydepot if supplyblock is near
+#           this is independant from wish_now
+            self.demand_now = []
+            if (self.supply_left <= 10) and (self.supply_cap<200):
+                lin = lin+', demand SUPPLYDEPOT'    
+                if SUPPLYDEPOT in self.structure_of_trabu_scvt.values():
+                    lin = lin+' oh it is being made'
+                else:
+                    self.demand_now.append(SUPPLYDEPOT)
+            self.log_wish(lin)
 #           
 #   Count battlecruisers
         self.lastcruisercount = self.cruisercount
@@ -1498,15 +1577,13 @@ class Chaosbot(sc2.BotAI):
     async def use_workstock(self):
 #       if any is applicable now, do it.
         workdone = []
-        for workstock in self.thing_of_workstock:
-            thing = self.thing_of_workstock[workstock]
-            place = self.place_of_workstock[workstock]
-            if await self.build_thing(thing, place):
-                workdone.append(workstock)
-        for workstock in workdone:
-            del self.thing_of_workstock[workstock]                
-            del self.place_of_workstock[workstock]                
-
+        for (thing,place) in self.workstock:
+            if self.check_cradle_idle(thing):
+                if await self.build_thing(thing, place):
+                    workdone.append((thing,place))
+#       here I once had error code using del without realizing the tail moves
+        for (thing, place) in workdone:
+            del self.workstock[self.workstock.index((thing,place))]
 
 
 #   Build specific unit or structure
@@ -1530,24 +1607,24 @@ class Chaosbot(sc2.BotAI):
     async def build_army(self,ship) -> bool:
         self.routine = 'build_army'
         didit = False
-        if self.check_maxam(ship):
-            if self.check_techtree(ship):
-                if self.can_pay(ship,False):
-                    if self.supply_left >= 6:
-                        for pair in self.cradle:
-                            if pair[0] == ship:
-                                hangar = pair[1]
-                                todo = 1                    
-                                for sp in self.structures(hangar).ready:
-                                    if sp.tag in self.idle_structure_tags:
-                                        if (sp.has_add_on) or (ship == MARINE):
-                                            if sp.tag not in self.ambition_of_strt:
-                                                if todo>0:
-                                                    todo = todo-1
-                                                    self.log_success(ship.name)
-                                                    sp.train(ship)
-                                                    self.idle_structure_tags.remove(sp.tag)
-                                                    didit = True
+        if self.check_techtree(ship):
+            if self.can_pay(ship,False):
+                if self.supply_left >= 6:
+                    for pair in self.cradle:
+                        if pair[0] == ship:
+                            hangar = pair[1]
+                            todo = 1
+                            for sp in self.structures(hangar).ready:
+                                if sp.tag in self.idle_structure_tags:
+                                    if (sp.has_add_on) or (ship == MARINE):
+                                        if sp.tag not in self.ambition_of_strt:
+                                            if todo>0:
+                                                todo = todo-1
+                                                self.log_success(ship.name)
+                                                sp.train(ship)
+                                                self.idle_structure_tags.remove(sp.tag)
+                                                didit = True
+                                                self.rarely_executed_code()
         return didit
 
 
@@ -1598,25 +1675,24 @@ class Chaosbot(sc2.BotAI):
         self.routine = 'build_building'
 #       for tobuildwalk buildings except COMMANDCENTER
         didit = False
-        if self.check_maxam(building):
-#           you do not have to wait for minerals and techtree
-            if self.check_future_techtree(building):
-                if self.walk_now(building,goal):
-                    scvt = self.get_near_scvt_to_goodjob(goal)
-                    for scv in self.units(SCV):
-                        if scv.tag == scvt:
-                            self.goal_of_trabu_scvt[scvt] = goal
-                            self.structure_of_trabu_scvt[scvt] = building
-#                           best to stop the scv from mining, for if the build does not start, it remains in old function
-                            if scv.is_collecting:
-                                scv(STOP)
-                            self.job_of_scvt[scvt] = 'traveller'
-                            self.promotionsite_of_scvt[scvt] = scv.position
-                            self.log_workers('planning  '+building.name+' '+self.name(scvt))
-                            if scv(MOVE_MOVE,goal):
-                                self.log_workers('ordered   '+building.name+' '+self.name(scvt))
-                            self.calc_reserved_money()
-                            didit = True
+#       you do not have to wait for minerals and techtree
+        if self.check_future_techtree(building):
+            if self.walk_now(building,goal):
+                scvt = self.get_near_scvt_to_goodjob(goal)
+                for scv in self.units(SCV):
+                    if scv.tag == scvt:
+                        self.goal_of_trabu_scvt[scvt] = goal
+                        self.structure_of_trabu_scvt[scvt] = building
+#                       best to stop the scv from mining, for if the build does not start, it remains in old function
+                        if scv.is_collecting:
+                            scv(AbilityId.STOP)
+                        self.job_of_scvt[scvt] = 'traveller'
+                        self.promotionsite_of_scvt[scvt] = scv.position
+                        self.log_workers('planning  '+building.name+' '+self.name(scvt))
+                        if scv(AbilityId.MOVE_MOVE,goal):
+                            self.log_workers('ordered   '+building.name+' '+self.name(scvt))
+                        self.calc_reserved_money()
+                        didit = True
         return didit
 
 
@@ -1625,35 +1701,34 @@ class Chaosbot(sc2.BotAI):
         self.routine = 'build_commandcenter'
         didit = False
         building = COMMANDCENTER
-        if self.check_maxam(building):
-#           you do not have to wait for minerals and techtree
-            if self.walk_now(building,goal):
-                scvt = self.get_near_scvt_to_goodjob(goal)
-                for scv in self.units(SCV):
-                    if scv.tag == scvt:
-                        job = self.job_of_scvt[scvt]
-                        self.job_of_scvt[scvt] = 'escorter'
-                        self.promotionsite_of_scvt[scvt] = scv.position
-                        self.log_workers(job+' became escorter '+self.name(scvt))
-                        scv.attack(goal)
-                if len(self.units(MARINE).ready) > 0:
-                    mar = random.choice(self.units(MARINE).ready)
-                    mar.attack(goal)
-                if len(self.units(MARAUDER).ready) > 0:
-                    mar = random.choice(self.units(MARAUDER).ready)
-                    mar.attack(goal)
-                scvt = self.get_near_scvt_to_goodjob(goal)
-                for scv in self.units(SCV):
-                    if scv.tag == scvt:
-                        self.goal_of_trabu_scvt[scvt] = goal
-                        self.structure_of_trabu_scvt[scvt] = building
-                        job = self.job_of_scvt[scvt]
-                        self.job_of_scvt[scvt] = 'traveller'
-                        self.promotionsite_of_scvt[scvt] = scv.position
-                        self.log_workers(job+' became traveller '+self.name(scvt))
-                        scv(MOVE_MOVE, goal)
-                        self.calc_reserved_money()
-                didit = True
+#       you do not have to wait for minerals and techtree
+        if self.walk_now(building,goal):
+            scvt = self.get_near_scvt_to_goodjob(goal)
+            for scv in self.units(SCV):
+                if scv.tag == scvt:
+                    job = self.job_of_scvt[scvt]
+                    self.job_of_scvt[scvt] = 'escorter'
+                    self.promotionsite_of_scvt[scvt] = scv.position
+                    self.log_workers(job+' became escorter '+self.name(scvt))
+                    scv.attack(goal)
+            if len(self.units(MARINE).ready) > 0:
+                mar = random.choice(self.units(MARINE).ready)
+                mar.attack(goal)
+            if len(self.units(MARAUDER).ready) > 0:
+                mar = random.choice(self.units(MARAUDER).ready)
+                mar.attack(goal)
+            scvt = self.get_near_scvt_to_goodjob(goal)
+            for scv in self.units(SCV):
+                if scv.tag == scvt:
+                    self.goal_of_trabu_scvt[scvt] = goal
+                    self.structure_of_trabu_scvt[scvt] = building
+                    job = self.job_of_scvt[scvt]
+                    self.job_of_scvt[scvt] = 'traveller'
+                    self.promotionsite_of_scvt[scvt] = scv.position
+                    self.log_workers(job+' became traveller '+self.name(scvt))
+                    scv(AbilityId.MOVE_MOVE, goal)
+                    self.calc_reserved_money()
+            didit = True
         return didit
 
 
@@ -1678,18 +1753,18 @@ class Chaosbot(sc2.BotAI):
             good = self.near(point,self.army_center_point,10)
         elif self.attack_type == 'arc':
             good = self.near(point,self.enemyloc,100) and (not self.near(point,self.enemyloc,80))
-        elif self.attack_type == 'agressive':
+        elif self.attack_type == 'jumpy':
             good = self.near(point,self.enemyloc,15)
         return good
 
     async def attack(self):
         self.routine = 'attack'
-        if self.attack_type == 'agressive':
+        if self.attack_type == 'jumpy':
             for bc in self.units(BATTLECRUISER).ready:
                 if self.good_army_position(bc.position):
                     if bc.tag not in self.frozenbctags:
                         self.log_army('holding bc there')
-                        bc(HOLDPOSITION_BATTLECRUISER)
+                        bc(AbilityId.HOLDPOSITION_BATTLECRUISER)
                         self.frozenbctags.add(bc.tag)
             for bc in self.units(BATTLECRUISER).ready.idle:
                 if not self.good_army_position(bc.position):
@@ -1697,8 +1772,8 @@ class Chaosbot(sc2.BotAI):
                     while not self.good_army_position(place):
                         place = Point2((random.randrange(self.map_left,self.map_right),random.randrange(self.map_bottom,self.map_top)))
                     abilities = (await self.get_available_abilities([bc]))[0]
-                    if EFFECT_TACTICALJUMP in abilities:
-                        bc(EFFECT_TACTICALJUMP,place)
+                    if AbilityId.EFFECT_TACTICALJUMP in abilities:
+                        bc(AbilityId.EFFECT_TACTICALJUMP,place)
                         self.log_army('jumping in a bc')
                     else:
                         bc.attack(place)
@@ -1718,7 +1793,7 @@ class Chaosbot(sc2.BotAI):
             tp = self.enemyloc
         sent = 0
         for srt in [BATTLECRUISER,MARINE,MARAUDER,VIKINGFIGHTER]:
-            if (self.attack_type != 'agressive') or (srt != BATTLECRUISER):
+            if (self.attack_type != 'jumpy') or (srt != BATTLECRUISER):
                 if (self.attack_type == 'chaos') and (srt == BATTLECRUISER) and (self.never_had_a_bc):
                     pass
                 else:
@@ -1731,7 +1806,7 @@ class Chaosbot(sc2.BotAI):
             self.log_army(' with '+str(sent))
 #       
 #       attack_type changes
-        if self.attack_type == 'agressive':
+        if self.attack_type == 'jumpy':
             if (self.cruisercount<self.lastcruisercount) or (len(self.frozenbctags) >= 3):
                 self.attack_type = 'chaos'
                 self.log_army('spreading the army')
@@ -1739,18 +1814,18 @@ class Chaosbot(sc2.BotAI):
 #               unfreeze
                 for bc in self.units(BATTLECRUISER).ready:
                     if bc.tag in self.frozenbctags:
-                        bc(STOP)
+                        bc(AbilityId.STOP)
                 self.frozenbctags = set()
         elif self.attack_type == 'chaos':
             if self.supply_used > 190:
                 self.attack_type = 'arc'
-                self.log_army('arcing the army for a point attack')
-                await self.log_attacktype('arcing the army for a point attack')
+                self.log_army('arcing the army')
+                await self.log_attacktype('arcing the army')
             if (self.cruisercount == 1) and (self.never_had_a_bc):
                 self.never_had_a_bc = False
-                self.attack_type = 'agressive'
-                self.log_army('first bc, turning agressive.') 
-                await self.log_attacktype('first bc, turning agressive.') 
+                self.attack_type = 'jumpy'
+                self.log_army('first bc, turning jumpy.') 
+                await self.log_attacktype('first bc, turning jumpy.') 
         elif self.attack_type == 'arc':
             reached = 0
             total = 0
@@ -1766,6 +1841,8 @@ class Chaosbot(sc2.BotAI):
                 await self.log_attacktype('starting a arcpoint attack')
         elif self.attack_type == 'arcpoint':
             self.attack_type = 'center'
+            self.log_army('centering the army')
+            await self.log_attacktype('centering the army')
             tp = Point2((random.randrange(self.map_left,self.map_right),random.randrange(self.map_bottom,self.map_top)))
             while self.near(tp,self.enemyloc,80) or (not self.near(tp,self.enemyloc,100)): 
                 tp = Point2((random.randrange(self.map_left,self.map_right),random.randrange(self.map_bottom,self.map_top)))
@@ -1784,9 +1861,9 @@ class Chaosbot(sc2.BotAI):
                 self.log_army('starting a center-to-point attack')
                 await self.log_attacktype('starting a center-to-point attack')
         elif self.attack_type == 'centerpoint':
-            self.attack_type = 'agressive'
-            self.log_army('feeling agressive')
-            await self.log_attacktype('feeling agressive')
+            self.attack_type = 'jumpy'
+            self.log_army('feeling jumpy')
+            await self.log_attacktype('feeling jumpy')
 #       
 #       ravens should attack the best battlecruiser
         for rv in self.units(RAVEN).ready.idle:
@@ -1809,22 +1886,24 @@ class Chaosbot(sc2.BotAI):
 #       attacked buildings can fly, survive, be repaired, and land back.
         self.routine = 'lift'
         for srt in self.landable:
-            for bu in self.structures(srt).ready:
+            for bu in self.structures(srt).ready.idle:
                 if bu.health >= bu.health_max-100:
                     self.log_success('down '+srt.name)
-                    bu(LAND,self.home_of_flying_struct[bu.tag])
+                    bu(AbilityId.LAND,self.home_of_flying_struct[bu.tag])
+                elif not self.near(self.start_location.position,bu.position,10):
+                    bu(AbilityId.MOVE_MOVE,self.shipyard)
         for srt in self.liftable:
             for bu in self.structures(srt).ready:
                 if bu.health < 700:
                     self.home_of_flying_struct[bu.tag] = bu.position
                     self.log_success('up '+srt.name)
-                    bu(LIFT)
+                    bu(AbilityId.LIFT)
 
 
 
     async def do_updown(self):
         self.routine = 'do_updown'
-        if self.updown == -1:
+        if self.updown == self.dummytag:
             if self.structures(SUPPLYDEPOT).ready.amount > 0:
                 for sd in self.structures(SUPPLYDEPOT).ready:
                     self.updown = sd.tag
@@ -1835,7 +1914,7 @@ class Chaosbot(sc2.BotAI):
                     if self.near(ene.position,sd.position,5):
                         danger = True
                 if danger:
-                    sd(MORPH_SUPPLYDEPOT_RAISE)
+                    sd(AbilityId.MORPH_SUPPLYDEPOT_RAISE)
                     self.log_success('raising')
         for sd in self.structures(SUPPLYDEPOT).ready:
             if sd.tag == self.updown:
@@ -1844,7 +1923,7 @@ class Chaosbot(sc2.BotAI):
                     if self.near(ene.position,sd.position,5):
                         danger = True
                 if not danger:
-                    sd(MORPH_SUPPLYDEPOT_LOWER)
+                    sd(AbilityId.MORPH_SUPPLYDEPOT_LOWER)
                     self.log_success('lowering')
 
 
@@ -1858,12 +1937,12 @@ class Chaosbot(sc2.BotAI):
                 for tow in self.all_bases:
                     if tow.tag == towt:
                         if self.near(tnk.position,tow.position,10):
-                            tnk(SIEGEMODE_SIEGEMODE)
+                            tnk(AbilityId.SIEGEMODE_SIEGEMODE)
                         else:
                             tnk.attack(tow.position)
             else:
                 if len(self.all_bases) == 0:
-                    tnk(SIEGEMODE_SIEGEMODE)
+                    tnk(AbilityId.SIEGEMODE_SIEGEMODE)
                 else:
                     tow = random.choice(self.all_bases)
                     towt = tow.tag
@@ -1874,30 +1953,26 @@ class Chaosbot(sc2.BotAI):
     async def fire_yamato(self):
         for bc in self.units(BATTLECRUISER).ready:
             found = False
-#           missing some
-            for kind in (ARCHON,BATTLECRUISER,CARRIER,QUEEN,VIKINGFIGHTER,MISSILETURRET,SPORECRAWLER,PHOTONCANNON,\
-            INFESTOR,HYDRALISK,THOR,VIPER,PHOENIX,RAVAGER):
+            for kind in self.bc_enemies:
                 for ene in self.enemy_units(kind):
                     if self.near(ene.position,bc.position,8):
                         target = ene
                         found = True
             if found:
                 abilities = (await self.get_available_abilities([bc]))[0]
-                if YAMATO_YAMATOGUN in abilities:
-                    bc(YAMATO_YAMATOGUN, target)
+                if AbilityId.YAMATO_YAMATOGUN in abilities:
+                    bc(AbilityId.YAMATO_YAMATOGUN, target)
         for ra in self.units(RAVEN).ready:
             found = False
-#           missing some
-            for kind in (ARCHON,BATTLECRUISER,CARRIER,QUEEN,VIKINGFIGHTER,MISSILETURRET,SPORECRAWLER,PHOTONCANNON,\
-            INFESTOR,HYDRALISK,THOR,VIPER,PHOENIX,RAVAGER):
+            for kind in self.bc_enemies:
                 for ene in self.enemy_units(kind):
                     if self.near(ene.position,ra.position,8):
                         target = ene
                         found = True
             if found:
                 abilities = (await self.get_available_abilities([ra]))[0]
-                if EFFECT_ANTIARMORMISSILE in abilities:
-                    ra(EFFECT_ANTIARMORMISSILE, target)
+                if AbilityId.EFFECT_ANTIARMORMISSILE in abilities:
+                    ra(AbilityId.EFFECT_ANTIARMORMISSILE, target)
 
 
 
@@ -1937,16 +2012,30 @@ class Chaosbot(sc2.BotAI):
             if (bc.health <= self.bc_fear) and (bc.tag not in self.bct_in_repair):
 #               jump bc home for repair
                 self.log_success('')
-                bc(EFFECT_TACTICALJUMP,self.shipyard)
+                bc(AbilityId.EFFECT_TACTICALJUMP,self.shipyard)
                 self.bct_in_repair.append(bc.tag)
                 self.bc_fear = max(150,self.bc_fear-10)
 
+    async def battle_dodge_bile(self):
+        self.routine = 'battle_dodge_bile'
+        for effect in self.state.effects:
+            if effect.id == EffectId.RAVAGERCORROSIVEBILECP:
+                for bc in self.units(BATTLECRUISER).ready:
+                    mustflee = False
+                    for bileposition in effect.positions:
+                        if self.near(bileposition,bc.position,3):
+                            mustflee = True
+                            abile = bileposition
+                    if mustflee:
+                        topoint = self.flee(bc.position,3.2)
+                        while self.near(abile,topoint,3):
+                            topoint = self.flee(bc.position, 3.2)
+                        bc(AbilityId.MOVE_MOVE,topoint)
 
-
+   
     async def ruin(self):
         for s in self.structures_without_construction_SCVs():
-            s(CANCEL)
-
+            s(AbilityId.CANCEL)
 
 
     async def repair_it(self):
@@ -1987,7 +2076,7 @@ class Chaosbot(sc2.BotAI):
                                                 self.log_workers('arearepairer bored '+self.name(scvt))
                             else:
                                 self.log_workers('going home '+self.name(scvt))
-                                scv(MOVE_MOVE,self.cottage_of_scvt[scvt])
+                                scv(AbilityId.MOVE_MOVE,self.cottage_of_scvt[scvt])
 
 
 
@@ -2009,7 +2098,7 @@ class Chaosbot(sc2.BotAI):
                         self.job_of_scvt[scvt] = 'fleeer'
                         self.promotionsite_of_scvt[scvt] = scv.position
                         place = Point2((random.randrange(self.map_left,self.map_right),random.randrange(self.map_bottom,self.map_top)))
-                        scv(MOVE_MOVE,place)
+                        scv(AbilityId.MOVE_MOVE,place)
 #       jobhaters 
         for scv in self.units(SCV).idle:
             scvt = scv.tag
@@ -2033,7 +2122,7 @@ class Chaosbot(sc2.BotAI):
                 elif job == 'traveller':
                     if not self.near(scv.position,self.goal_of_trabu_scvt[scvt],3):
 #                       this can occur if the traveller has been blocked
-                        scv(MOVE_MOVE,self.goal_of_trabu_scvt[scvt])
+                        scv(AbilityId.MOVE_MOVE,self.goal_of_trabu_scvt[scvt])
 #       builders start to mine after building a geyser
         for scv in self.units(SCV):
             scvt = scv.tag
@@ -2073,7 +2162,7 @@ class Chaosbot(sc2.BotAI):
                 if scv.tag == scvt:
                     self.log_workers('fired arearepairer '+self.name(scvt))
                     self.job_of_scvt[scvt] = 'idler'
-                    scv(STOP)
+                    scv(AbilityId.STOP)
         if self.count_of_job['arearepairer'] < wishr:
 #           get a base that is far from each cottage
             worst_towpos = None
@@ -2096,7 +2185,7 @@ class Chaosbot(sc2.BotAI):
                     job = self.job_of_scvt[scvt]
                     self.log_workers('promoted '+job+' to arearepairer '+self.name(scvt))
                     if scv.is_collecting:
-                        scv(STOP)
+                        scv(AbilityId.STOP)
                     self.job_of_scvt[scvt] = 'arearepairer'
                     self.promotionsite_of_scvt[scvt] = scv.position
                     self.cottage_of_scvt[scvt] = towpos
@@ -2112,7 +2201,7 @@ class Chaosbot(sc2.BotAI):
                     job = self.job_of_scvt[scvt]
                     self.log_workers('promoted '+job+' to shiprepairer '+self.name(scvt))
                     if scv.is_collecting:
-                        scv(STOP)
+                        scv(AbilityId.STOP)
                     self.job_of_scvt[scvt] = 'shiprepairer'
                     self.promotionsite_of_scvt[scvt] = scv.position
 #       fire some
@@ -2130,7 +2219,7 @@ class Chaosbot(sc2.BotAI):
             if scvt in self.all_scvt:
                 if (self.job_of_scvt[scvt] == 'shiprepairer'):
                     if not self.near(scv.position,self.shipyard,15):
-                        scv(MOVE_MOVE,self.shipyard)
+                        scv(AbilityId.MOVE_MOVE,self.shipyard)
                     elif len(self.bct_in_repair) > 0:
                         for bc in self.units(BATTLECRUISER).ready:
                             bct = bc.tag
@@ -2143,7 +2232,7 @@ class Chaosbot(sc2.BotAI):
                 bct = bc.tag
                 if bct == self.bct_in_repair[0]:
                      if self.near(bc.position,self.shipyard,15) and not self.near(bc.position,self.shipyard,5):
-                         bc(MOVE_MOVE,self.shipyard)
+                         bc(AbilityId.MOVE_MOVE,self.shipyard)
 
 
 
@@ -2161,7 +2250,7 @@ class Chaosbot(sc2.BotAI):
                         if scv.tag == scvt:
                             self.job_of_scvt[scvt] = 'applicant'
                             self.promotionsite_of_scvt[scvt] = scv.position
-                            scv(MOVE_MOVE,cc.position.towards(self.game_info.map_center,-3))
+                            scv(AbilityId.MOVE_MOVE,cc.position.towards(self.game_info.map_center,-3))
                             self.log_workers('new applicant group '+self.name(scvt))
                             self.vision_of_scvt[scvt] = cc.tag
         else:
@@ -2174,7 +2263,7 @@ class Chaosbot(sc2.BotAI):
                             self.wanted_of_cct[cc.tag] = self.wanted_of_cct[cc.tag]-1
                             self.job_of_scvt[scvt] = 'applicant'
                             self.promotionsite_of_scvt[scvt] = scv.position
-                            scv(MOVE_MOVE,cc.position.towards(self.game_info.map_center,-3))
+                            scv(AbilityId.MOVE_MOVE,cc.position.towards(self.game_info.map_center,-3))
                             self.log_workers('new applicant '+self.name(scvt))
                             self.vision_of_scvt[scvt] = cc.tag
 
@@ -2315,7 +2404,7 @@ class Chaosbot(sc2.BotAI):
                     self.job_of_scvt[scvt] = 'idler'
                     for scv in self.units(SCV):
                         if scv.tag == scvt:
-                            scv(STOP)
+                            scv(AbilityId.STOP)
 #       
 #       max idle workers
         todo = self.count_of_job['idler'] - 22
@@ -2341,7 +2430,7 @@ class Chaosbot(sc2.BotAI):
                             self.job_of_scvt[scvt] = 'idler'
                             for scv in self.units(SCV):
                                 if scvt == scv.tag:
-                                    scv(STOP) 
+                                    scv(AbilityId.STOP)
             if self.vespene > self.minerals + 1000:
                 todo = 1
                 for scvt in self.all_scvt:
@@ -2352,7 +2441,7 @@ class Chaosbot(sc2.BotAI):
                             self.job_of_scvt[scvt] = 'idler'
                             for scv in self.units(SCV):
                                 if scvt == scv.tag:
-                                    scv(STOP) 
+                                    scv(AbilityId.STOP)
 #       stop escorters lured to their death
         for scvt in self.all_scvt:
             if (self.job_of_scvt[scvt] == 'escorter'):
@@ -2361,13 +2450,13 @@ class Chaosbot(sc2.BotAI):
                         if self.near(scv.position,self.enemyloc,50):
                             self.job_of_scvt[scvt] = 'idler'
                             self.log_workers('Enemy fear stops escorter '+self.name(scvt))
-                            scv(STOP) 
+                            scv(AbilityId.STOP)
 
 
 
-#   rush
-    async def rush(self,thing,amount):
-        self.routine = 'rush'
+#   early_game
+    async def early_game(self,thing,amount):
+        self.routine = 'early_game'
         self.endwish_am_of_th[thing] = amount
         if thing in self.wish_am_of_th:
             self.wish_am_of_th[thing] = max(self.wish_am_of_th[thing],amount)
@@ -2408,15 +2497,50 @@ class Chaosbot(sc2.BotAI):
             pri = self.wish_pri_of_th[th]
             self.log_wish('so wishing '+th.name+'   amount '+str(am)+'   priority '+str(pri))
 
-    async def rush_stop(self,thing,amount):
-        self.routine = 'rush_stop'
-        self.enddemand_am_of_th[thing] = amount
+    async def early_game_stop(self,thing,amount):
+        self.routine = 'early_game_stop'
+        self.endwish_am_of_th[thing] = amount
 
 
+    def rarely_executed_code(self):
+#       designs: add tag to realized plans
+        newdesigns = []
+        for (struc,place,tag) in self.designs:
+            if tag == self.dummytag:
+                for astruc in self.structures:
+#                   the cc could have become a pf already, accept flying
+                    if astruc.position == place:
+                        tag = astruc.tag
+            newdesigns.append((struc,place,tag))
+        self.designs = newdesigns.copy()
+#       designs: erase if neither tag nor plan is found
+        erase = []
+        for (struc,place,tag) in self.designs:
+            seen = False
+            for astruc in self.structures:
+#               the cc could have become a pf already, accept flying
+                if tag == astruc.tag:
+                    seen = True
+            for scvt in self.goal_of_trabu_scvt:
+                if place == self.goal_of_trabu_scvt[scvt]:
+                    seen = True
+            for (stockthing,stockplace) in self.workstock:
+                if place == stockplace:
+                    seen = True
+            if not seen:
+                erase.append((struc,place,tag))
+        for (struc,place,tag) in erase:
+            self.erase_layout(struc,place)
+        newdesigns = []
+        for (struc,place,tag) in self.designs:
+            if (struc,place,tag) not in erase:
+                newdesigns.append((struc,place,tag))
+        self.designs = newdesigns.copy()
+ 
 
 
 #       Easy/Medium/Hard/VeryHard
 run_game(maps.get('ZenLE'), [
     Bot(Race.Terran, Chaosbot()),
     Computer(Race.Zerg, Difficulty.VeryHard)
-    ], realtime=True)
+    ], realtime=False)

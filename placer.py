@@ -2,7 +2,7 @@
 # Makes text for building placement
 # put the output   starting from "#####"   in a file "placement.txt"
 # author: MerkMore
-# version 4 july 2020
+# version 5 july 2020
 import layout_if
 import random
 
@@ -125,6 +125,7 @@ class prog:
                 else:
                     print('position STARPORT * '+str(alt[0]+1.5)+' '+str(alt[1]+1.5))
         layout_if.photo_layout()
+        print('#####')
 
 
 
