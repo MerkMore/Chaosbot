@@ -1,6 +1,6 @@
 # Merkbot.py containing Chaosbot
 # author: MerkMore
-# version 6 july 2020
+# version 8 july 2020
 # Burny style
 import sc2
 from sc2 import run_game, maps, Race, Difficulty
@@ -68,13 +68,22 @@ from sc2.ids.unit_typeid import THOR
 from sc2.ids.unit_typeid import VIPER
 from sc2.ids.unit_typeid import PHOENIX
 from sc2.ids.unit_typeid import RAVAGER
-
+from sc2.ids.unit_typeid import BANSHEE
+from sc2.ids.unit_typeid import LIBERATOR
+from sc2.ids.unit_typeid import OVERLORD
+from sc2.ids.unit_typeid import BROODLORD
+from sc2.ids.unit_typeid import ORACLE
+from sc2.ids.unit_typeid import OBSERVER
+from sc2.ids.unit_typeid import HATCHERY
+from sc2.ids.unit_typeid import LAIR
+from sc2.ids.unit_typeid import HIVE
+from sc2.ids.unit_typeid import NEXUS
 
 
 class Chaosbot(sc2.BotAI):
 #   ############### CHANGE VALUE AD LIB
     do_log_success = True
-    do_log_workers = True
+    do_log_workers = False
     do_log_population = False
     do_log_armysize = False
     do_log_army = False
@@ -108,9 +117,11 @@ class Chaosbot(sc2.BotAI):
     gas_speed = 1.0
     mim_speed = 1.0
     walk_speed = 4.0
+#   
     stocksize = 3
     miner_bound = 10
     enemyloc = None
+    enemy_target_base_loc = None
     map_left = 0
     map_right = 0
     map_bottom = 0
@@ -135,10 +146,9 @@ class Chaosbot(sc2.BotAI):
     updown = dummytag
 #   army coodination
     frozenbctags = set()
-    attack_type = 'chaos'
+    attack_type = 'jumpy'
     cruisercount = 0
     lastcruisercount = 0
-    never_had_a_bc = True
     home_of_flying_struct = {}
     bct_in_repair = []
     bestbctag = dummytag
@@ -206,6 +216,11 @@ class Chaosbot(sc2.BotAI):
 #   work has to be removed from the workstock when the order is started
 #   workstock contains work we will do, it just is not clear when to start it, money is not reserved yet
     workstock = []
+#   strategy
+    strategy = []
+    game_choice = []
+    game_choices = 5
+    game_result = 'doubt'
 
 
     async def on_step(self, iteration: int):
@@ -240,7 +255,8 @@ class Chaosbot(sc2.BotAI):
         else:
             await self.manage_gas()
             await self.manage_minerals()
-        await self.manage_rest() 
+        await self.manage_rest()
+        await self.win_loss()
 
 
 
@@ -251,8 +267,11 @@ class Chaosbot(sc2.BotAI):
 #       liftable
         self.liftable = [BARRACKS,FACTORY,STARPORT,COMMANDCENTER]
         self.landable = [BARRACKSFLYING,FACTORYFLYING,STARPORTFLYING,COMMANDCENTERFLYING]
+#       own army
         self.all_army = [RAVEN,VIKINGFIGHTER,MARINE,MARAUDER,\
                          SIEGETANK,BATTLECRUISER,SIEGETANKSIEGED]
+#       enemy air with weak air defence
+        self.viking_targets = [BANSHEE,LIBERATOR,ORACLE,BROODLORD,OVERLORD,OBSERVER]
 #       list of most structures, with buildtime, size
         self.init_structures(SUPPLYDEPOT, 50, 2)
         self.init_structures(BARRACKS, 60, 3)
@@ -323,27 +342,33 @@ class Chaosbot(sc2.BotAI):
         self.init_techtree(TERRANINFANTRYWEAPONSLEVEL3,TERRANINFANTRYWEAPONSLEVEL2)
         self.compute_anything()
 #       bootstrap code   after initial    from sc2constants import *
-        for thing in self.anything:
-            if type(thing) == UnitTypeId:
-                print('from sc2.ids.unit_typeid import '+thing.name)
-            if type(thing) == UpgradeId:
-                print('from sc2.ids.upgrade_id import '+thing.name)
-#       shipyard
-        self.shipyard = self.start_location.position.towards(self.game_info.map_center,4)
+#       for thing in self.anything:
+#           if type(thing) == UnitTypeId:
+#               print('from sc2.ids.unit_typeid import '+thing.name)
+#           if type(thing) == UpgradeId:
+#               print('from sc2.ids.upgrade_id import '+thing.name)
         self.enemyloc = self.enemy_start_locations[0].position
+        self.enemy_target_base_loc = self.enemyloc
         self.fix_count_of_job()
-#       priority strategy (you can change this at your own risk)
-#               await self.early_game(BATTLECRUISER,1)
-#               await self.early_game(SIEGETANK,1)
-#               await self.early_game(MARINE,7)
-#               await self.early_game(COMMANDCENTER,2)
-#               await self.early_game(REFINERY,4)
-#               await self.early_game(SUPPLYDEPOT,2)
-#               await self.early_game_stop(BATTLECRUISER,1)
+#       strategy
+        await self.init_strategy()
         await self.early_game(BATTLECRUISER,1)
-        await self.early_game(SIEGETANK,1)
-        await self.early_game(MARINE,4)
-        await self.early_game(REFINERY,2)
+        if self.game_choice[0]:
+            await self.early_game(SIEGETANK,1)
+        if self.game_choice[1]:
+            await self.early_game(SIEGETANK,2)
+        if self.game_choice[2]:
+            await self.early_game(MARINE,4)
+        else:
+            await self.early_game(MARINE,8)
+        if self.game_choice[3]:
+            await self.early_game(REFINERY,4)
+            await self.early_game(COMMANDCENTER,2)
+            await self.early_game(STARPORT,2)
+        else:
+            await self.early_game(REFINERY,2)
+        if self.game_choice[4]:
+            await self.early_game(MISSILETURRET,1)
         await self.early_game(SUPPLYDEPOT,2)
         await self.early_game_stop(BATTLECRUISER,1)
 #       circle
@@ -363,6 +388,14 @@ class Chaosbot(sc2.BotAI):
         layout_if.startx = self.start_location.position.x
         layout_if.starty = self.start_location.position.y
         layout_if.save_layout()
+#       shipyard
+        self.shipyard = self.start_location.position.towards(self.game_info.map_center,4)
+#       color the shipyard on the layout, so we will not build there ever
+        yardx = round(self.shipyard.x)
+        yardy = round(self.shipyard.y)
+        for dx in range(-2,3):
+            for dy in range(-2,3):
+                layout_if.layout[yardx+dx][yardy+dy] = 5
 #       use stored placement tips
         mapplace = 'map: '+layout_if.mapname+' '+str(layout_if.startx)+' '+str(layout_if.starty)
         self.log_success(mapplace)
@@ -575,8 +608,10 @@ class Chaosbot(sc2.BotAI):
         else:
 #           army
             maxam = 100
-            if thing in (RAVEN,VIKINGFIGHTER):
+            if thing == RAVEN:
                 maxam = 1
+            if thing == VIKINGFIGHTER:
+                maxam = 5
             if thing in (MARAUDER,SIEGETANK):
                 maxam = 5
         started = self.we_started_amount(thing)
@@ -1279,6 +1314,12 @@ class Chaosbot(sc2.BotAI):
                     self.blunt_to_workstock(STARPORTTECHLAB)
             if (self.minerals > 500) and (self.vespene < self.minerals-500):
                 self.blunt_to_workstock(REFINERY)
+            vikings = 0
+            for ene in self.enemy_units:
+                if (ene.type_id in self.viking_targets) and (ene.type_id != OVERLORD):
+                    vikings = vikings+1
+            if self.units(VIKINGFIGHTER).amount < vikings:
+                self.blunt_to_workstock(VIKINGFIGHTER)
             if (self.minerals-self.reserved_minerals > 1500):
                 self.blunt_to_workstock(PLANETARYFORTRESS)
                 self.blunt_to_workstock(COMMANDCENTER)
@@ -1382,10 +1423,10 @@ class Chaosbot(sc2.BotAI):
             if rr: 
                 self.early_gameing = False
                 self.log_success('early_game ended!')
+                await self._client.chat_send('early game ended', team_only=False)
 #               for the new phase, more parallel plans
                 self.stocksize = 5
-
-#   
+#
 #   wish_now is the reachable part of wish_am_of_th
 #           this list contains doubles, and the first elements are most important
             self.wish_now = []
@@ -1747,70 +1788,107 @@ class Chaosbot(sc2.BotAI):
                             didit = True
         return didit
 
-    def good_army_position(self,point) -> bool:
-        good = False
+
+
+    def close_to_a_my_base(self,pos) -> bool:
+        clos = False
+        for tow in self.all_bases:
+            clos = clos or self.near(tow.position,pos,20)
+        return clos
+
+    def locally_improved(self,place) -> Point2:
+#       verhoog quality met 400 pogingen in de omgeving (maxdist 3)
+        bestplace = place
+        qual = self.quality_of_army_position(place)
+        for dx in range(-10,10):
+            for dy in range(-10,10):
+                altplace = Point2((place.x + dx/3, place.y + dy/3))
+                altqual = self.quality_of_army_position(altplace)
+                if altqual > qual:
+                    bestplace = altplace
+                    qual = altqual
+        return bestplace
+
+
+    def quality_of_army_position(self,point) -> int:
+#       0=bad, 10= very good, >5 is acceptable
+        qual = 0
         if self.attack_type == 'center':
-            good = self.near(point,self.army_center_point,10)
+            if self.near(point,self.army_center_point,10):
+                qual = 10
         elif self.attack_type == 'arc':
-            good = self.near(point,self.enemyloc,100) and (not self.near(point,self.enemyloc,80))
+            if self.near(point,self.enemyloc,100) and (not self.near(point,self.enemyloc,80)):
+                qual = 10
         elif self.attack_type == 'jumpy':
-            good = self.near(point,self.enemyloc,15)
-        return good
+#           bc.radius+bc.ground_range+hatchery.radius  estimate
+            if self.near(point,self.enemy_target_base_loc,10):
+                qual = 10
+                for ene in self.enemy_units:
+                    if ene.type_id in (MISSILETURRET,PHOTONCANNON,SPORECRAWLER):
+#                       bc.radius+spore.air_range+spore.radius   estimate
+                        if self.near(point,ene.position,8):
+                            qual = qual-1
+        return qual
 
     async def attack(self):
         self.routine = 'attack'
         if self.attack_type == 'jumpy':
-            for bc in self.units(BATTLECRUISER).ready:
-                if self.good_army_position(bc.position):
-                    if bc.tag not in self.frozenbctags:
-                        self.log_army('holding bc there')
-                        bc(AbilityId.HOLDPOSITION_BATTLECRUISER)
-                        self.frozenbctags.add(bc.tag)
             for bc in self.units(BATTLECRUISER).ready.idle:
-                if not self.good_army_position(bc.position):
-                    place = Point2((random.randrange(self.map_left,self.map_right),random.randrange(self.map_bottom,self.map_top)))
-                    while not self.good_army_position(place):
+                if self.quality_of_army_position(bc.position) > 5:
+                    if bc.tag not in self.frozenbctags:
+                        altpos = self.locally_optimized(bc.position)
+                        if altpos == bc.position:
+                            self.log_army('holding bc there')
+                            bc(AbilityId.HOLDPOSITION_BATTLECRUISER)
+                            self.frozenbctags.add(bc.tag)
+                        else:
+                            bc(MOVE_MOVE,altpos)
+            for bc in self.units(BATTLECRUISER).ready.idle:
+                if self.quality_of_army_position(bc.position) <= 5:
+                    qual = 0
+                    while qual <= 5:
                         place = Point2((random.randrange(self.map_left,self.map_right),random.randrange(self.map_bottom,self.map_top)))
+                        qual = self.quality_of_army_position(place)
+                    place = self.locally_improved(place)
                     abilities = (await self.get_available_abilities([bc]))[0]
                     if AbilityId.EFFECT_TACTICALJUMP in abilities:
                         bc(AbilityId.EFFECT_TACTICALJUMP,place)
                         self.log_army('jumping in a bc')
                     else:
-                        bc.attack(place)
-                        self.log_army('attacking with a bc')
-            tp = self.enemyloc
+                        bc.move(place)
+                        self.log_army('moving in with a bc')
+            tp = Point2((random.randrange(self.map_left,self.map_right),random.randrange(self.map_bottom,self.map_top)))
         elif self.attack_type == 'chaos':
             tp = Point2((random.randrange(self.map_left,self.map_right),random.randrange(self.map_bottom,self.map_top)))
         elif self.attack_type == 'arc':
             tp = Point2((random.randrange(self.map_left,self.map_right),random.randrange(self.map_bottom,self.map_top)))
-            while not self.good_army_position(tp):
+            while self.quality_of_army_position(tp) <= 5:
                 tp = Point2((random.randrange(self.map_left,self.map_right),random.randrange(self.map_bottom,self.map_top)))
         elif self.attack_type == 'arcpoint':
-            tp = self.enemyloc
+            tp = self.enemy_target_base_loc
         elif self.attack_type == 'center':
             tp = self.army_center_point
         elif self.attack_type == 'centerpoint':
-            tp = self.enemyloc
+            tp = self.enemy_target_base_loc
         sent = 0
-        for srt in [BATTLECRUISER,MARINE,MARAUDER,VIKINGFIGHTER]:
+        for srt in [BATTLECRUISER,MARINE,MARAUDER]:
             if (self.attack_type != 'jumpy') or (srt != BATTLECRUISER):
-                if (self.attack_type == 'chaos') and (srt == BATTLECRUISER) and (self.never_had_a_bc):
-                    pass
-                else:
-                    for ar in self.units(srt).ready.idle:
-                        if not (ar.tag in self.bct_in_repair):
-                            if not self.good_army_position(ar.position):
-                                sent = sent + 1
-                                ar.attack(tp)
+                for ar in self.units(srt).ready.idle:
+                    if not (ar.tag in self.bct_in_repair):
+                        if self.quality_of_army_position(ar.position) <= 5:
+                            sent = sent + 1
+                            ar.attack(tp)
         if sent > 0:
             self.log_army(' with '+str(sent))
 #       
 #       attack_type changes
+        it_changed = False
         if self.attack_type == 'jumpy':
             if (self.cruisercount<self.lastcruisercount) or (len(self.frozenbctags) >= 3):
                 self.attack_type = 'chaos'
                 self.log_army('spreading the army')
                 await self.log_attacktype('spreading the army')
+                it_changed = True
 #               unfreeze
                 for bc in self.units(BATTLECRUISER).ready:
                     if bc.tag in self.frozenbctags:
@@ -1821,28 +1899,26 @@ class Chaosbot(sc2.BotAI):
                 self.attack_type = 'arc'
                 self.log_army('arcing the army')
                 await self.log_attacktype('arcing the army')
-            if (self.cruisercount == 1) and (self.never_had_a_bc):
-                self.never_had_a_bc = False
-                self.attack_type = 'jumpy'
-                self.log_army('first bc, turning jumpy.') 
-                await self.log_attacktype('first bc, turning jumpy.') 
+                it_changed = True
         elif self.attack_type == 'arc':
             reached = 0
             total = 0
-            for srt in [BATTLECRUISER,MARINE,MARAUDER,VIKINGFIGHTER]:
+            for srt in [BATTLECRUISER,MARINE,MARAUDER]:
                 for ar in self.units(srt).ready:
                     total = total+1
-                    if self.good_army_position(ar.position):
+                    if self.quality_of_army_position(ar.position) > 5:
                         if ar in self.units(srt).ready.idle:
                             reached = reached+1
             if reached*5 > total*4:
                 self.attack_type = 'arcpoint'
                 self.log_army('starting a arcpoint attack')
                 await self.log_attacktype('starting a arcpoint attack')
+                it_changed = True
         elif self.attack_type == 'arcpoint':
             self.attack_type = 'center'
             self.log_army('centering the army')
             await self.log_attacktype('centering the army')
+            it_changed = True
             tp = Point2((random.randrange(self.map_left,self.map_right),random.randrange(self.map_bottom,self.map_top)))
             while self.near(tp,self.enemyloc,80) or (not self.near(tp,self.enemyloc,100)): 
                 tp = Point2((random.randrange(self.map_left,self.map_right),random.randrange(self.map_bottom,self.map_top)))
@@ -1850,27 +1926,58 @@ class Chaosbot(sc2.BotAI):
         elif self.attack_type == 'center':
             reached = 0
             total = 0
-            for srt in [BATTLECRUISER,MARINE,MARAUDER,VIKINGFIGHTER]:
+            for srt in [BATTLECRUISER,MARINE,MARAUDER]:
                 for ar in self.units(srt).ready:
                     total = total+1
-                    if self.good_army_position(ar.position):
+                    if self.quality_of_army_position(ar.position) > 5:
                         if ar in self.units(srt).ready.idle:
                             reached = reached+1
             if reached*5 > total*4:
                 self.attack_type = 'centerpoint'
                 self.log_army('starting a center-to-point attack')
                 await self.log_attacktype('starting a center-to-point attack')
+                it_changed = True
         elif self.attack_type == 'centerpoint':
             self.attack_type = 'jumpy'
             self.log_army('feeling jumpy')
             await self.log_attacktype('feeling jumpy')
+            it_changed = True
 #       
-#       ravens should attack the best battlecruiser
+#       if the attack_type changed, get a new enemy_target_base_loc
+        if it_changed:
+            allloc = []
+            for ene in self.enemy_structures.ready:
+                if ene.type_id in (COMMANDCENTER,ORBITALCOMMAND,PLANETARYFORTRESS,HATCHERY,LAIR,HIVE,NEXUS):
+                    allloc.append(ene.position)
+            if len(allloc) == 0:
+                self.enemy_target_base_loc = self.enemyloc
+            else:
+                self.enemy_target_base_loc = random.choice(allloc)
+#               
+#       the raven should attack the best battlecruiser
         for rv in self.units(RAVEN).ready.idle:
             for bc in self.units(BATTLECRUISER).ready:
                 if bc.tag == self.bestbctag:
                     rv.attack(bc)
                     self.log_army('raven will follow a bc')
+#       vikings should defend viking targets
+#       flying random defensive, although this could give away info
+        for vk in self.units(VIKINGFIGHTER).ready.idle:
+            target = None
+            for ene in self.enemy_units:
+                if (ene.type_id in self.viking_targets):
+                    if self.close_to_a_my_base(ene.position):
+                        target = ene
+            if target == None:
+                if len(self.all_bases) > 0:
+                    bas = random.choice(self.all_bases)
+                    basp = bas.position
+                else:
+                    basp = self.start_location
+                pos = Point2((basp.x+random.randrange(-10,10),basp.y+random.randrange(-10,10)))
+                vk.attack(pos)
+            else:
+                vk.attack(target)
 #       suicider scvs
         if self.count_of_job['suicider'] > 0:
             for scv in self.units(SCV).idle:
@@ -1916,6 +2023,12 @@ class Chaosbot(sc2.BotAI):
                 if danger:
                     sd(AbilityId.MORPH_SUPPLYDEPOT_RAISE)
                     self.log_success('raising')
+#               do not idle on the depot
+                for scv in self.units(SCV).idle:
+                    if self.near(scv.position,sd.position,1.5):
+                        whereto = self.flee(sd.position,2)
+                        scv.move(whereto)
+
         for sd in self.structures(SUPPLYDEPOT).ready:
             if sd.tag == self.updown:
                 danger = False
@@ -1945,9 +2058,12 @@ class Chaosbot(sc2.BotAI):
                     tnk(AbilityId.SIEGEMODE_SIEGEMODE)
                 else:
                     tow = random.choice(self.all_bases)
+#                   halfheartedly prevent all tanks in startbase
+                    if tow.position == self.start_location.position:
+                        tow = random.choice(self.all_bases)
                     towt = tow.tag
                     self.towt_of_tnkt[tnkt] = towt
-                    tnk.attack(tow.position)
+                    tnk.attack(tow.position.towards(self.game_info.map_center,3))
 
 
     async def fire_yamato(self):
@@ -2141,7 +2257,7 @@ class Chaosbot(sc2.BotAI):
         self.fix_count_of_job()
 #
 #       arearepairers
-        wishr = min(len(self.all_scvt)//6,len(self.all_bases))
+        wishr = min(len(self.all_scvt)//6, len(self.all_bases)+len(self.structures(COMMANDCENTERFLYING)))
         if self.count_of_job['arearepairer'] > wishr:
 #           get one that is far from each base
             best_dist = 0
@@ -2166,7 +2282,7 @@ class Chaosbot(sc2.BotAI):
         if self.count_of_job['arearepairer'] < wishr:
 #           get a base that is far from each cottage
             worst_towpos = None
-            worst_dist = 0
+            worst_dist = -1
             for tow in self.all_bases:
                 towpos = tow.position
                 clos_dist = 80000
@@ -2179,6 +2295,7 @@ class Chaosbot(sc2.BotAI):
                     worst_towpos = towpos
             towpos = worst_towpos
 #           promote an scv
+#BUG
             scvt = self.get_near_scvt_to_goodjob(towpos)
             for scv in self.units(SCV):
                 if scv.tag == scvt:
@@ -2538,9 +2655,63 @@ class Chaosbot(sc2.BotAI):
         self.designs = newdesigns.copy()
  
 
+#   strategy system
+#   a strategy is, per game_choice, a probability to choose "yes".
+#   the game choices can be made at the start of the game and are unknown to the opponent.
+#
+#   If we want, we can be fancy and feed back won-or-loss of a game to the strategy.
+#
+    def write_strategy(self):
+        pl = open('strategy.txt','w')
+        for nr in range(0,len(self.strategy)):
+            pl.write(str(self.strategy[nr])+'\n')
+        pl.close()
+
+
+    async def init_strategy(self):
+        for i in range(0,self.game_choices):
+            self.strategy.append(0.5)
+#       read from disk
+        pl = open('strategy.txt','r')
+        read_strategy = pl.read().splitlines()
+        pl.close()
+        for nr in range(0,len(read_strategy)):
+            self.strategy[nr] = float(read_strategy[nr].rstrip())
+#       init game_choice
+        for nr in range(0,len(self.strategy)):
+            self.game_choice.append(random.random() < self.strategy[nr])
+        self.game_result = 'doubt'
+
+    async def win_loss(self):
+        if self.game_result == 'doubt':
+            max_cc_health = 0
+            for cc in self.all_bases:
+                if cc.health > max_cc_health:
+                    max_cc_health = cc.health
+            if self.supply_used>190:
+                self.game_result = 'win'
+                await self._client.chat_send('probably a win', team_only=False)
+                self.log_success('win')
+                for nr in range(0, len(self.strategy)):
+                    if self.game_choice[nr]:
+                        self.strategy[nr] = 0.9*self.strategy[nr]+0.1
+                    else:
+                        self.strategy[nr] = 0.9*self.strategy[nr]
+                self.write_strategy()
+            elif max_cc_health < 500:
+                self.game_result = 'loss'
+                await self._client.chat_send('probably a loss', team_only=False)
+                self.log_success('loss')
+                for nr in range(0, len(self.strategy)):
+                    if self.game_choice[nr]:
+                        self.strategy[nr] = 0.9*self.strategy[nr]
+                    else:
+                        self.strategy[nr] = 0.9*self.strategy[nr]+0.1
+                self.write_strategy()
+
 
 #       Easy/Medium/Hard/VeryHard
 run_game(maps.get('ZenLE'), [
     Bot(Race.Terran, Chaosbot()),
-    Computer(Race.Zerg, Difficulty.VeryHard)
-    ], realtime=False)
+    Computer(Race.Terran, Difficulty.VeryHard)
+    ], realtime=True)
