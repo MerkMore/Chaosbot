@@ -2,31 +2,52 @@
 # Makes text for building placement
 # put the output   starting from "#####"   in a file "placement.txt"
 # author: MerkMore
-# version 5 july 2020
-import layout_if
+# version 8 july 2020
+from layout_if_py import layout_if
 import random
+from math import sqrt
 
 
 
 class prog:
-#   
+#
+    mapplace = ''
     filterresult = set()
     startsquare = (0,0)
+    enemystartsquare = (0,0)
     rampcenter = (0,0)
     center = (0,0)
     logging = False
+#   the map with walk-distances to enemystartsquare
+    walking = []
 
     def main(self):
         layout_if.load_layout()
-#       write placement.png
-#       
-        print('put next lines in a file   placement.txt')
-        print('#####')
-        mapplace = 'map: '+layout_if.mapname+' '+str(layout_if.startx)+' '+str(layout_if.starty)
-        print(mapplace)
+        print('I can append to placement.txt')
+        self.mapplace = 'map: '+layout_if.mapname+' '+str(layout_if.startx)+' '+str(layout_if.starty)
+        print('looking for:   '+self.mapplace)
+        text = open('placement.txt','r')
+        content = text.read().splitlines()
+        for line in content:
+            if (line[0] == 'm') and (line[1] == 'a') and (line[2] == 'p'):
+                print(line)
+        text.close()
+        if self.mapplace in content:
+            print('No action, the map is already in placement.txt')
+        else:
+            print('Not found, so I will append to placement.txt')
+            self.appendthemap()
+
+
+    def appendthemap(self):
+        text = open('placement.txt','a')
+        text.write('#####'+'\n')
+        text.write(self.mapplace+'\n')
 #
 #       startx,y can be 36.5,112.5 but we identify that square with the tuple (36,112)
-        self.startsquare = (round(layout_if.startx-0.5),round(layout_if.starty-0.5))          
+        self.startsquare = (round(layout_if.startx-0.5),round(layout_if.starty-0.5))
+        self.enemystartsquare = (round(layout_if.enemyx - 0.5), round(layout_if.enemyy - 0.5))
+        self.logg('enemy start '+str(self.enemystartsquare[0])+' '+str(self.enemystartsquare[1]))
 #       We will work with sets of squares.
         startcc = set([self.startsquare])
         self.extend(startcc)
@@ -89,9 +110,9 @@ class prog:
                     asol = (b0,b1,b2)
                 self.colorplace(2,b0,0)
                 self.colorplace(2,b1,0)
-            print('position SUPPLYDEPOT '+str(asol[0][0]+1)+' '+str(asol[0][1]+1))
-            print('position SUPPLYDEPOT '+str(asol[1][0]+1)+' '+str(asol[1][1]+1))
-            print('position BARRACKS '+str(asol[2][0]+1.5)+' '+str(asol[2][1]+1.5))
+            text.write('position SUPPLYDEPOT '+str(asol[0][0]+1)+' '+str(asol[0][1]+1)+'\n')
+            text.write('position SUPPLYDEPOT '+str(asol[1][0]+1)+' '+str(asol[1][1]+1)+'\n')
+            text.write('position BARRACKS '+str(asol[2][0]+1.5)+' '+str(asol[2][1]+1.5)+'\n')
 #       now, find some hidden fusioncore positions
         for shape in (0,2):
             alters = []
@@ -121,11 +142,126 @@ class prog:
             for alt in choices:
                 self.do_place_shape(shape,alt)
                 if shape == 0:
-                    print('position FUSIONCORE * '+str(alt[0]+1.5)+' '+str(alt[1]+1.5))
+                    text.write('position FUSIONCORE * '+str(alt[0]+1.5)+' '+str(alt[1]+1.5)+'\n')
                 else:
-                    print('position STARPORT * '+str(alt[0]+1.5)+' '+str(alt[1]+1.5))
+                    text.write('position STARPORT * '+str(alt[0]+1.5)+' '+str(alt[1]+1.5)+'\n')
+#       walking
+        self.walking = []
+        for col in range(0, 200):
+            collist = []
+            for row in range(0, 200):
+                collist.append(-1)
+            self.walking.append(collist)
+        self.walking[self.enemystartsquare[0]][self.enemystartsquare[1]] = 0
+        dist = 0
+#       edge will contain all squares with dist
+        edge = [self.enemystartsquare]
+        while len(edge)>0:
+            self.logg('edge ' + str(len(edge)))
+            dist = dist+1
+            new_edge = []
+            for square in edge:
+                self.get_neighbours(square)
+                for nsquare in self.neighbours:
+                    if self.walking[nsquare[0]][nsquare[1]] == -1:
+                        if layout_if.layout[nsquare[0]][nsquare[1]] in (0,2,5):
+                            self.walking[nsquare[0]][nsquare[1]] = dist
+                            new_edge.append(nsquare)
+            edge = new_edge.copy()
+#       now we will estimate a high value of walking-flying
+#       also slightly negative weigh in the flydistance to home
+        best = -999
+        for pog in range(0,1000):
+            square = (random.randrange(0,200),random.randrange(0,200))
+            walk = self.walking[square[0]][square[1]]
+            if walk >= 0:
+                wafy = (walk - self.fly(square,self.enemystartsquare))-0.1*self.fly(square,self.startsquare)
+                if wafy>best:
+                    best = wafy
+                    bestsquare = square
+#       now we hope to place a single barracks there
+        leftunder = (bestsquare[0]-1,bestsquare[1]-1)
+        placed = self.can_place_shape(0,leftunder)
+        result = leftunder
+        dist = 0
+        while not placed:
+            dist = dist+1
+            for dx in range(-dist,dist):
+                for dy in range(-dist,dist):
+                    maybe = (leftunder[0]+dx,leftunder[1]+dy)
+                    if self.can_place_shape(0,maybe):
+                        result = maybe
+                        placed = True
+#       if not unlucky, this result is a good cheese building place
+        text.write('position INFESTEDBARRACKS '+str(result[0]+1.5)+' '+str(result[1]+1.5)+'\n')
+        self.do_place_shape(0,result)
+#       go find a corner in the enemy base
+        basearea = set([self.enemystartsquare])
+        self.extend(basearea)
+        self.logg('enemy basearea '+str(len(basearea)))
+        corners = set()
+        for square in basearea:
+            ownneighs = 0
+            self.get_neighbours(square)
+            for nsquare in self.neighbours:
+                if self.get_color(nsquare) == 0:
+                    ownneighs = ownneighs+1
+            if ownneighs <= 4:
+                corners.add(square)
+        best = None
+        bestdist = 80000
+        for cornersquare in corners:
+            dist = self.sdist(cornersquare,result)
+            if dist < bestdist:
+                bestdist = dist
+                best = cornersquare
+        cornersquare = best
+        self.logg('cornersquare '+str(cornersquare[0])+' '+str(cornersquare[1]))
+#       now try to lock this square in with 2 3x3 blocks
+        cornersquares = set([cornersquare])
+        aroundcc = set([self.enemystartsquare])
+        totry = set()
+        for dx in range(-6,6):
+            for dy in range(-6,6):
+                square = (cornersquare[0]+dx,cornersquare[1]+dy)
+                if self.get_color(square) == 0:
+                    totry.add(square)
+        self.logg('per block '+str(len(totry))+' positions')
+        solutions = []
+        for b0 in totry:
+            if self.tryplace(3,b0):
+                self.logg('trying block 0 at '+str(b0[0])+' '+str(b0[1]))
+                for b1 in totry:
+                    if (b1[0]>b0[0]) or ((b1[0]==b0[0]) and (b1[1]>b0[1])):
+                        if self.tryplace(3,b1):
+                            if self.get_color(cornersquare) == 0:
+                                if not self.has_path(cornersquares,aroundcc):
+                                    solutions.append((b0,b1))
+                                    self.logg('      a solution')
+                            self.colorplace(3,b1,0)
+                self.colorplace(3,b0,0)
+        self.logg('found '+str(len(solutions))+' 2-block corner  solutions')
+        if len(solutions)>0:
+            asol = solutions[0]
+            for (b0,b1) in solutions:
+                self.colorplace(3,b0,4)
+                self.colorplace(3,b1,4)
+                prison = cornersquares.copy()
+                self.extend(prison)
+                if len(prison)>=3:
+                    asol = (b0,b1)
+                self.colorplace(3,b0,0)
+                self.colorplace(3,b1,0)
+            text.write('position INFESTEDBARRACKS '+str(asol[0][0]+1.5)+' '+str(asol[0][1]+1.5)+'\n')
+            text.write('position INFESTEDBUNKER '+str(asol[1][0]+1.5)+' '+str(asol[1][1]+1.5)+'\n')
+            self.do_place_shape(0,asol[0])
+            self.do_place_shape(0,asol[1])
+#
+#       that is all
         layout_if.photo_layout()
-        print('#####')
+        text.write('#####'+'\n')
+        text.close()
+
 
 
 
@@ -409,6 +545,8 @@ class prog:
     def sdist(self,p,q) -> int:
         return (p[0]-q[0])**2 + (p[1]-q[1])**2
  
+    def fly(self,p,q) -> float:
+        return sqrt(self.sdist(p,q))
 
 solo = prog()
 solo.main()
