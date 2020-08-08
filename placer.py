@@ -1,8 +1,8 @@
 # Placer.py
 # Makes text for building placement
-# put the output   starting from "#####"   in a file "placement.txt"
+# appends the output to file "placement.txt"
 # author: MerkMore
-# version 8 july 2020
+# version 8 aug 2020
 from layout_if_py import layout_if
 import random
 from math import sqrt
@@ -182,7 +182,7 @@ class prog:
 #       now we hope to place a single barracks there
         leftunder = (bestsquare[0]-1,bestsquare[1]-1)
         placed = self.can_place_shape(0,leftunder)
-        result = leftunder
+        barracksresult = leftunder
         dist = 0
         while not placed:
             dist = dist+1
@@ -190,11 +190,31 @@ class prog:
                 for dy in range(-dist,dist):
                     maybe = (leftunder[0]+dx,leftunder[1]+dy)
                     if self.can_place_shape(0,maybe):
-                        result = maybe
+                        barracksresult = maybe
                         placed = True
 #       if not unlucky, this result is a good cheese building place
-        text.write('position INFESTEDBARRACKS '+str(result[0]+1.5)+' '+str(result[1]+1.5)+'\n')
-        self.do_place_shape(0,result)
+        text.write('position INFESTEDBARRACKS '+str(barracksresult[0]+1.5)+' '+str(barracksresult[1]+1.5)+'\n')
+        self.do_place_shape(0,barracksresult)
+#       get infested_factory place, about 8 from the infestedbarracks, away from the enemy
+        vector = (barracksresult[0]-self.enemystartsquare[0],barracksresult[1]-self.enemystartsquare[1])
+        factor = 8/sqrt(self.sdist(barracksresult,self.enemystartsquare))
+        factorysuggestion = (round(barracksresult[0]+factor*vector[0]),round(barracksresult[1]+factor*vector[1]))
+#       now we hope to place a factory there
+        leftunder = (factorysuggestion[0]-1,factorysuggestion[1]-1)
+        placed = self.can_place_shape(1,leftunder)
+        factoryresult = leftunder
+        dist = 0
+        while not placed:
+            dist = dist+1
+            for dx in range(-dist,dist):
+                for dy in range(-dist,dist):
+                    maybe = (leftunder[0]+dx,leftunder[1]+dy)
+                    if self.can_place_shape(0,maybe):
+                        factoryresult = maybe
+                        placed = True
+#       if not unlucky, this result is a good cheese building place
+        text.write('position INFESTEDFACTORY '+str(factoryresult[0]+1.5)+' '+str(factoryresult[1]+1.5)+'\n')
+        self.do_place_shape(1,factoryresult)
 #       go find a corner in the enemy base
         basearea = set([self.enemystartsquare])
         self.extend(basearea)
@@ -211,7 +231,7 @@ class prog:
         best = None
         bestdist = 80000
         for cornersquare in corners:
-            dist = self.sdist(cornersquare,result)
+            dist = self.sdist(cornersquare,barracksresult)
             if dist < bestdist:
                 bestdist = dist
                 best = cornersquare
@@ -256,6 +276,23 @@ class prog:
             text.write('position INFESTEDBUNKER '+str(asol[1][0]+1.5)+' '+str(asol[1][1]+1.5)+'\n')
             self.do_place_shape(0,asol[0])
             self.do_place_shape(0,asol[1])
+            # write average prison
+            summ0 = 0
+            summ1 = 0
+            n = 0
+            for (x,y) in prison:
+                summ0 = summ0+x
+                summ1 = summ1+y
+                n = n+1
+            avera0 = summ0/n
+            avera1 = summ1/n
+            # use the middle of the squares
+            avera0 = avera0+0.5
+            avera1 = avera1+0.5
+            # round a bit
+            avera0 = 0.001*round(1000*avera0)
+            avera1 = 0.001*round(1000*avera1)
+            text.write('position PRISON '+str(avera0)+' '+str(avera1)+'\n')
 #
 #       that is all
         layout_if.photo_layout()
