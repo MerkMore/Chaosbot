@@ -2,7 +2,7 @@
 # Makes text for building placement
 # appends the output to file "placement.txt"
 # author: MerkMore
-# version 8 aug 2020
+# version 9 aug 2020
 from layout_if_py import layout_if
 import random
 from math import sqrt
@@ -193,7 +193,7 @@ class prog:
                         barracksresult = maybe
                         placed = True
 #       if not unlucky, this result is a good cheese building place
-        text.write('position INFESTEDBARRACKS '+str(barracksresult[0]+1.5)+' '+str(barracksresult[1]+1.5)+'\n')
+        text.write('position CHEESEBARRACKS '+str(barracksresult[0]+1.5)+' '+str(barracksresult[1]+1.5)+'\n')
         self.do_place_shape(0,barracksresult)
 #       get infested_factory place, about 8 from the infestedbarracks, away from the enemy
         vector = (barracksresult[0]-self.enemystartsquare[0],barracksresult[1]-self.enemystartsquare[1])
@@ -213,7 +213,7 @@ class prog:
                         factoryresult = maybe
                         placed = True
 #       if not unlucky, this result is a good cheese building place
-        text.write('position INFESTEDFACTORY '+str(factoryresult[0]+1.5)+' '+str(factoryresult[1]+1.5)+'\n')
+        text.write('position CHEESEFACTORY '+str(factoryresult[0]+1.5)+' '+str(factoryresult[1]+1.5)+'\n')
         self.do_place_shape(1,factoryresult)
 #       go find a corner in the enemy base
         basearea = set([self.enemystartsquare])
@@ -272,8 +272,8 @@ class prog:
                     asol = (b0,b1)
                 self.colorplace(3,b0,0)
                 self.colorplace(3,b1,0)
-            text.write('position INFESTEDBARRACKS '+str(asol[0][0]+1.5)+' '+str(asol[0][1]+1.5)+'\n')
-            text.write('position INFESTEDBUNKER '+str(asol[1][0]+1.5)+' '+str(asol[1][1]+1.5)+'\n')
+            text.write('position CHEESELANDING '+str(asol[0][0]+1.5)+' '+str(asol[0][1]+1.5)+'\n')
+            text.write('position CHEESEBUNKER '+str(asol[1][0]+1.5)+' '+str(asol[1][1]+1.5)+'\n')
             self.do_place_shape(0,asol[0])
             self.do_place_shape(0,asol[1])
             # write average prison
@@ -292,7 +292,7 @@ class prog:
             # round a bit
             avera0 = 0.001*round(1000*avera0)
             avera1 = 0.001*round(1000*avera1)
-            text.write('position PRISON '+str(avera0)+' '+str(avera1)+'\n')
+            text.write('position CHEESEPRISON '+str(avera0)+' '+str(avera1)+'\n')
 #
 #       that is all
         layout_if.photo_layout()
