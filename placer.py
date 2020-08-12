@@ -2,10 +2,10 @@
 # Makes text for building placement
 # appends the output to file "placement.txt"
 # author: MerkMore
-# version 9 aug 2020
+# version 11 aug 2020
 from layout_if_py import layout_if
 import random
-from math import sqrt
+from math import sqrt, sin, cos, acos, pi
 
 
 
@@ -49,6 +49,9 @@ class prog:
         self.enemystartsquare = (round(layout_if.enemyx - 0.5), round(layout_if.enemyy - 0.5))
         self.logg('enemy start '+str(self.enemystartsquare[0])+' '+str(self.enemystartsquare[1]))
 #       We will work with sets of squares.
+        enemybasearea = set([self.enemystartsquare])
+        self.extend(enemybasearea)
+        self.logg('enemybasearea '+str(len(enemybasearea)))
         startcc = set([self.startsquare])
         self.extend(startcc)
         self.logg('startcc '+str(len(startcc)))
@@ -194,7 +197,8 @@ class prog:
                         placed = True
 #       if not unlucky, this result is a good cheese building place
         text.write('position CHEESEBARRACKS '+str(barracksresult[0]+1.5)+' '+str(barracksresult[1]+1.5)+'\n')
-        self.do_place_shape(0,barracksresult)
+        # do not draw the barracks, as later we want to place a tank here
+        # self.do_place_shape(0,barracksresult)
 #       get infested_factory place, about 8 from the infestedbarracks, away from the enemy
         vector = (barracksresult[0]-self.enemystartsquare[0],barracksresult[1]-self.enemystartsquare[1])
         factor = 8/sqrt(self.sdist(barracksresult,self.enemystartsquare))
@@ -209,18 +213,15 @@ class prog:
             for dx in range(-dist,dist):
                 for dy in range(-dist,dist):
                     maybe = (leftunder[0]+dx,leftunder[1]+dy)
-                    if self.can_place_shape(0,maybe):
+                    if self.can_place_shape(1,maybe):
                         factoryresult = maybe
                         placed = True
 #       if not unlucky, this result is a good cheese building place
         text.write('position CHEESEFACTORY '+str(factoryresult[0]+1.5)+' '+str(factoryresult[1]+1.5)+'\n')
         self.do_place_shape(1,factoryresult)
 #       go find a corner in the enemy base
-        basearea = set([self.enemystartsquare])
-        self.extend(basearea)
-        self.logg('enemy basearea '+str(len(basearea)))
         corners = set()
-        for square in basearea:
+        for square in enemybasearea:
             ownneighs = 0
             self.get_neighbours(square)
             for nsquare in self.neighbours:
@@ -293,6 +294,61 @@ class prog:
             avera0 = 0.001*round(1000*avera0)
             avera1 = 0.001*round(1000*avera1)
             text.write('position CHEESEPRISON '+str(avera0)+' '+str(avera1)+'\n')
+            # get a 2x2 place for a tank near cheeseprison but outside enemybasearea
+            around = (round(avera0),round(avera1))
+            bestsd = 9999
+            for x in range(around[0]-9,around[0]+9):
+                for y in range(around[1]-9,around[1]+9):
+                    square = (x,y)
+                    if square not in enemybasearea:
+                        can = True
+                        can = can and (layout_if.layout[square[0]-1][square[1]+-1] == 0)
+                        can = can and (layout_if.layout[square[0]-1][square[1]+0] == 0)
+                        can = can and (layout_if.layout[square[0]+0][square[1]-1] == 0)
+                        can = can and (layout_if.layout[square[0]+0][square[1]+0] == 0)
+                        if can:
+                            sd = self.sdist(square,around)
+                            if sd < bestsd:
+                                bestsquare = square
+                                bestsd = sd
+            text.write('position CHEESETANK '+str(bestsquare[0])+' '+str(bestsquare[1])+'\n')
+            # now we can draw the barracks, even if it is on the tankspot
+            self.do_place_shape(0,barracksresult)
+        # make scout positions just inside the enemy base
+        self.get_edge(enemybasearea)
+        outside = self.edge.copy()
+        self.logg('outside '+str(len(outside)))
+        green = set()
+        for square in outside:
+            if self.get_color(square) == 1:
+                green.add(square)
+        outeroutside = outside - green
+        self.logg('outeroutside '+str(len(outeroutside)))
+        self.get_edge(outeroutside)
+        inside = self.edge.copy()
+        inside = inside & enemybasearea
+        self.logg('inside '+str(len(inside)))
+        for square in outside:
+            if self.get_color(square) == 2:
+                rampsquare = square
+        radius = sqrt(self.sdist(rampsquare,self.enemystartsquare))
+        thecos = (rampsquare[0]-self.enemystartsquare[0])/radius
+        thesin = (rampsquare[1]-self.enemystartsquare[1])/radius
+        if thesin > 0:
+            alfa = acos(thecos)
+        else:
+            alfa = 2*pi - acos(thecos)
+        # make 15 points around enemystartsquare
+        for nr in range(0,15):
+            beta = alfa + nr * 2*pi/15
+            circlepoint = (self.enemystartsquare[0] + cos(beta)*radius*1.3 , self.enemystartsquare[1] + sin(beta)*radius*1.3)
+            bestsdist = 9999
+            for square in inside:
+                sd = self.sdist(square,circlepoint)
+                if sd < bestsdist:
+                    bestsquare = square
+                    bestsdist = sd
+            text.write('position SCOUT '+str(bestsquare[0]+0.5)+' '+str(bestsquare[1]+0.5)+'\n')
 #
 #       that is all
         layout_if.photo_layout()

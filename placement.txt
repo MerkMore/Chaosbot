@@ -17,11 +17,27 @@ position STARPORT * 94.5 22.5
 position STARPORT * 82.5 24.5
 position STARPORT * 38.5 66.5
 position STARPORT * 111.5 31.5
-position CHEESEBARRACKS 121.5 146.5
-position CHEESEFACTORY 112.5 147.5
+position CHEESEBARRACKS 122.5 146.5
+position CHEESEFACTORY 113.5 147.5
 position CHEESELANDING 126.5 146.5
 position CHEESEBUNKER 128.5 149.5
 position CHEESEPRISON 126.10000000000001 149.3
+position CHEESETANK 123 147
+position SCOUT 134.5 129.5
+position SCOUT 136.5 127.5
+position SCOUT 143.5 122.5
+position SCOUT 150.5 124.5
+position SCOUT 155.5 129.5
+position SCOUT 156.5 135.5
+position SCOUT 155.5 142.5
+position SCOUT 153.5 145.5
+position SCOUT 148.5 150.5
+position SCOUT 145.5 152.5
+position SCOUT 138.5 154.5
+position SCOUT 131.5 153.5
+position SCOUT 127.5 147.5
+position SCOUT 125.5 140.5
+position SCOUT 127.5 134.5
 #####
 #####
 map: Zen LE 142.5 139.5
@@ -42,9 +58,25 @@ position STARPORT * 108.5 153.5
 position STARPORT * 86.5 151.5
 position STARPORT * 152.5 105.5
 position STARPORT * 139.5 71.5
-position CHEESEBARRACKS 75.5 25.5
-position CHEESEFACTORY 82.5 22.5
-position CHEESELANDING 63.5 22.5
-position CHEESEBUNKER 65.5 25.5
-position CHEESEPRISON 66.5 23.0
+position CHEESEBARRACKS 79.5 35.5
+position CHEESEFACTORY 85.5 33.5
+position CHEESELANDING 63.5 34.5
+position CHEESEBUNKER 65.5 31.5
+position CHEESEPRISON 66.5 33.0
+position CHEESETANK 71 32
+position SCOUT 63.5 38.5
+position SCOUT 55.5 44.5
+position SCOUT 49.5 48.5
+position SCOUT 43.5 49.5
+position SCOUT 38.5 45.5
+position SCOUT 35.5 38.5
+position SCOUT 35.5 33.5
+position SCOUT 36.5 28.5
+position SCOUT 41.5 23.5
+position SCOUT 45.5 19.5
+position SCOUT 53.5 17.5
+position SCOUT 58.5 17.5
+position SCOUT 63.5 21.5
+position SCOUT 66.5 28.5
+position SCOUT 65.5 34.5
 #####
