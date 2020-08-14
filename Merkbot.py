@@ -1,6 +1,6 @@
 # Merkbot.py containing Chaosbot
 # author: MerkMore
-# version 11 aug 2020
+# version 13 aug 2020
 # Burny style
 from typing import List,Set,Dict
 #
@@ -95,11 +95,11 @@ from sc2.ids.unit_typeid import INFESTEDSTARPORT
 class Chaosbot(sc2.BotAI):
     #   ############### CHANGE VALUE AD LIB
     do_log_success = True
-    do_log_workers = True
+    do_log_workers = False
     do_log_population = False
     do_log_armysize = False
-    do_log_army = False
-    do_log_attacktype = True
+    do_log_army = True
+    do_log_attacktype = False
     do_log_gasminer = False
     do_log_resource = False
     do_log_limbo = False
@@ -107,11 +107,11 @@ class Chaosbot(sc2.BotAI):
     do_log_buildseries = False
     do_log_placing = False
     do_log_planning = False
-    do_log_buildplan = True
+    do_log_buildplan = False
     do_log_time = False
     do_log_layout = False
     do_log_command = True
-    do_log_cheese = True
+    do_log_cheese = False
     #   ############### CONSTANT
     #   constant over the iterations after iteration 0:
     #   other
@@ -466,6 +466,14 @@ class Chaosbot(sc2.BotAI):
         #               print('from sc2.ids.upgrade_id import '+thing.name)
         self.enemyloc = self.enemy_start_locations[0].position
         self.enemy_target_base_loc = self.enemyloc
+        # give some loosely fitting init
+        for mim in self.mineral_field:
+            if self.near(mim.position,self.start_location.position,self.miner_bound):
+                a_mim_tag = mim.tag
+        self.count_of_mimt[a_mim_tag] = 12
+        for scv in self.units(SCV):
+            self.job_of_scvt[scv.tag] = 'mimminer'
+            self.mimt_of_scvt[scv.tag] = a_mim_tag
         self.fix_count_of_job()
         # opening
 #        self.buildseries_opening = [SUPPLYDEPOT, REFINERY, BARRACKS, SUPPLYDEPOT, MARINE, FACTORY, REFINERY, MARINE, \
@@ -519,6 +527,9 @@ class Chaosbot(sc2.BotAI):
         for dx in range(-2,3):
             for dy in range(-2,3):
                 layout_if.layout[yardx+dx][yardy+dy] = 5
+        # rally
+        for cc in self.structures(COMMANDCENTER):
+            cc(AbilityId.RALLY_BUILDING,self.start_location.position.towards(self.game_info.map_center,-3))
         # use stored placement tips
         mapplace = 'map: '+layout_if.mapname+' '+str(layout_if.startx)+' '+str(layout_if.starty)
         self.log_success(mapplace)
@@ -1121,6 +1132,9 @@ class Chaosbot(sc2.BotAI):
             gast = self.gast_of_scvt[scvt]
             if gast in self.all_gast:
                 self.count_of_gast[gast] = self.count_of_gast[gast]+1
+        for gast in self.all_gast:
+            cg = self.count_of_gast[gast]
+            self.log_workers('count_of_gast['+str(gast)+'] = '+str(cg))
 
     def maxmimminers(self) -> int:
         return len(self.all_mimt) * 2
@@ -1978,7 +1992,6 @@ class Chaosbot(sc2.BotAI):
                 if (job == 'gasminer'):
                     if scvt not in new_all_scvt:
                         # self.log_limbo('a '+job+' in limbo '+self.name(scvt))
-                        new_all_scvt.append(scvt)
                         if scvt in self.itera_of_missing_scvt:
                             time_lost = self.itera - self.itera_of_missing_scvt[scvt]
                         else:
@@ -1992,7 +2005,6 @@ class Chaosbot(sc2.BotAI):
                     if (self.structure_of_trabu_scvt[scvt] in (REFINERY,REFINERYRICH)):
                         if scvt not in new_all_scvt:
                             # self.log_limbo('a '+job+' in limbo '+self.name(scvt))
-                            new_all_scvt.append(scvt)
                             if scvt in self.itera_of_missing_scvt:
                                 time_lost = self.itera - self.itera_of_missing_scvt[scvt]
                             else:
@@ -2029,7 +2041,7 @@ class Chaosbot(sc2.BotAI):
             if gas.vespene_contents > 0:
                 for tow in self.all_bases:
                     towt = tow.tag
-                    if self.near(gas.position,tow.position,10):
+                    if self.near(gas.position,tow.position,self.miner_bound):
                         self.all_gast.append(gast)
         #   The tag of existing minerals where we want to mine from, in this iteration
         self.all_mimt = []
@@ -2038,7 +2050,7 @@ class Chaosbot(sc2.BotAI):
             if mim.mineral_contents > 0:
                 for tow in self.all_bases:
                     towt = tow.tag
-                    if self.near(mim.position,tow.position,10):
+                    if self.near(mim.position,tow.position,self.miner_bound):
                         self.all_mimt.append(mimt) 
         #   job_of_scvt contains the tag of all living scvs
         new_job_of_scvt = {}
@@ -2047,6 +2059,7 @@ class Chaosbot(sc2.BotAI):
                 new_job_of_scvt[scvt] = self.job_of_scvt[scvt]
             else:
                 new_job_of_scvt[scvt] = 'idler'
+                self.log_workers('had no job, now is idler '+self.name(scvt))
         self.job_of_scvt = new_job_of_scvt
         #   count_of_job
         self.fix_count_of_job()
@@ -2058,6 +2071,8 @@ class Chaosbot(sc2.BotAI):
                 mimt = self.mimt_of_scvt[scvt]
                 if mimt in self.all_mimt:
                     new_mimt_of_scvt[scvt] = mimt
+        for scvt in set(self.mimt_of_scvt) - set(new_mimt_of_scvt):
+            self.log_workers('from mimt_of_scvt gone is '+str(mimt)+'_of_'+str(scvt))
         self.mimt_of_scvt = new_mimt_of_scvt
         self.fix_count_of_mimt()
         #   restrict gast_of_scvt to existing worker and mineral
@@ -2067,8 +2082,31 @@ class Chaosbot(sc2.BotAI):
                 gast = self.gast_of_scvt[scvt]
                 if gast in self.all_gast:
                     new_gast_of_scvt[scvt] = gast
+        for scvt in set(self.gast_of_scvt) - set(new_gast_of_scvt):
+            self.log_workers('from gast_of_scvt gone is '+str(gast)+'_of_'+str(scvt))
         self.gast_of_scvt = new_gast_of_scvt
         self.fix_count_of_gast()
+        #   check consistency
+        for scvt in self.mimt_of_scvt:
+            job = self.job_of_scvt[scvt]
+            name = self.name(scvt)
+            if (job != 'mimminer'):
+                print('not a mimminer, yet in mimt_of_scvt '+job+' '+name)
+        for scvt in self.gast_of_scvt:
+            job = self.job_of_scvt[scvt]
+            name = self.name(scvt)
+            if (job != 'gasminer'):
+                print('not a gasminer, yet in gast_of_scvt ' + job + ' ' + name)
+        for scv in self.units(SCV):
+            if scv.tag in self.all_scvt:
+                job = self.job_of_scvt[scv.tag]
+                name = self.name(scvt)
+                if scv.is_collecting:
+                    if (job not in ('mimminer','gasminer','builder')):
+                        print('collecting but wrong job ' + job + ' ' + name)
+                else: # not collecting
+                    if (job in ('mimminer', 'gasminer')):
+                        print('not collecting but job ' + job + ' ' + name)
         #   cottage_of_scvt contains the tag of living arearepairers
         new_cottage_of_scvt = {}
         for scvt in self.all_scvt:
@@ -2186,6 +2224,7 @@ class Chaosbot(sc2.BotAI):
         if len(self.structures) < self.but_i_had_structures:
             self. log_success('$$$$$$$ lost a building; breaking off buildorder_to_execute and cheese')
             self.buildorder_to_execute = []
+            self.clean_layout()
             self.cheese_phase = 'Z'
         self.but_i_had_structures = len(self.structures)
         # first make buildseries
@@ -2555,7 +2594,7 @@ class Chaosbot(sc2.BotAI):
                                                 sp.train(ship)
                                                 self.idle_structure_tags.remove(sp.tag)
                                                 didit = True
-                                                self.rarely_executed_code()
+                                                self.clean_layout()
         return didit
 
 
@@ -2613,13 +2652,14 @@ class Chaosbot(sc2.BotAI):
         if (self.check_future_techtree(building)) or (self.game_phase == 'opening'):
             for scv in self.units(SCV):
                 if scv.tag == scvt:
+                    job = self.job_of_scvt[scvt]
+                    if job == 'mimminer':
+                        self.was_mimminer(scv)
+                    if job == 'gasminer':
+                        self.was_gasminer(scv)
+                    self.job_of_scvt[scvt] = 'traveller'
                     self.goal_of_trabu_scvt[scvt] = goal
                     self.structure_of_trabu_scvt[scvt] = building
-#                           best to stop the scv from mining, for if the build does not start, it remains in old function
-                    if scv.is_collecting:
-                        self.log_command('scv(Ability.STOP)')
-                        scv(AbilityId.STOP)
-                    self.job_of_scvt[scvt] = 'traveller'
                     self.promotionsite_of_scvt[scvt] = scv.position
                     self.log_workers('planning  '+building.name+' '+self.name(scvt))
                     self.log_command('scv(AbilityId.MOVE_MOVE,goal)')
@@ -2640,6 +2680,10 @@ class Chaosbot(sc2.BotAI):
         for scv in self.units(SCV):
             if scv.tag == scvt:
                 job = self.job_of_scvt[scvt]
+                if job == 'mimminer':
+                    self.was_mimminer(scv)
+                if job == 'gasminer':
+                    self.was_gasminer(scv)
                 self.job_of_scvt[scvt] = 'escorter'
                 self.promotionsite_of_scvt[scvt] = scv.position
                 self.log_command('scv.build(BARRACKS,goal)')
@@ -2660,6 +2704,10 @@ class Chaosbot(sc2.BotAI):
                 self.goal_of_trabu_scvt[scvt] = goal
                 self.structure_of_trabu_scvt[scvt] = building
                 job = self.job_of_scvt[scvt]
+                if job == 'mimminer':
+                    self.was_mimminer(scv)
+                if job == 'gasminer':
+                    self.was_gasminer(scv)
                 self.job_of_scvt[scvt] = 'traveller'
                 self.promotionsite_of_scvt[scvt] = scv.position
                 self.log_workers(job+' became traveller '+self.name(scvt))
@@ -3131,7 +3179,7 @@ class Chaosbot(sc2.BotAI):
                     startedbuildings = startedbuildings + 1
             if startedbuildings == 2:
                 for anscv in self.units(SCV):
-                    if self.near(anscv.position, self.cheese_bunker_pos, 4):
+                    if self.near(anscv.position, self.cheese_bunker_pos, 3):
                         self.cheese_scv = anscv
                         scvt = self.cheese_scv.tag
                         self.log_workers('the cheese_scv is ' + self.name(scvt))
@@ -3243,6 +3291,24 @@ class Chaosbot(sc2.BotAI):
             if self.cheese_tank in self.units(SIEGETANK).ready.idle:
                 self.log_command('self.cheese_tank(AbilityId.SIEGEMODE_SIEGEMODE)')
                 self.cheese_tank(AbilityId.SIEGEMODE_SIEGEMODE)
+                self.cheese_phase = 'K'
+        elif self.cheese_phase == 'K':
+            # lift the barracks and move a bit towards enemy
+            oldpoint = self.cheese_barracks.position
+            oldsdist = self.sdist(oldpoint,self.enemyloc)
+            altpoint = Point2((oldpoint.x + random.randrange(-4, 4), (oldpoint.y + random.randrange(-4, 4))))
+            altsdist = self.sdist(altpoint,enemyloc)
+            tries = 0
+            while ((not self.check_layout(ARMORY, altpoint)) or (altsdist >= oldsdist)) and (tries < 50) :
+                tries = tries + 1
+                altpoint = Point2((oldpoint.x + random.randrange(-4, 4), (oldpoint.y + random.randrange(-4, 4))))
+                altsdist = self.sdist(altpoint,self.enemyloc)
+            if tries < 50:
+                self.home_of_flying_struct[bu.tag] = altpoint
+                self.landings_of_flying_struct[bu.tag] = 0
+                self.log_success('up ' + srt.name)
+                self.log_command('bu(AbilityId.LIFT')
+                bu(AbilityId.LIFT)
                 self.cheese_phase = 'Z'
         # call the last phase Z
         self.log_cheese()
@@ -3360,8 +3426,52 @@ class Chaosbot(sc2.BotAI):
                                 todo = todo-1
                                 self.log_workers('')
                                 self.log_command('cc.train(SCV)')
-                                cc.train(SCV)
+                                dummy = cc.train(SCV)
                                 self.idle_structure_tags.remove(cc.tag)
+
+
+    async def be_gasminer(self,scv,gas):
+        self.job_of_scvt[scv.tag] = 'gasminer'
+        self.count_of_job['gasminer'] = self.count_of_job['gasminer'] + 1
+        self.promotionsite_of_scvt[scv.tag] = scv.position
+        self.log_command('scv.gather(gas)')
+        dummy = scv.gather(gas)
+        self.log_workers('be gasminer ' + self.name(scv.tag))
+        self.gast_of_scvt[scv.tag] = gas.tag
+        self.count_of_gast[gas.tag] = self.count_of_gast[gas.tag] + 1
+
+    async def be_mimminer(self,scv,mim):
+        self.job_of_scvt[scv.tag] = 'mimminer'
+        self.promotionsite_of_scvt[scv.tag] = scv.position
+        self.log_command('scv.gather(mim)')
+        dummy = scv.gather(mim)
+        self.log_workers('be mimminer ' + self.name(scv.tag))
+        self.mimt_of_scvt[scv.tag] = mim.tag
+        self.count_of_mimt[mim.tag] = self.count_of_mimt[mim.tag] + 1
+
+    def was_gasminer(self,scv):
+        if scv.tag in self.gast_of_scvt:
+            gast = self.gast_of_scvt[scv.tag]
+            self.count_of_gast[gast] = self.count_of_gast[gast] - 1
+            del self.gast_of_scvt[scv.tag]
+        self.log_workers('was gasminer ' + self.name(scv.tag))
+        self.job_of_scvt[scv.tag] = ''
+        self.count_of_job['gasminer'] = self.count_of_job['gasminer'] - 1
+        if scv.is_collecting:
+            self.log_command('scv(AbilityId.STOP)')
+            scv(AbilityId.STOP)
+
+    def was_mimminer(self, scv):
+        if scv.tag in self.mimt_of_scvt:
+            mimt = self.mimt_of_scvt[scv.tag]
+            self.count_of_mimt[mimt] = self.count_of_mimt[mimt] - 1
+            del self.mimt_of_scvt[scv.tag]
+        self.log_workers('was mimminer ' + self.name(scv.tag))
+        self.job_of_scvt[scv.tag] = ''
+        self.count_of_job['mimminer'] = self.count_of_job['mimminer'] - 1
+        if scv.is_collecting:
+            self.log_command('scv(AbilityId.STOP)')
+            scv(AbilityId.STOP)
 
 
     async def repair_it(self):
@@ -3371,7 +3481,7 @@ class Chaosbot(sc2.BotAI):
             if scvt in self.all_scvt:
                 if self.job_of_scvt[scvt] == 'arearepairer':
                     if scvt in self.busy_arearepairer:
-                        if scv.is_idle or scv.is_collecting:
+                        if scv.is_idle:
                             self.busy_arearepairer.remove(scvt)
                             self.log_workers('finish '+self.name(scvt))
                     else:
@@ -3391,18 +3501,7 @@ class Chaosbot(sc2.BotAI):
                             scv.repair(s)
                             self.busy_arearepairer.append(scvt)
                         elif scv.is_idle:
-                            if self.near(scv.position,self.cottage_of_scvt[scvt],5):
-#                               dream or mine unadministrated
-                                self.fix_count_of_mimt()
-                                if self.mimminer_vacatures() > 0:
-                                    mimt = self.get_near_mimt_free(scv.position)
-                                    for mim in self.mineral_field:
-                                        if mim.tag == mimt:
-                                            if self.near(mim.position,scv.position,12):
-                                                self.log_command('scv.garther(mim)')
-                                                scv.gather(mim)
-                                                self.log_workers('arearepairer bored '+self.name(scvt))
-                            else:
+                            if not self.near(scv.position,self.cottage_of_scvt[scvt],5):
                                 self.log_workers('going home '+self.name(scvt))
                                 self.log_command('scv(AbilityId.MOVE_MOVE,self.cottage_of_scvt[scvt])')
                                 scv(AbilityId.MOVE_MOVE,self.cottage_of_scvt[scvt])
@@ -3423,6 +3522,10 @@ class Chaosbot(sc2.BotAI):
                         if self.near(scv.position,tow.position,self.miner_bound):
                             panic = False
                     if panic:
+                        if job == 'mimminer':
+                            self.was_mimminer(scv)
+                        if job == 'gasminer':
+                            self.was_gasminer(scv)
                         self.log_workers('fleeing '+job+' '+self.name(scvt))
                         self.job_of_scvt[scvt] = 'fleeer'
                         self.promotionsite_of_scvt[scvt] = scv.position
@@ -3447,6 +3550,10 @@ class Chaosbot(sc2.BotAI):
 #               May idle: traveller, shiprepairer, arearepairer
                 elif job in ('gasminer','mimminer','applicant','escorter','builder'):
                     if scv.position != self.promotionsite_of_scvt[scvt]:
+                        if job == 'mimminer':
+                            self.was_mimminer(scv)
+                        if job == 'gasminer':
+                            self.was_gasminer(scv)
                         self.log_workers('fired slacking '+job+' '+self.name(scvt))
                         self.job_of_scvt[scvt] = 'idler'
                 elif job == 'traveller':
@@ -3461,19 +3568,18 @@ class Chaosbot(sc2.BotAI):
                 job = self.job_of_scvt[scvt]
                 if job == 'builder':
                     if scv.is_collecting:
-                        if self.gasminer_vacatures() > 0:
-                            if scv.position != self.promotionsite_of_scvt[scvt]:
-                                self.log_workers('jobswich mining builder '+self.name(scvt))
-                                self.job_of_scvt[scvt] = 'gasminer'
-                                gast = self.get_near_gast_free(scv.position)
-                                self.gast_of_scvt[scvt] = gast
-                                self.count_of_gast[gast] = self.count_of_gast[gast]+1
-#       
+                        if scv.position != self.promotionsite_of_scvt[scvt]:
+                            gast = self.get_near_gast_free(scv.position)
+                            for gas in self.all_refineries:
+                                if gas.tag == gast:
+                                    self.log_workers('jobswich mining builder '+self.name(scvt))
+                                    await self.be_gasminer(scv,gas)
+#
         self.fix_count_of_job()
         #
 #       arearepairers
         wishr = min(len(self.all_scvt)//6, len(self.all_bases)+len(self.structures(COMMANDCENTERFLYING)))
-        if self.cheese_phase >= 'F':
+        if (self.cheese_phase >= 'F'):
             wishr = wishr+1
         if self.count_of_job['arearepairer'] > wishr:
 #           get one that is far from each base
@@ -3517,10 +3623,11 @@ class Chaosbot(sc2.BotAI):
             for scv in self.units(SCV):
                 if scv.tag == scvt:
                     job = self.job_of_scvt[scvt]
+                    if job == 'mimminer':
+                        self.was_mimminer(scv)
+                    if job == 'gasminer':
+                        self.was_gasminer(scv)
                     self.log_workers('promoted '+job+' to arearepairer '+self.name(scvt))
-                    if scv.is_collecting:
-                        self.log_command('scv(AbilityId.STOP)')
-                        scv(AbilityId.STOP)
                     self.job_of_scvt[scvt] = 'arearepairer'
                     self.promotionsite_of_scvt[scvt] = scv.position
                     self.cottage_of_scvt[scvt] = towpos
@@ -3534,10 +3641,11 @@ class Chaosbot(sc2.BotAI):
             for scv in self.units(SCV):
                 if scv.tag == scvt:
                     job = self.job_of_scvt[scvt]
+                    if job == 'mimminer':
+                        self.was_mimminer(scv)
+                    if job == 'gasminer':
+                        self.was_gasminer(scv)
                     self.log_workers('promoted '+job+' to shiprepairer '+self.name(scvt))
-                    if scv.is_collecting:
-                        self.log_command('scv(AbilityId.STOP)')
-                        scv(AbilityId.STOP)
                     self.job_of_scvt[scvt] = 'shiprepairer'
                     self.promotionsite_of_scvt[scvt] = scv.position
 #       fire some
@@ -3578,10 +3686,11 @@ class Chaosbot(sc2.BotAI):
             for scv in self.units(SCV):
                 if scv.tag == scvt:
                     job = self.job_of_scvt[scvt]
+                    if job == 'mimminer':
+                        self.was_mimminer(scv)
+                    if job == 'gasminer':
+                        self.was_gasminer(scv)
                     self.log_workers('promoted '+job+' to scout '+self.name(scvt))
-                    if scv.is_collecting:
-                        self.log_command('scv(AbilityId.STOP)')
-                        scv(AbilityId.STOP)
                     self.job_of_scvt[scvt] = 'scout'
                     self.promotionsite_of_scvt[scvt] = scv.position
                     # mark it and start running around
@@ -3651,13 +3760,7 @@ class Chaosbot(sc2.BotAI):
                             for scv in self.units(SCV):
                                 if scv.tag == scvt:
                                     if self.near(scv.position,gas.position,self.miner_bound):
-                                        self.job_of_scvt[scvt] = 'gasminer'
-                                        self.promotionsite_of_scvt[scvt] = scv.position
-                                        self.log_command('scv.gather(gas)')
-                                        scv.gather(gas)
-                                        self.log_workers('new gasminer group '+self.name(scvt))
-                                        self.gast_of_scvt[scvt] = gast
-                                        self.count_of_gast[gast] = self.count_of_gast[gast]+1
+                                        await self.be_gasminer(scv,gas)
             else:
                 for scv in self.units(SCV):
                     scvt = scv.tag
@@ -3666,13 +3769,7 @@ class Chaosbot(sc2.BotAI):
                         for gas in self.all_refineries:
                             if gas.tag == gast:
                                 if self.near(scv.position,gas.position,self.miner_bound):
-                                    self.job_of_scvt[scvt] = 'gasminer'
-                                    self.promotionsite_of_scvt[scvt] = scv.position
-                                    self.log_command('scv.gather(gas)')
-                                    scv.gather(gas)
-                                    self.log_workers('new gasminer '+self.name(scvt))
-                                    self.gast_of_scvt[scvt] = gast
-                                    self.count_of_gast[gast] = self.count_of_gast[gast]+1
+                                    await self.be_gasminer(scv,gas)
         self.log_gasminer()
 #       after we tried local miner hiring, want applicants
         if self.mimminer_vacatures()+self.gasminer_vacatures() > len(self.vision_of_scvt):
@@ -3714,13 +3811,7 @@ class Chaosbot(sc2.BotAI):
                             for scv in self.units(SCV):
                                 if scv.tag == scvt:
                                     if self.near(scv.position,mim.position,self.miner_bound):
-                                        self.job_of_scvt[scvt] = 'mimminer'
-                                        self.promotionsite_of_scvt[scvt] = scv.position
-                                        self.log_command('scv.gather(mim)')
-                                        scv.gather(mim)
-                                        self.log_workers('new miner group '+self.name(scvt))
-                                        self.mimt_of_scvt[scvt] = mimt
-                                        self.count_of_mimt[mimt] = self.count_of_mimt[mimt]+1
+                                        await self.be_mimminer(scv,mim)
             else:
                 for scv in self.units(SCV):
                     scvt = scv.tag
@@ -3729,13 +3820,7 @@ class Chaosbot(sc2.BotAI):
                         for mim in self.mineral_field:
                             if mim.tag == mimt:
                                 if self.near(scv.position,mim.position,self.miner_bound):
-                                    self.job_of_scvt[scvt] = 'mimminer'
-                                    self.promotionsite_of_scvt[scvt] = scv.position
-                                    self.log_command('scv.gather(mim)')
-                                    scv.gather(mim)
-                                    self.log_workers('new miner '+self.name(scvt))
-                                    self.mimt_of_scvt[scvt] = mimt
-                                    self.count_of_mimt[mimt] = self.count_of_mimt[mimt]+1
+                                    await self.be_mimminer(scv,mim)
 #       after we tried local miner hiring, want applicants
         if self.mimminer_vacatures()+self.gasminer_vacatures() > len(self.vision_of_scvt):
             self.wanted_of_cct = {}
@@ -3771,13 +3856,7 @@ class Chaosbot(sc2.BotAI):
                             if self.near(scv.position, gas.position, self.miner_bound):
                                 if todo>0:
                                     todo = todo-1
-                                    self.job_of_scvt[scvt] = 'gasminer'
-                                    self.promotionsite_of_scvt[scvt] = scv.position
-                                    self.log_command('scv.gather(gas)')
-                                    scv.gather(gas)
-                                    self.log_workers('mimminer became gasminer ' + self.name(scvt))
-                                    self.gast_of_scvt[scvt] = gast
-                                    self.count_of_gast[gast] = self.count_of_gast[gast] + 1
+                                    await self.be_gasminer(scv,gas)
 
     async def more_minerals(self):
         # try to swap a gasminer to mimminer
@@ -3795,13 +3874,7 @@ class Chaosbot(sc2.BotAI):
                             if self.near(scv.position, mim.position, self.miner_bound):
                                 if todo>0:
                                     todo = todo-1
-                                    self.job_of_scvt[scvt] = 'mimminer'
-                                    self.promotionsite_of_scvt[scvt] = scv.position
-                                    self.log_command('scv.gather(mim)')
-                                    scv.gather(mim)
-                                    self.log_workers('gasminer became mimminer ' + self.name(scvt))
-                                    self.mimt_of_scvt[scvt] = mimt
-                                    self.count_of_mimt[mimt] = self.count_of_mimt[mimt] + 1
+                                    await self.be_mimminer(scv,mim)
 
 
     async def manage_rest(self):
@@ -3875,7 +3948,7 @@ class Chaosbot(sc2.BotAI):
 
 #*********************************************************************************************************************
 
-    def rarely_executed_code(self):
+    def clean_layout(self):
 #       designs: add tag to realized plans
         newdesigns = []
         for (struc,place,tag) in self.designs:
@@ -3971,5 +4044,5 @@ class Chaosbot(sc2.BotAI):
 #       Easy/Medium/Hard/VeryHard
 run_game(maps.get('ZenLE'), [
     Bot(Race.Terran, Chaosbot()),
-    Computer(Race.Protoss, Difficulty.Hard)
-    ], realtime = True)
+    Computer(Race.Terran, Difficulty.Hard)
+    ], realtime = False)
