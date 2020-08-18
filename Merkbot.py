@@ -546,7 +546,7 @@ class Chaosbot(sc2.BotAI):
         # use stored placement tips
         mapplace = 'map: '+layout_if.mapname+' '+str(layout_if.startx)+' '+str(layout_if.starty)
         self.log_success(mapplace)
-        pl = open('data\placement.txt','r')
+        pl = open('data/placement.txt','r')
         all_tips = pl.read().splitlines()
         pl.close()
         self.tips = []
@@ -588,7 +588,7 @@ class Chaosbot(sc2.BotAI):
                 scpos = Point2((float(woord[2]), float(woord[3])))
                 self.scout_pos.append(scpos)
         # name_of_scvt: fun translation of scvt to english boy name
-        pl = open('data\names.txt','r')
+        pl = open('data/names.txt','r')
         self.all_names = pl.read().splitlines()
         pl.close()
 
@@ -4028,7 +4028,7 @@ class Chaosbot(sc2.BotAI):
 #   We can be fancy and feed back won-or-loss of a game to the strategy.
 #
     def write_strategy(self):
-        pl = open('data\strategy.txt','w')
+        pl = open('data/strategy.txt','w')
         for nr in range(0,len(self.strategy)):
             pl.write(str(self.strategy[nr])+'\n')
         pl.close()
@@ -4038,7 +4038,7 @@ class Chaosbot(sc2.BotAI):
         for i in range(0,self.game_choices):
             self.strategy.append(0.5)
 #       read from disk
-        pl = open('data\strategy.txt','r')
+        pl = open('data/strategy.txt','r')
         read_strategy = pl.read().splitlines()
         pl.close()
         for nr in range(0,len(read_strategy)):

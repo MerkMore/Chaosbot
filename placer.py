@@ -1,6 +1,6 @@
 # Placer.py
 # Makes text for building placement
-# appends the output to file "data\placement.txt"
+# appends the output to file "data/placement.txt"
 # author: MerkMore
 # version 18 aug 2020
 from layout_if_py import layout_if
@@ -23,24 +23,24 @@ class prog:
 
     def main(self):
         layout_if.load_layout()
-        print('I can append to data\placement.txt')
+        print('I can append to data/placement.txt')
         self.mapplace = 'map: '+layout_if.mapname+' '+str(layout_if.startx)+' '+str(layout_if.starty)
         print('looking for:   '+self.mapplace)
-        text = open('data\placement.txt','r')
+        text = open('data/placement.txt','r')
         content = text.read().splitlines()
         for line in content:
             if (line[0] == 'm') and (line[1] == 'a') and (line[2] == 'p'):
                 print(line)
         text.close()
         if self.mapplace in content:
-            print('No action, the map is already in data\placement.txt')
+            print('No action, the map is already in data/placement.txt')
         else:
-            print('Not found, so I will append to data\placement.txt')
+            print('Not found, so I will append to data/placement.txt')
             self.appendthemap()
 
 
     def appendthemap(self):
-        text = open('data\placement.txt','a')
+        text = open('data/placement.txt','a')
         text.write('#####'+'\n')
         text.write(self.mapplace+'\n')
 #

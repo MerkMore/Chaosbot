@@ -531,3 +531,44 @@ position SCOUT 183.5 66.5
 position SCOUT 178.5 68.5
 position SCOUT 168.5 66.5
 #####
+#####
+map: Golden Wall LE 175.5 50.5
+position SUPPLYDEPOT 164 61
+position SUPPLYDEPOT 167 64
+position BARRACKS 166.5 61.5
+position FUSIONCORE * 177.5 114.5
+position FUSIONCORE * 175.5 102.5
+position FUSIONCORE * 165.5 117.5
+position FUSIONCORE * 163.5 105.5
+position FUSIONCORE * 158.5 88.5
+position FUSIONCORE * 153.5 116.5
+position FUSIONCORE * 140.5 68.5
+position STARPORT * 176.5 110.5
+position STARPORT * 169.5 120.5
+position STARPORT * 169.5 100.5
+position STARPORT * 162.5 110.5
+position STARPORT * 156.5 91.5
+position STARPORT * 141.5 71.5
+position STARPORT * 147.5 83.5
+position CHEESEBARRACKS 67.5 70.5
+position CHEESEFACTORY 73.5 73.5
+position CHEESELANDING 45.5 58.5
+position CHEESEBUNKER 47.5 55.5
+position CHEESEPRISON 47.833 57.833
+position CHEESETANK 52 62
+position SCOUT 46.5 46.5
+position SCOUT 49.5 51.5
+position SCOUT 48.5 57.5
+position SCOUT 44.5 61.5
+position SCOUT 38.5 66.5
+position SCOUT 29.5 68.5
+position SCOUT 24.5 66.5
+position SCOUT 22.5 61.5
+position SCOUT 20.5 52.5
+position SCOUT 20.5 46.5
+position SCOUT 20.5 38.5
+position SCOUT 22.5 34.5
+position SCOUT 31.5 34.5
+position SCOUT 35.5 35.5
+position SCOUT 40.5 40.5
+#####
