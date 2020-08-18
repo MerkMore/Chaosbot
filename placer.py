@@ -2,7 +2,7 @@
 # Makes text for building placement
 # appends the output to file "placement.txt"
 # author: MerkMore
-# version 11 aug 2020
+# version 18 aug 2020
 from layout_if_py import layout_if
 import random
 from math import sqrt, sin, cos, acos, pi
@@ -17,7 +17,7 @@ class prog:
     enemystartsquare = (0,0)
     rampcenter = (0,0)
     center = (0,0)
-    logging = False
+    logging = True
 #   the map with walk-distances to enemystartsquare
     walking = []
 
@@ -66,6 +66,18 @@ class prog:
         self.filter_color(ramp,2)
         ramp = self.filterresult.copy()
         self.logg('ramp '+str(len(ramp)))
+        # for a multi-ramp map, the central ramp is chosen
+        mapcenter = (100,100)
+        alsoramp = set()
+        bestsd = 99999
+        for square in ramp:
+            sd = self.sdist(square,mapcenter)
+            if sd < bestsd:
+                bestsd = sd
+                alsoramp = set([square])
+        self.extend(alsoramp)
+        ramp = ramp & alsoramp
+        self.logg('restricted to 1 ramp, ramp '+str(len(ramp)))
         self.get_edge(ramp)
         aroundramp = self.edge.copy()
         self.filter_color(aroundramp,0)
@@ -116,38 +128,6 @@ class prog:
             text.write('position SUPPLYDEPOT '+str(asol[0][0]+1)+' '+str(asol[0][1]+1)+'\n')
             text.write('position SUPPLYDEPOT '+str(asol[1][0]+1)+' '+str(asol[1][1]+1)+'\n')
             text.write('position BARRACKS '+str(asol[2][0]+1.5)+' '+str(asol[2][1]+1.5)+'\n')
-#       now, find some hidden fusioncore positions
-        for shape in (0,2):
-            alters = []
-            while len(alters)<10000:
-                alt = (random.randrange(0,200),random.randrange(0,200))
-                dis = self.sdist(alt,self.startsquare)
-                if (dis>25*25) and (dis<70*70):
-                    dis = self.sdist(alt,self.rampcenter)
-                    if (dis>25*25):
-                        if self.can_place_shape(shape,alt):
-                            alters.append(alt)
-            choices = []
-            middle = (100,100)
-            while len(choices)<7:
-                bestdist = 0
-                for alt in alters:
-                    allowed = True
-                    for have in choices:
-                        dis = self.sdist(alt,have)
-                        allowed = allowed and (dis>12*12)
-                    if allowed:
-                        dis = self.sdist(alt,middle)
-                        if dis>bestdist:
-                            best = alt
-                            bestdist = dis
-                choices.append(best)
-            for alt in choices:
-                self.do_place_shape(shape,alt)
-                if shape == 0:
-                    text.write('position FUSIONCORE * '+str(alt[0]+1.5)+' '+str(alt[1]+1.5)+'\n')
-                else:
-                    text.write('position STARPORT * '+str(alt[0]+1.5)+' '+str(alt[1]+1.5)+'\n')
 #       walking
         self.walking = []
         for col in range(0, 200):
@@ -171,14 +151,50 @@ class prog:
                             self.walking[nsquare[0]][nsquare[1]] = dist
                             new_edge.append(nsquare)
             edge = new_edge.copy()
+#       now, find some hidden fusioncore positions
+        for shape in (0,2):
+            alters = []
+            while len(alters)<10000:
+                alt = (random.randrange(0,200),random.randrange(0,200))
+                dis = self.sdist(alt,self.startsquare)
+                if (dis>25*25) and (dis<70*70):
+                    dis = self.sdist(alt,self.rampcenter)
+                    if (dis>25*25):
+                        if self.can_place_shape(shape,alt):
+                            if self.walking[alt[0]][alt[1]] > 0:
+                                alters.append(alt)
+            choices = []
+            middle = (100,100)
+            while len(choices)<7:
+                bestdist = 0
+                for alt in alters:
+                    allowed = True
+                    for have in choices:
+                        dis = self.sdist(alt,have)
+                        allowed = allowed and (dis>12*12)
+                    if allowed:
+                        dis = self.sdist(alt,middle)
+                        if dis>bestdist:
+                            best = alt
+                            bestdist = dis
+                choices.append(best)
+            for alt in choices:
+                self.do_place_shape(shape,alt)
+                if shape == 0:
+                    text.write('position FUSIONCORE * '+str(alt[0]+1.5)+' '+str(alt[1]+1.5)+'\n')
+                else:
+                    text.write('position STARPORT * '+str(alt[0]+1.5)+' '+str(alt[1]+1.5)+'\n')
 #       now we will estimate a high value of walking-flying
+#       also slightly negative weigh in the flydistance to enemy
 #       also slightly negative weigh in the flydistance to home
         best = -999
-        for pog in range(0,1000):
+        for pog in range(0,5000):
             square = (random.randrange(0,200),random.randrange(0,200))
             walk = self.walking[square[0]][square[1]]
             if walk >= 0:
-                wafy = (walk - self.fly(square,self.enemystartsquare))-0.1*self.fly(square,self.startsquare)
+                wafy = (walk - self.fly(square,self.enemystartsquare))
+                wafy = wafy - 0.5*self.fly(square,self.enemystartsquare)
+                wafy = wafy - 0.03*self.fly(square,self.startsquare)
                 if wafy>best:
                     best = wafy
                     bestsquare = square
@@ -499,16 +515,37 @@ class prog:
         return layout_if.layout[square[0]][square[1]]
 
     def get_neighbours(self,square):
-        self.neighbours = set()
-        self.neighbours.add((square[0]-1,square[1]))
-        self.neighbours.add((square[0],square[1]-1))
-        self.neighbours.add((square[0]+1,square[1]))
-        self.neighbours.add((square[0],square[1]+1))
-        self.neighbours.add((square[0]-1,square[1]-1))
-        self.neighbours.add((square[0]+1,square[1]-1))
-        self.neighbours.add((square[0]+1,square[1]+1))
-        self.neighbours.add((square[0]-1,square[1]+1))
-        
+        if self.get_color(square) == 0:
+            # usually 8, but you cannot walk diagonal through minerals
+            self.neighbours = set()
+            self.neighbours.add((square[0] - 1, square[1] + 0))
+            self.neighbours.add((square[0] + 0, square[1] - 1))
+            self.neighbours.add((square[0] + 1, square[1] + 0))
+            self.neighbours.add((square[0] + 0, square[1] + 1))
+            if layout_if.layout[square[0] + 1][square[1] + 0] != 1:
+                self.neighbours.add((square[0] + 1, square[1] - 1))
+                self.neighbours.add((square[0] + 1, square[1] + 1))
+            if layout_if.layout[square[0] - 1][square[1] + 0] != 1:
+                self.neighbours.add((square[0] - 1, square[1] - 1))
+                self.neighbours.add((square[0] - 1, square[1] + 1))
+            if layout_if.layout[square[0] + 0][square[1] + 1] != 1:
+                self.neighbours.add((square[0] - 1, square[1] + 1))
+                self.neighbours.add((square[0] + 1, square[1] + 1))
+            if layout_if.layout[square[0] + 0][square[1] - 1] != 1:
+                self.neighbours.add((square[0] - 1, square[1] - 1))
+                self.neighbours.add((square[0] + 1, square[1] - 1))
+        else:
+            self.neighbours = set()
+            self.neighbours.add((square[0] - 1, square[1] + 0))
+            self.neighbours.add((square[0] + 0, square[1] - 1))
+            self.neighbours.add((square[0] + 1, square[1] + 0))
+            self.neighbours.add((square[0] + 0, square[1] + 1))
+            self.neighbours.add((square[0] - 1, square[1] - 1))
+            self.neighbours.add((square[0] + 1, square[1] - 1))
+            self.neighbours.add((square[0] + 1, square[1] + 1))
+            self.neighbours.add((square[0] - 1, square[1] + 1))
+
+
     def extend(self,aset):
 #       aset is enlarged with same-colored squares
         square = aset.pop()
@@ -638,8 +675,8 @@ class prog:
     def sdist(self,p,q) -> int:
         return (p[0]-q[0])**2 + (p[1]-q[1])**2
  
-    def fly(self,p,q) -> float:
-        return sqrt(self.sdist(p,q))
+    def fly(self,p,q) -> int:
+        return max(abs(p[0]-q[0]),abs(p[1]-q[1]))
 
 solo = prog()
 solo.main()
