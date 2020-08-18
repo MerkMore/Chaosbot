@@ -3,7 +3,7 @@
 # interface for the layout structure, used and defined in Merkbot.py, used in placer.py
 #
 # author: MerkMore
-# version 8 july 2020
+# version 18 aug 2020
 # python -m pip install Pillow
 from PIL import Image, ImageDraw
 
@@ -27,7 +27,7 @@ class layout_if:
      
     
     def save_layout():
-        text = open('layout.txt','w')
+        text = open('data\layout.txt','w')
         text.write('========================================='+'\n')
         text.write(layout_if.mapname+'\n')
         text.write(str(layout_if.startx)+'\n')
@@ -49,10 +49,10 @@ class layout_if:
     
     def load_layout():
         layout_if.layout = []
-        text = open('layout.txt','r')
+        text = open('data\layout.txt','r')
         stri=text.readline().rstrip()
         if stri[0] != '=':
-            print('layout.txt has a wrong shape')
+            print('data\layout.txt has a wrong shape')
         layout_if.mapname = text.readline().rstrip()
         layout_if.startx = float(text.readline().rstrip())        
         layout_if.starty = float(text.readline().rstrip())        
@@ -69,7 +69,7 @@ class layout_if:
             layout_if.layout.append(collist)
         stri=text.readline().rstrip()        
         if stri[0] != '=':
-            print('layout.txt has a wrong shape')
+            print('data\layout.txt has a wrong shape')
         text.close()
     
     
@@ -96,7 +96,7 @@ class layout_if:
                 else:
                     rgb = layout_if.yellow
                 ImageDraw.Draw(img).rectangle([25+col*2,25+swaprow*2,27+col*2,27+swaprow*2],fill=rgb,outline=None)
-        img.save('layout.png')
+        img.save('data\layout.png')
 
 
             
