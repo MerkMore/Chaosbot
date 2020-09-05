@@ -2,7 +2,7 @@
 # Makes text for building placement
 # appends the output to file "data/placement.txt"
 # author: MerkMore
-# version 18 aug 2020
+# version 5 sep 2020
 from layout_if_py import layout_if
 import random
 from math import sqrt, sin, cos, acos, pi
@@ -191,13 +191,16 @@ class prog:
         for pog in range(0,5000):
             square = (random.randrange(0,200),random.randrange(0,200))
             walk = self.walking[square[0]][square[1]]
-            if walk >= 0:
-                wafy = (walk - self.fly(square,self.enemystartsquare))
-                wafy = wafy - 0.5*self.fly(square,self.enemystartsquare)
-                wafy = wafy - 0.03*self.fly(square,self.startsquare)
+            fly = self.fly(square,self.enemystartsquare)
+            homefly = self.fly(square,self.startsquare)
+            if (walk >= 0) and (fly>10) and (fly<35):
+                wafy = (walk - fly)
+                wafy = wafy - 0.7*fly
+                wafy = wafy - 0.03*homefly
                 if wafy>best:
                     best = wafy
                     bestsquare = square
+                    self.logg('pos '+str(square[0])+','+str(square[1])+' wafy '+str(wafy)+'   walk '+str(walk)+'  fly '+str(fly))
 #       now we hope to place a single barracks there
         leftunder = (bestsquare[0]-1,bestsquare[1]-1)
         placed = self.can_place_shape(0,leftunder)
@@ -208,11 +211,12 @@ class prog:
             for dx in range(-dist,dist):
                 for dy in range(-dist,dist):
                     maybe = (leftunder[0]+dx,leftunder[1]+dy)
-                    if self.can_place_shape(0,maybe):
-                        barracksresult = maybe
-                        placed = True
+                    if maybe not in enemybasearea:
+                        if self.can_place_shape(0,maybe):
+                            barracksresult = maybe
+                            placed = True
 #       if not unlucky, this result is a good cheese building place
-        text.write('position CHEESEBARRACKS '+str(barracksresult[0]+1.5)+' '+str(barracksresult[1]+1.5)+'\n')
+        text.write('position INFESTEDBARRACKS '+str(barracksresult[0]+1.5)+' '+str(barracksresult[1]+1.5)+'\n')
         # do not draw the barracks, as later we want to place a tank here
         # self.do_place_shape(0,barracksresult)
 #       get infested_factory place, about 8 from the infestedbarracks, away from the enemy
@@ -233,7 +237,7 @@ class prog:
                         factoryresult = maybe
                         placed = True
 #       if not unlucky, this result is a good cheese building place
-        text.write('position CHEESEFACTORY '+str(factoryresult[0]+1.5)+' '+str(factoryresult[1]+1.5)+'\n')
+        text.write('position INFESTEDFACTORY '+str(factoryresult[0]+1.5)+' '+str(factoryresult[1]+1.5)+'\n')
         self.do_place_shape(1,factoryresult)
 #       go find a corner in the enemy base
         corners = set()
@@ -245,6 +249,14 @@ class prog:
                     ownneighs = ownneighs+1
             if ownneighs <= 4:
                 corners.add(square)
+        self.logg('corners '+str(len(corners)))
+        maycorners = corners.copy()
+        corners = set()
+        for cornersquare in maycorners:
+            sd = self.sdist(cornersquare,self.enemystartsquare)
+            if sd >= 16*16:
+                corners.add(cornersquare)
+        self.logg('corners far from creep '+str(len(corners)))
         best = None
         bestdist = 80000
         for cornersquare in corners:
@@ -289,8 +301,8 @@ class prog:
                     asol = (b0,b1)
                 self.colorplace(3,b0,0)
                 self.colorplace(3,b1,0)
-            text.write('position CHEESELANDING '+str(asol[0][0]+1.5)+' '+str(asol[0][1]+1.5)+'\n')
-            text.write('position CHEESEBUNKER '+str(asol[1][0]+1.5)+' '+str(asol[1][1]+1.5)+'\n')
+            text.write('position INFESTEDLANDING '+str(asol[0][0]+1.5)+' '+str(asol[0][1]+1.5)+'\n')
+            text.write('position INFESTEDBUNKER '+str(asol[1][0]+1.5)+' '+str(asol[1][1]+1.5)+'\n')
             self.do_place_shape(0,asol[0])
             self.do_place_shape(0,asol[1])
             # write average prison
@@ -309,7 +321,7 @@ class prog:
             # round a bit
             avera0 = 0.001*round(1000*avera0)
             avera1 = 0.001*round(1000*avera1)
-            text.write('position CHEESEPRISON '+str(avera0)+' '+str(avera1)+'\n')
+            text.write('position INFESTEDPRISON '+str(avera0)+' '+str(avera1)+'\n')
             # get a 2x2 place for a tank near cheeseprison but outside enemybasearea
             around = (round(avera0),round(avera1))
             bestsd = 9999
@@ -327,7 +339,7 @@ class prog:
                             if sd < bestsd:
                                 bestsquare = square
                                 bestsd = sd
-            text.write('position CHEESETANK '+str(bestsquare[0])+' '+str(bestsquare[1])+'\n')
+            text.write('position INFESTEDTANK '+str(bestsquare[0])+' '+str(bestsquare[1])+'\n')
             # now we can draw the barracks, even if it is on the tankspot
             self.do_place_shape(0,barracksresult)
         # make scout positions just inside the enemy base
