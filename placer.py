@@ -2,12 +2,18 @@
 # Makes text for building placement
 # appends the output to file "data/placement.txt"
 # author: MerkMore
-# version 5 sep 2020
+# version 12 sep 2020
 from layout_if_py import layout_if
 import random
 from math import sqrt, sin, cos, acos, pi
 
-
+#
+# 0 = free
+# 1 = minerals,gas
+# 2 = ramp
+# 3 = nogo
+# 4 = building
+#
 
 class prog:
 #
@@ -20,6 +26,7 @@ class prog:
     logging = True
 #   the map with walk-distances to enemystartsquare
     walking = []
+    tankpath = []
 
     def main(self):
         layout_if.load_layout()
@@ -219,26 +226,6 @@ class prog:
         text.write('position INFESTEDBARRACKS '+str(barracksresult[0]+1.5)+' '+str(barracksresult[1]+1.5)+'\n')
         # do not draw the barracks, as later we want to place a tank here
         # self.do_place_shape(0,barracksresult)
-#       get infested_factory place, about 8 from the infestedbarracks, away from the enemy
-        vector = (barracksresult[0]-self.enemystartsquare[0],barracksresult[1]-self.enemystartsquare[1])
-        factor = 8/sqrt(self.sdist(barracksresult,self.enemystartsquare))
-        factorysuggestion = (round(barracksresult[0]+factor*vector[0]),round(barracksresult[1]+factor*vector[1]))
-#       now we hope to place a factory there
-        leftunder = (factorysuggestion[0]-1,factorysuggestion[1]-1)
-        placed = self.can_place_shape(1,leftunder)
-        factoryresult = leftunder
-        dist = 0
-        while not placed:
-            dist = dist+1
-            for dx in range(-dist,dist):
-                for dy in range(-dist,dist):
-                    maybe = (leftunder[0]+dx,leftunder[1]+dy)
-                    if self.can_place_shape(1,maybe):
-                        factoryresult = maybe
-                        placed = True
-#       if not unlucky, this result is a good cheese building place
-        text.write('position INFESTEDFACTORY '+str(factoryresult[0]+1.5)+' '+str(factoryresult[1]+1.5)+'\n')
-        self.do_place_shape(1,factoryresult)
 #       go find a corner in the enemy base
         corners = set()
         for square in enemybasearea:
@@ -299,17 +286,25 @@ class prog:
                 self.extend(prison)
                 if len(prison)>=3:
                     asol = (b0,b1)
+                    asolprison = prison.copy()
                 self.colorplace(3,b0,0)
                 self.colorplace(3,b1,0)
-            text.write('position INFESTEDLANDING '+str(asol[0][0]+1.5)+' '+str(asol[0][1]+1.5)+'\n')
-            text.write('position INFESTEDBUNKER '+str(asol[1][0]+1.5)+' '+str(asol[1][1]+1.5)+'\n')
+            # of those, the closest to the enemy should be the bunker
+            sd0 = self.sdist(asol[0],self.enemystartsquare)
+            sd1 = self.sdist(asol[1],self.enemystartsquare)
+            if sd0 < sd1:
+                text.write('position INFESTEDBUNKER '+str(asol[0][0]+1.5)+' '+str(asol[0][1]+1.5)+'\n')
+                text.write('position INFESTEDLANDING '+str(asol[1][0]+1.5)+' '+str(asol[1][1]+1.5)+'\n')
+            else:
+                text.write('position INFESTEDLANDING ' + str(asol[0][0] + 1.5) + ' ' + str(asol[0][1] + 1.5) + '\n')
+                text.write('position INFESTEDBUNKER ' + str(asol[1][0] + 1.5) + ' ' + str(asol[1][1] + 1.5) + '\n')
             self.do_place_shape(0,asol[0])
             self.do_place_shape(0,asol[1])
-            # write average prison
+            # write average asolprison
             summ0 = 0
             summ1 = 0
             n = 0
-            for (x,y) in prison:
+            for (x,y) in asolprison:
                 summ0 = summ0+x
                 summ1 = summ1+y
                 n = n+1
@@ -322,26 +317,82 @@ class prog:
             avera0 = 0.001*round(1000*avera0)
             avera1 = 0.001*round(1000*avera1)
             text.write('position INFESTEDPRISON '+str(avera0)+' '+str(avera1)+'\n')
+            self.logg('position INFESTEDPRISON '+str(avera0)+' '+str(avera1))
+            # get a 5x5 freespace outside enemybasearea, as a tankmove point
+            rough = (round(2*avera0 - self.enemystartsquare[0]), round(2*avera1 - self.enemystartsquare[1]))
+            if (rough[0]<0) or (rough[0]>=200) or (rough[1]<0) or (rough[1]>=200):
+                rough = (random.randrange(0, 200), random.randrange(0, 200))
+            sd = self.sdist(rough,self.enemystartsquare)
+            while (sd<10*10) or (sd>50*50):
+                rough = (random.randrange(0, 200), random.randrange(0, 200))
+                sd = self.sdist(rough,self.enemystartsquare)
+            self.logg('rough '+str(rough[0])+','+str(rough[1]))
+            placed = False
+            dist = 0
+            while not placed:
+                dist = dist + 1
+                for dx in range(-dist, dist):
+                    for dy in range(-dist, dist):
+                        square = (rough[0] + dx, rough[1] + dy)
+                        if self.can_place_shape(2,square):
+                            freespace = (square[0]+1,square[1]+1)
+                            placed = True
+            self.logg('freespace '+str(freespace[0])+','+str(freespace[1]))
             # get a 2x2 place for a tank near cheeseprison but outside enemybasearea
+            self.logg('B')
             around = (round(avera0),round(avera1))
             bestsd = 9999
-            for x in range(around[0]-9,around[0]+9):
-                for y in range(around[1]-9,around[1]+9):
+            for x in range(around[0]-10,around[0]+10):
+                for y in range(around[1]-10,around[1]+10):
                     square = (x,y)
                     if square not in enemybasearea:
-                        can = True
-                        can = can and (layout_if.layout[square[0]-1][square[1]+-1] == 0)
-                        can = can and (layout_if.layout[square[0]-1][square[1]+0] == 0)
-                        can = can and (layout_if.layout[square[0]+0][square[1]-1] == 0)
-                        can = can and (layout_if.layout[square[0]+0][square[1]+0] == 0)
-                        if can:
-                            sd = self.sdist(square,around)
-                            if sd < bestsd:
-                                bestsquare = square
-                                bestsd = sd
-            text.write('position INFESTEDTANK '+str(bestsquare[0])+' '+str(bestsquare[1])+'\n')
+                        if self.istile(square): # can place a tank
+                            if self.has_tankpath(square,freespace):
+                                sd = self.sdist(square,around)
+                                if sd < bestsd:
+                                    bestsquare = square
+                                    bestsd = sd
+            tanksquare = bestsquare
+            text.write('position INFESTEDTANK '+str(tanksquare[0])+' '+str(tanksquare[1])+'\n')
+            self.logg('position INFESTEDTANK '+str(tanksquare[0])+' '+str(tanksquare[1]))
+            # Color the tankpath until we found a factory place.
+            surely = self.has_tankpath(tanksquare, freespace) # to get the right tankpath
+            self.color_tankpath(4)
+            stored_tankpath = self.tankpath.copy()
+            self.logg('tankpath ' + str(len(self.tankpath)))
             # now we can draw the barracks, even if it is on the tankspot
             self.do_place_shape(0,barracksresult)
+            # make freespace reachable
+            self.colortile(freespace,0)
+            # factory
+            # get infested_factory place, about 8 from the infestedbarracks, away from the enemy
+            vector = (barracksresult[0] - self.enemystartsquare[0], barracksresult[1] - self.enemystartsquare[1])
+            factor = 8 / sqrt(self.sdist(barracksresult, self.enemystartsquare))
+            factorysuggestion = (round(barracksresult[0] + factor * vector[0]), \
+                                 round(barracksresult[1] + factor * vector[1]))
+            # now we hope to place a factory there
+            leftunder = (factorysuggestion[0] - 1, factorysuggestion[1] - 1)
+            placed = False
+            dist = 0
+            while not placed:
+                dist = dist + 1
+                for dx in range(-dist, dist):
+                    for dy in range(-dist, dist):
+                        maybe = (leftunder[0] + dx, leftunder[1] + dy)
+                        tile = (maybe[0]+1,maybe[1]+1)
+                        if self.can_place_shape(1, maybe):
+                            if self.has_tankpath(tile,freespace):
+                                factoryresult = maybe
+                                placed = True
+            # Usually this result is a good cheese building place
+            text.write('position INFESTEDFACTORY ' + str(factoryresult[0] + 1.5) + ' ' + str(factoryresult[1] + 1.5) + '\n')
+            self.logg('position INFESTEDFACTORY ' + str(factoryresult[0] + 1.5) + ' ' + str(factoryresult[1] + 1.5))
+            self.do_place_shape(1,factoryresult)
+            # erase the stored tankpath roughly
+            self.tankpath = stored_tankpath
+            self.color_tankpath(0)
+            self.do_place_shape(0,barracksresult)
+            self.do_place_shape(1,factoryresult)
         # make scout positions just inside the enemy base
         self.get_edge(enemybasearea)
         outside = self.edge.copy()
@@ -420,34 +471,62 @@ class prog:
 
 
     def can_place_shape(self,shape,alt) -> bool:
-#       leftunder definition
-        can = True
-        if shape == 0:
-#           fusioncore
-            can = can and (layout_if.layout[alt[0]+0][alt[1]+0] == 0)
-            can = can and (layout_if.layout[alt[0]+0][alt[1]+1] == 0)
-            can = can and (layout_if.layout[alt[0]+0][alt[1]+2] == 0)
-            can = can and (layout_if.layout[alt[0]+1][alt[1]+0] == 0)
-            can = can and (layout_if.layout[alt[0]+1][alt[1]+1] == 0)
-            can = can and (layout_if.layout[alt[0]+1][alt[1]+2] == 0)
-            can = can and (layout_if.layout[alt[0]+2][alt[1]+0] == 0)
-            can = can and (layout_if.layout[alt[0]+2][alt[1]+1] == 0)
-            can = can and (layout_if.layout[alt[0]+2][alt[1]+2] == 0)
-        else:
-#           starport                                 
-            can = can and (layout_if.layout[alt[0]+0][alt[1]+0] == 0)
-            can = can and (layout_if.layout[alt[0]+0][alt[1]+1] == 0)
-            can = can and (layout_if.layout[alt[0]+0][alt[1]+2] == 0)
-            can = can and (layout_if.layout[alt[0]+1][alt[1]+0] == 0)
-            can = can and (layout_if.layout[alt[0]+1][alt[1]+1] == 0)
-            can = can and (layout_if.layout[alt[0]+1][alt[1]+2] == 0)
-            can = can and (layout_if.layout[alt[0]+2][alt[1]+0] == 0)
-            can = can and (layout_if.layout[alt[0]+2][alt[1]+1] == 0)
-            can = can and (layout_if.layout[alt[0]+2][alt[1]+2] == 0)
-            can = can and (layout_if.layout[alt[0]+3][alt[1]+0] == 0)
-            can = can and (layout_if.layout[alt[0]+3][alt[1]+1] == 0)
-            can = can and (layout_if.layout[alt[0]+4][alt[1]+0] == 0)
-            can = can and (layout_if.layout[alt[0]+4][alt[1]+1] == 0)
+        # leftunder definition
+        can = (alt[0] >= 0) and (alt[0]+4 < 200) and (alt[1] >= 0) and (alt[1]+4 < 200)
+        if can:
+            if shape == 0:
+                # fusioncore
+                can = can and (layout_if.layout[alt[0]+0][alt[1]+0] == 0)
+                can = can and (layout_if.layout[alt[0]+0][alt[1]+1] == 0)
+                can = can and (layout_if.layout[alt[0]+0][alt[1]+2] == 0)
+                can = can and (layout_if.layout[alt[0]+1][alt[1]+0] == 0)
+                can = can and (layout_if.layout[alt[0]+1][alt[1]+1] == 0)
+                can = can and (layout_if.layout[alt[0]+1][alt[1]+2] == 0)
+                can = can and (layout_if.layout[alt[0]+2][alt[1]+0] == 0)
+                can = can and (layout_if.layout[alt[0]+2][alt[1]+1] == 0)
+                can = can and (layout_if.layout[alt[0]+2][alt[1]+2] == 0)
+            elif shape == 1:
+                # starport
+                can = can and (layout_if.layout[alt[0]+0][alt[1]+0] == 0)
+                can = can and (layout_if.layout[alt[0]+0][alt[1]+1] == 0)
+                can = can and (layout_if.layout[alt[0]+0][alt[1]+2] == 0)
+                can = can and (layout_if.layout[alt[0]+1][alt[1]+0] == 0)
+                can = can and (layout_if.layout[alt[0]+1][alt[1]+1] == 0)
+                can = can and (layout_if.layout[alt[0]+1][alt[1]+2] == 0)
+                can = can and (layout_if.layout[alt[0]+2][alt[1]+0] == 0)
+                can = can and (layout_if.layout[alt[0]+2][alt[1]+1] == 0)
+                can = can and (layout_if.layout[alt[0]+2][alt[1]+2] == 0)
+                can = can and (layout_if.layout[alt[0]+3][alt[1]+0] == 0)
+                can = can and (layout_if.layout[alt[0]+3][alt[1]+1] == 0)
+                can = can and (layout_if.layout[alt[0]+4][alt[1]+0] == 0)
+                can = can and (layout_if.layout[alt[0]+4][alt[1]+1] == 0)
+            else:
+                # 5x5 space
+                can = can and (layout_if.layout[alt[0] + 0][alt[1] + 0] == 0)
+                can = can and (layout_if.layout[alt[0] + 0][alt[1] + 1] == 0)
+                can = can and (layout_if.layout[alt[0] + 0][alt[1] + 2] == 0)
+                can = can and (layout_if.layout[alt[0] + 0][alt[1] + 3] == 0)
+                can = can and (layout_if.layout[alt[0] + 0][alt[1] + 4] == 0)
+                can = can and (layout_if.layout[alt[0] + 1][alt[1] + 0] == 0)
+                can = can and (layout_if.layout[alt[0] + 1][alt[1] + 1] == 0)
+                can = can and (layout_if.layout[alt[0] + 1][alt[1] + 2] == 0)
+                can = can and (layout_if.layout[alt[0] + 1][alt[1] + 3] == 0)
+                can = can and (layout_if.layout[alt[0] + 1][alt[1] + 4] == 0)
+                can = can and (layout_if.layout[alt[0] + 2][alt[1] + 0] == 0)
+                can = can and (layout_if.layout[alt[0] + 2][alt[1] + 1] == 0)
+                can = can and (layout_if.layout[alt[0] + 2][alt[1] + 2] == 0)
+                can = can and (layout_if.layout[alt[0] + 2][alt[1] + 3] == 0)
+                can = can and (layout_if.layout[alt[0] + 2][alt[1] + 4] == 0)
+                can = can and (layout_if.layout[alt[0] + 3][alt[1] + 0] == 0)
+                can = can and (layout_if.layout[alt[0] + 3][alt[1] + 1] == 0)
+                can = can and (layout_if.layout[alt[0] + 3][alt[1] + 2] == 0)
+                can = can and (layout_if.layout[alt[0] + 3][alt[1] + 3] == 0)
+                can = can and (layout_if.layout[alt[0] + 3][alt[1] + 4] == 0)
+                can = can and (layout_if.layout[alt[0] + 4][alt[1] + 0] == 0)
+                can = can and (layout_if.layout[alt[0] + 4][alt[1] + 1] == 0)
+                can = can and (layout_if.layout[alt[0] + 4][alt[1] + 2] == 0)
+                can = can and (layout_if.layout[alt[0] + 4][alt[1] + 3] == 0)
+                can = can and (layout_if.layout[alt[0] + 4][alt[1] + 4] == 0)
         return can
 
 
@@ -557,9 +636,8 @@ class prog:
             self.neighbours.add((square[0] + 1, square[1] + 1))
             self.neighbours.add((square[0] - 1, square[1] + 1))
 
-
     def extend(self,aset):
-#       aset is enlarged with same-colored squares
+        # aset is enlarged with same-colored squares
         square = aset.pop()
         aset.add(square)
         mycolor = self.get_color(square)
@@ -575,7 +653,7 @@ class prog:
         aset = bigset.copy()
 
     def get_edge(self,aset):
-#       self.edge is the squares around aset
+        # self.edge is the squares around aset
         square = aset.pop()
         aset.add(square)
         mycolor = self.get_color(square)
@@ -680,7 +758,65 @@ class prog:
                                 seen.add(nsquare)
                                 hp = hp or (nsquare in bset)
                                 self.add_spo(nsquare)
-        return hp        
+        return hp
+
+
+    # tank routines
+    def istile(self,sq) -> bool:
+        # a tanktile is the middle of 4 squares
+        ist = True
+        ist = ist and (layout_if.layout[sq[0] + 0][sq[1] + 0] in (0,2))
+        ist = ist and (layout_if.layout[sq[0] - 1][sq[1] + 0] in (0,2))
+        ist = ist and (layout_if.layout[sq[0] + 0][sq[1] - 1] in (0,2))
+        ist = ist and (layout_if.layout[sq[0] - 1][sq[1] - 1] in (0,2))
+        return ist
+
+    def colortile(self,sq,color):
+        layout_if.layout[sq[0] + 0][sq[1] + 0] = color
+        layout_if.layout[sq[0] - 1][sq[1] + 0] = color
+        layout_if.layout[sq[0] + 0][sq[1] - 1] = color
+        layout_if.layout[sq[0] - 1][sq[1] - 1] = color
+
+    def color_tankpath(self,color):
+        for tile in self.tankpath:
+            self.colortile(tile,color)
+
+    def has_tankpath(self,starttile,stoptile) -> bool:
+        # a tanktile is the middle of 4 squares
+        hp = self.istile(starttile) and self.istile(stoptile)
+        steptostart = {} # for the inside, the dist to starttile is administrated
+        n = 0
+        steptostart[starttile] = n
+        inside = set([starttile])
+        edge = set([starttile])
+        while hp and (stoptile not in edge) and (len(edge) > 0):
+            n = n + 1
+            newedge = set()
+            for tile in edge:
+                self.get_neighbours(tile)
+                for nsquare in self.neighbours:
+                    if nsquare not in inside:
+                        if self.istile(nsquare):
+                            newedge.add(nsquare)
+            inside = inside | newedge
+            for square in newedge:
+                steptostart[square] = n
+            edge = newedge.copy()
+        hp = hp and (stoptile in edge)
+        self.tankpath = []
+        if hp:
+            tile = stoptile
+            self.tankpath.append(tile)
+            while n > 0:
+                n = n - 1
+                self.get_neighbours(tile)
+                for nsquare in self.neighbours:
+                    if nsquare in inside:
+                        if steptostart[nsquare] == n:
+                            tile = nsquare
+                self.tankpath.append(tile)
+        return hp
+
 
 
 #   distance
