@@ -1,6 +1,6 @@
 # Merkbot.py containing Chaosbot
 # author: MerkMore
-# version 13 sep 2020
+# version 19 sep 2020
 # Burny style
 from typing import List,Set,Dict
 #
@@ -19,6 +19,8 @@ from sc2.game_info import GameInfo
 from layout_if_py import layout_if
 # from sc2.constants import *
 from sc2.ids.unit_typeid import SCV
+from sc2.ids.unit_typeid import PROBE
+from sc2.ids.unit_typeid import DRONE
 from sc2.ids.unit_typeid import RAVEN
 from sc2.ids.unit_typeid import STARPORT
 from sc2.ids.unit_typeid import VIKINGFIGHTER
@@ -43,6 +45,7 @@ from sc2.ids.upgrade_id import TERRANVEHICLEANDSHIPARMORSLEVEL1
 from sc2.ids.upgrade_id import TERRANVEHICLEANDSHIPARMORSLEVEL2
 from sc2.ids.upgrade_id import TERRANVEHICLEANDSHIPARMORSLEVEL3
 from sc2.ids.upgrade_id import TERRANBUILDINGARMOR
+from sc2.ids.upgrade_id import HISECAUTOTRACKING
 from sc2.ids.unit_typeid import ENGINEERINGBAY
 from sc2.ids.upgrade_id import TERRANINFANTRYWEAPONSLEVEL1
 from sc2.ids.upgrade_id import TERRANINFANTRYWEAPONSLEVEL2
@@ -96,12 +99,12 @@ from sc2.ids.unit_typeid import INFESTEDFACTORY
 from sc2.ids.unit_typeid import INFESTEDSTARPORT
 
 
-
 class Chaosbot(sc2.BotAI):
     #   ############### CHANGE VALUE AD LIB
-    do_log_success = True
-    do_log_command = True
-    do_log_attacktype = True
+    do_log_success = False
+    do_log_fail = False
+    do_log_command = False
+    do_log_attacktype = False
     do_log_workers = False
     do_log_population = False
     do_log_armysize = False
@@ -118,6 +121,7 @@ class Chaosbot(sc2.BotAI):
     do_log_cheese = False
     do_log_boss = False
     do_log_ambiwalk = False
+    do_log_enemies = False
     #   ############### CONSTANT
     #   constant over the iterations after iteration 0:
     #   other
@@ -126,6 +130,7 @@ class Chaosbot(sc2.BotAI):
     all_structures = []
     all_structures_tobuildwalk = []
     all_army = []
+    all_workertypes = []
     all_upgrades = []
     all_labs = [] # for labs, with place, always its motherbuilding place will be used.
     supply_of_army = {}
@@ -136,6 +141,7 @@ class Chaosbot(sc2.BotAI):
     all_things = set()
     cradle = []
     shipyard = None
+    basetop = set() # empty squares near start, inside the wall, inside ramps
     bc_enemies = None
     #   squareroots of integers from 0 to 200*200*2, 0<=x<400
     stored_root = []
@@ -170,6 +176,8 @@ class Chaosbot(sc2.BotAI):
     # idle in this iteration:
     idle_structure_tags = []
     #   ############### ARMY AND STRUCTURE MANAGEMENT
+    seen_enemy_units = set()
+    seen_enemy_structuretypes = set()
     #   the tags of the 2 supplydepots used as a gate:
     updowns = set()
     last_health = {}
@@ -187,6 +195,7 @@ class Chaosbot(sc2.BotAI):
     goal_of_wmt = {}
     sd_of_wmt = {}
     shame_of_wmt = {}
+    martag_to_bunker = set()
     #   ambition contains commandcenters becoming a planetaryfortress, factories getting a techlab.
     ambition_of_strt = {}
     #   the barracks in the wall could be placed such as not to be able to get a techlab
@@ -197,6 +206,8 @@ class Chaosbot(sc2.BotAI):
     designs = []
     # wall_barracks
     wall_barracks_pos = None
+    wall_depot0_pos = None
+    wall_depot1_pos = None
     wall_barracks_managed = False
     #   A barracks close to the enemy has to fly from build position to attack position
     cheese_barracks_pos = None
@@ -219,6 +230,10 @@ class Chaosbot(sc2.BotAI):
     cheese_mine = None
     cheese_bunker_last_health = 0
     cheese_frames = 0
+    # cheese2
+    cheese2_phase = 'A'
+    cheese2_bunker = None
+    cheese2_bunker_pos = None
     #   ############### SCV MANAGEMENT
     #   traveller and builder scvs have a goal
     #   traveller and builder scvs have a structure to build
@@ -293,7 +308,7 @@ class Chaosbot(sc2.BotAI):
     #
     all_future_basepos = set() # used when making buildorder
     #
-    but_i_had_structures = 0
+    but_i_had_structures = 0 # amount of own structures, excl bunkers
     #
     midgame_bagofthings = []
     # placings that already have been in buildorder_exe:
@@ -335,6 +350,7 @@ class Chaosbot(sc2.BotAI):
         self.log_resource()
         self.log_armysize()
         await self.bunkercheese()
+        await self.bunkercheese2()
         if (iteration % 5 == 4):
             await self.realized_planning_exe()
             await self.make_planning_exe()
@@ -372,10 +388,10 @@ class Chaosbot(sc2.BotAI):
         await self.mimminer_boss()
         await self.gasminer_boss()
         self.wall_barracks_redirect()
-        if self.cheese_scv != None:
-            if self.cheese_scv.tag in self.job_of_scvt:
-                job = self.job_of_scvt[self.cheese_scv.tag]
-                self.log_cheese('cheese_scv '+job)
+        self.reset_workers()
+        self.see_enemies()
+        if (iteration % 100 == 4):
+            self.log_enemies()
 
 # *********************************************************************************************************************
     async def my_init(self):
@@ -392,6 +408,7 @@ class Chaosbot(sc2.BotAI):
             PHOTONCANNON, INFESTOR, HYDRALISK, THOR, VIPER, PHOENIX, RAVAGER, CYCLONE)
         # all_labs wegens verschoven plaatsing
         self.all_labs = (BARRACKSTECHLAB,FACTORYTECHLAB,STARPORTTECHLAB)
+        self.all_workertypes = (SCV,PROBE,DRONE)
         # list of most structures, with builddura, size. Not flying, not lowered.
         self.init_structures(SUPPLYDEPOT, 21, 2)
         self.init_structures(BARRACKS, 46, 3)
@@ -440,6 +457,7 @@ class Chaosbot(sc2.BotAI):
         self.init_upgrade(TERRANVEHICLEANDSHIPARMORSLEVEL2, 136)
         self.init_upgrade(TERRANVEHICLEANDSHIPARMORSLEVEL3, 157)
         self.init_upgrade(TERRANBUILDINGARMOR, 100)
+        self.init_upgrade(HISECAUTOTRACKING,57)
         self.init_upgrade(TERRANINFANTRYWEAPONSLEVEL1, 114)
         self.init_upgrade(TERRANINFANTRYWEAPONSLEVEL2, 136)
         self.init_upgrade(TERRANINFANTRYWEAPONSLEVEL3, 157)
@@ -467,6 +485,7 @@ class Chaosbot(sc2.BotAI):
         self.init_cradle(TERRANVEHICLEANDSHIPARMORSLEVEL2,ARMORY)
         self.init_cradle(TERRANVEHICLEANDSHIPARMORSLEVEL3,ARMORY)
         self.init_cradle(TERRANBUILDINGARMOR,ENGINEERINGBAY)
+        self.init_cradle(HISECAUTOTRACKING,ENGINEERINGBAY)
         self.init_cradle(TERRANINFANTRYWEAPONSLEVEL1,ENGINEERINGBAY)
         self.init_cradle(TERRANINFANTRYWEAPONSLEVEL2,ENGINEERINGBAY)
         self.init_cradle(TERRANINFANTRYWEAPONSLEVEL3,ENGINEERINGBAY)
@@ -542,15 +561,15 @@ class Chaosbot(sc2.BotAI):
         self.fix_count_of_job()
         # opening
         ops = 0
-#        ops = ops + 1
-#        if random.randrange(0, ops) == 0:
-#            # twobase bc:
-#            self.buildseries_opening = [SUPPLYDEPOT, REFINERY, BARRACKS, SUPPLYDEPOT, MARINE, FACTORY, REFINERY, MARINE, \
-#                                       STARPORT, COMMANDCENTER, FUSIONCORE, STARPORTTECHLAB, BATTLECRUISER]
-#        ops = ops + 1
-#        if random.randrange(0, ops) == 0:
-#            # elementary:
-#            self.buildseries_opening = [SUPPLYDEPOT, REFINERY, BARRACKS, SUPPLYDEPOT, MARINE]
+        ops = ops + 1
+        if random.randrange(0, ops) == 0:
+            # twobase bc:
+            self.buildseries_opening = [SUPPLYDEPOT, REFINERY, BARRACKS, SUPPLYDEPOT, MARINE, FACTORY, REFINERY, MARINE, \
+                                       STARPORT, COMMANDCENTER, FUSIONCORE, STARPORTTECHLAB, BATTLECRUISER]
+        ops = ops + 1
+        if random.randrange(0, ops) == 0:
+            # elementary:
+            self.buildseries_opening = [SUPPLYDEPOT, REFINERY, BARRACKS, SUPPLYDEPOT, MARINE]
         ops = ops + 1
         if random.randrange(0, ops) == 0:
             #cheese-expand:
@@ -562,6 +581,10 @@ class Chaosbot(sc2.BotAI):
             self.buildseries_opening = [SUPPLYDEPOT, INFESTEDBARRACKS, REFINERY, INFESTEDBUNKER, SUPPLYDEPOT, INFESTEDFACTORY, \
                                         BARRACKS, REFINERY, \
                                         STARPORT, SUPPLYDEPOT, FUSIONCORE, STARPORTTECHLAB, SUPPLYDEPOT, BATTLECRUISER]
+        ops = ops + 1
+        if random.randrange(0, ops) == 0:
+            # expand:
+            self.buildseries_opening = [SUPPLYDEPOT, COMMANDCENTER, BARRACKS, MARINE]
         # strategy choices
         await self.init_strategy()
         #  midgame
@@ -660,25 +683,36 @@ class Chaosbot(sc2.BotAI):
             if (woord[0] == 'position') and (woord[1] == 'SCOUT'):
                 scpos = Point2((float(woord[2]), float(woord[3])))
                 self.scout_pos.append(scpos)
-        # wall_barracks_pos
+        # wall position
         self.wall_barracks_pos = self.nowhere
+        self.wall_depot0_pos = self.nowhere
+        self.wall_depot1_pos = self.nowhere
         for nr in range(0, len(self.tips)):
             ti = self.tips[nr]
             woord = ti.split()
             if (woord[0] == 'position') and (woord[1] == 'BARRACKS'):
                 if self.wall_barracks_pos == self.nowhere:
                     self.wall_barracks_pos = Point2((float(woord[2]), float(woord[3])))
+            if (woord[0] == 'position') and (woord[1] == 'SUPPLYDEPOT'):
+                if self.wall_depot0_pos == self.nowhere:
+                    self.wall_depot0_pos = Point2((float(woord[2]), float(woord[3])))
+                elif self.wall_depot1_pos == self.nowhere:
+                    self.wall_depot1_pos = Point2((float(woord[2]), float(woord[3])))
+        # get basetop
+        self.get_basetop()
         # name_of_scvt: fun translation of scvt to english boy name
         pl = open('data/names.txt','r')
         self.all_names = pl.read().splitlines()
         pl.close()
+        # chat
+        await self._client.chat_send('Chaosbot version 19 sep 2020, made by MerkMore', team_only=False)
 
-
-#*********************************************************************************************************************
+    #*********************************************************************************************************************
 #   logging
     def log_fail(self,bol,stri):
-        if not bol:
-            print(f' On {self.itera} fail {self.routine} '+stri) 
+        if self.do_log_fail:
+            if not bol:
+                print(f' On {self.itera} fail {self.routine} '+stri)
 
     def log_success(self,stri):
         if self.do_log_success:
@@ -691,7 +725,6 @@ class Chaosbot(sc2.BotAI):
     async def log_attacktype(self,stri):
         if self.do_log_attacktype:
             print(f' On {self.itera} attacktype {self.routine} '+stri)
-            await self._client.chat_send(stri, team_only=False) 
 
     def log_workers(self,stri):
         if self.do_log_workers:
@@ -802,12 +835,25 @@ class Chaosbot(sc2.BotAI):
         if self.do_log_time:
             print(f' On {self.itera} time: '+stri)
 
-    def log_cheese(self,stri):
+    def log_cheese(self):
         if self.do_log_cheese:
             if self.cheese_phase != 'Z':
-                print(f' On {self.itera} cheese phase '+self.cheese_phase+' '+stri)
+                print(f' On {self.itera} cheese phase '+self.cheese_phase+'    cheese2 '+self.cheese2_phase)
 
-#*********************************************************************************************************************
+
+    def log_enemies(self):
+        if self.do_log_enemies:
+            stri = 'ENEMY_UNITS:'
+            for ene in self.seen_enemy_units:
+                stri = stri+' '+ene.name
+            print(stri)
+            stri = 'ENEMY_STRUCTURETYPES:'
+            for ene in self.seen_enemy_structuretypes:
+                stri = stri+' '+ene.name
+            print(stri)
+
+
+    #******************************************************************************************************************
 
     def put_on_the_grid(self,struc,place):
         if struc in self.all_structures_tobuildwalk:
@@ -889,7 +935,7 @@ class Chaosbot(sc2.BotAI):
     def maxam_of_thing(self,thing) -> int:
         maxam = 100
         if thing in self.all_structures_tobuildwalk:
-            if thing in (ARMORY,FUSIONCORE,ENGINEERINGBAY,BARRACKS,FACTORY):
+            if thing in (ARMORY,FUSIONCORE,ENGINEERINGBAY,FACTORY):
                 maxam = 2
             if thing == MISSILETURRET:
                 maxam = self.all_bases.amount*7
@@ -912,13 +958,13 @@ class Chaosbot(sc2.BotAI):
 #*********************************************************************************************************************
 
 #   distance
-    def sdist(self,p,q) -> int:
-        return (p[0]-q[0])**2 + (p[1]-q[1])**2
+    def sdist(self,p,q):
+        return (p.x-q.x)**2 + (p.y-q.y)**2
  
-    def dist(self,p,q) -> int:
+    def dist(self,p,q):
 #       for int points in 200*200
 #       tolerate non-int but then less precise
-        sd = (p[0]-q[0])**2 + (p[1]-q[1])**2
+        sd = (p.x-q.x)**2 + (p.y-q.y)**2
         return self.squareroot(round(sd))
  
     def near(self,p,q,supdist) -> bool:
@@ -1041,7 +1087,7 @@ class Chaosbot(sc2.BotAI):
                 have = (len(self.units(barra).ready) > 0)
         return have
 
-    def we_started_a(self,barra) -> int:
+    def we_started_a(self,barra) -> bool:
         self.routine = 'we_started_a'
         have = False
         if type(barra) == UpgradeId:
@@ -1254,6 +1300,8 @@ class Chaosbot(sc2.BotAI):
     def gasminer_vacatures(self) -> int:
         return self.maxgasminers() - len(self.gast_of_scvt)
 
+    # some routines with t=(t[0],t[1]) notation
+
     def get_neighbours(self, square):
         self.neighbours = set()
         self.neighbours.add((square[0] - 1, square[1] + 0))
@@ -1264,6 +1312,44 @@ class Chaosbot(sc2.BotAI):
         self.neighbours.add((square[0] + 1, square[1] - 1))
         self.neighbours.add((square[0] + 1, square[1] + 1))
         self.neighbours.add((square[0] - 1, square[1] + 1))
+
+
+    def get_basetop(self):
+        # temporary draw the wall (armory to prevent add-on)
+        self.write_layout(SUPPLYDEPOT,self.wall_depot0_pos)
+        self.write_layout(SUPPLYDEPOT,self.wall_depot1_pos)
+        self.write_layout(ARMORY,self.wall_barracks_pos)
+        # get an empty square
+        square = (round(self.start_location.position.x-0.5),round(self.start_location.position.y-0.5))
+        while layout_if.layout[square[0]][square[1]] != 0:
+            square = (square[0]+1,square[1])
+        # expand that to the basetop
+        self.basetop = set([square])
+        edge = set([square])
+        while (len(edge) > 0):
+            newedge = set()
+            for square in edge:
+                self.get_neighbours(square)
+                for nsquare in self.neighbours:
+                    if nsquare not in self.basetop:
+                        if layout_if.layout[nsquare[0]][nsquare[1]] == 0:
+                            newedge.add(nsquare)
+            self.basetop = self.basetop | newedge
+            edge = newedge.copy()
+        # undraw the wall
+        self.erase_layout(SUPPLYDEPOT,self.wall_depot0_pos)
+        self.erase_layout(SUPPLYDEPOT,self.wall_depot1_pos)
+        self.erase_layout(ARMORY,self.wall_barracks_pos)
+
+
+    def belongs_to(self, towpos: Point2, point: Point2) -> bool:
+        if (towpos == self.start_location.position) and (len(self.basetop) > 0):
+            square = (round(point.x-0.5),round(point.y-0.5))
+            return (square in self.basetop)
+        else:
+            return self.near(towpos,point,20)
+
+    # END OF some routines with t=(t[0],t[1]) notation
 
     #   get nearest
     def get_near_scvt_to_goodjob(self,point) -> int:
@@ -1429,7 +1515,7 @@ class Chaosbot(sc2.BotAI):
         #  Also for future buildings.
         #  Use goal_of_trabu_scvt, buildorder, check_layout
         if building not in self.all_structures:
-            print('BUG 26006 '+building.name)
+            self.log_success('BUG 26006 '+building.name)
         found = False
         # try recycling
         for (th,pl) in self.recycling:
@@ -1758,7 +1844,7 @@ class Chaosbot(sc2.BotAI):
         # marine
         for thing in self.all_army:
             for thatone in self.units(thing):
-                if thatone.build_progress < 1.0:
+                if thatone.build_progress < 1.0: # doubted code
                     build_dura = self.builddura_of_thing[thing]
                     finishmoment = now + build_dura * (1.0 - thatone.build_progress)
                     self.add_sit(thing, finishmoment)
@@ -1975,13 +2061,13 @@ class Chaosbot(sc2.BotAI):
         # marine
         for thing in self.all_army:
             for thatone in self.units(thing):
-                if thatone.build_progress < 1.0:
+                if thatone.build_progress < 1.0: # doubted code
                     goal = thatone.position
                     build_dura = self.builddura_of_thing[thing]
                     finishmoment = now + build_dura * (1.0 - thatone.build_progress)
                     trainplan = (thing, goal, -1, finishmoment)
                     self.situation_training.add(trainplan)
-                    print('GOOD, this code is reached 89768564')
+                    self.log_success('GOOD, this code is reached 89768564')
         # upgrades
         for upgr in self.all_upgrades:
             progress = self.already_pending_upgrade(upgr)
@@ -2014,7 +2100,7 @@ class Chaosbot(sc2.BotAI):
                                 minfi = min(minfi,fi)
                         if startconstr < minfi:
                             if minfi >= finishmoment:
-                                print('bug 756473: tech predecessor not started')
+                                self.log_success('bug 756473: tech predecessor not started '+thing.name+' '+neededthing.name)
                             else:
                                 todel.add(bp)
                                 toadd.add((scvt,thing,goal,minusone,minfi,finishmoment))
@@ -2382,7 +2468,7 @@ class Chaosbot(sc2.BotAI):
                                 current_spendable_vespene = current_spendable_vespene - cost.vespene
                         current_events = current_events - del_current_events
                     if len(current_events) == 0:
-                        print('INTERNAL ERROR 227860 '+beautiful_thing.name)
+                        self.log_success('INTERNAL ERROR 227860 '+beautiful_thing.name)
     #               grow
                     dura = plan_moment - current_moment
                     current_spendable_minerals = current_spendable_minerals+dura*(current_mimminers*self.mim_speed)
@@ -2720,6 +2806,10 @@ class Chaosbot(sc2.BotAI):
             for pair in self.cradle:
                 if pair[1] == ARMORY:
                     self.blunt_to_bagofthings(pair[0])
+        if (len(self.structures(ENGINEERINGBAY).ready.idle) > 0):
+            for pair in self.cradle:
+                if pair[1] == ENGINEERINGBAY:
+                    self.blunt_to_bagofthings(pair[0])
         # defence
         if (self.we_started_amount(PLANETARYFORTRESS) * 2 < ccs):
             self.blunt_to_bagofthings(PLANETARYFORTRESS)
@@ -2756,8 +2846,9 @@ class Chaosbot(sc2.BotAI):
     async def make_planning_exe(self):
         self.routine = 'make_planning_exe'
         # cut off a dream at the loss of a structure
-        if len(self.structures) < self.but_i_had_structures:
-            self.log_success('$$$$$$$ lost a building; breaking off _exe and cheese')
+        i_have_structures = len(self.structures) - len(self.structures(BUNKER))
+        if i_have_structures < self.but_i_had_structures:
+            self.log_success('$$$$$$$ lost a building; breaking off _exe')
             self.bagofthings_exe = []
             self.bagoftree_exe = []
             self.buildseries_exe = []
@@ -2767,8 +2858,6 @@ class Chaosbot(sc2.BotAI):
             self.buildorder_exe = []
             self.buildplan_exe = []
             self.clean_layout()
-            self.cheese_phase = 'Z'
-            self.cheese_scv = None
             # cancel current orders too
             self.ambition_of_strt = {}
             self.ambiwalk_exe = set()
@@ -2784,23 +2873,20 @@ class Chaosbot(sc2.BotAI):
                         self.log_command('scv(AbilityId.STOP)')
                         scv(AbilityId.STOP)
             vision_of_scvt = {}
-        self.but_i_had_structures = len(self.structures)
+        self.but_i_had_structures = i_have_structures
         # first make buildseries
         if ((len(self.buildorder_exe) == 0)) \
         or ((len(self.buildorder_exe) < 5) and (self.game_phase == 'endgame')):
             # phase
             if self.game_phase == 'init':
-                await self._client.chat_send('opening', team_only=False)
                 self.game_phase = 'opening'
                 self.log_success('============================================================ opening =========')
                 self.log_buildseries('game_phase')
             elif self.game_phase == 'opening':
-                await self._client.chat_send('midgame', team_only=False)
                 self.game_phase = 'midgame'
                 self.log_buildseries('game_phase')
                 self.log_success('============================================================ midgame ======')
             elif self.game_phase == 'midgame':
-                await self._client.chat_send('endgame', team_only=False)
                 self.game_phase = 'endgame'
                 self.log_buildseries('game_phase')
                 self.log_success('============================================================ endgame =======')
@@ -2847,28 +2933,6 @@ class Chaosbot(sc2.BotAI):
         self.planning_of_buildorder(0,0)
         self.optimize_planning()
         self.planning_exe = self.planning.copy()
-
-    def wall_barracks_redirect(self):
-        wallseen = False
-        for bu in self.structures(BARRACKS) + self.structures(BARRACKSFLYING):
-            if bu.position == self.wall_barracks_pos:
-                wallseen = True
-            if bu.tag in self.home_of_flying_struct:
-                if self.home_of_flying_struct[bu.tag] == self.wall_barracks_pos:
-                    wallseen = True
-        if not wallseen:
-            first = True
-            for bu in self.structures(BARRACKS).ready.idle + self.structures(BARRACKSFLYING):
-                if (self.cheese_phase == 'Z') or (bu != self.cheese_barracks):
-                    if first:
-                        first = False
-                        self.log_success('redirecting a barracks to the wall')
-                        self.home_of_flying_struct[bu.tag] = self.wall_barracks_pos
-                        if bu not in self.structures(BARRACKSFLYING):
-                            self.landings_of_flying_struct[bu.tag] = 0
-                            self.log_success('up BARRACKS')
-                            self.log_command('bu(AbilityId.LIFT')
-                            bu(AbilityId.LIFT)
 
     # *********************************************************************************************************************
 
@@ -2921,11 +2985,12 @@ class Chaosbot(sc2.BotAI):
                     del self.planning_exe[self.planning_exe.index(bp)]
                     first = False
             tp = (thing,place)
-            if tp not in self.buildorder_exe:
-                print('BUG ALARM ' + thing.name + ' ' + str(place.x) + ',' + str(place.y) + '  NOT IN:')
-                for (th,pl) in self.buildorder_exe:
-                    print('BUG ALARM ' + th.name + ' ' + str(pl.x) + ',' + str(pl.y))
-            del self.buildorder_exe[self.buildorder_exe.index(tp)]
+            if tp in self.buildorder_exe:
+                del self.buildorder_exe[self.buildorder_exe.index(tp)]
+            else:
+                self.log_success('BUG ALARM ' + thing.name + ' ' + str(place.x) + ',' + str(place.y) + '  NOT IN:')
+                for (th, pl) in self.buildorder_exe:
+                    self.log_success('BUG ALARM ' + th.name + ' ' + str(pl.x) + ',' + str(pl.y))
             # recalc to INFESTED
             infa_thing = thing
             if tp == (BUNKER,self.cheese_bunker_pos):
@@ -2936,7 +3001,8 @@ class Chaosbot(sc2.BotAI):
                 infa_thing = INFESTEDBARRACKS
             elif tp == (STARPORT,self.cheese_starport_pos):
                 infa_thing = INFESTEDSTARPORT
-            del self.buildseries_exe[self.buildseries_exe.index(infa_thing)]
+            if infa_thing in self.buildseries_exe:
+                del self.buildseries_exe[self.buildseries_exe.index(infa_thing)]
             # no infested in the bags
             if thing in self.bagoftree_exe:
                 del self.bagoftree_exe[self.bagoftree_exe.index(thing)]
@@ -2972,12 +3038,14 @@ class Chaosbot(sc2.BotAI):
             (scvt, thing, place, sr, sc, fi) = bp
             del self.planning_exe[self.planning_exe.index(bp)]
             tp = (thing, place)
-            if tp not in self.buildorder_exe:
-                print('BUG ALARM2 ' + thing.name + ' ' + str(place.x) + ',' + str(place.y) + '  NOT IN:')
+            if tp in self.buildorder_exe:
+                del self.buildorder_exe[self.buildorder_exe.index(tp)]
+            else:
+                self.log_success('BUG ALARM2 ' + thing.name + ' ' + str(place.x) + ',' + str(place.y) + '  NOT IN:')
                 for (th, pl) in self.buildorder_exe:
-                    print('BUG ALARM2 ' + th.name + ' ' + str(pl.x) + ',' + str(pl.y))
-            del self.buildorder_exe[self.buildorder_exe.index(tp)]
-            del self.buildseries_exe[self.buildseries_exe.index(thing)]
+                    self.log_success('BUG ALARM2 ' + th.name + ' ' + str(pl.x) + ',' + str(pl.y))
+            if thing in self.buildseries_exe:
+                del self.buildseries_exe[self.buildseries_exe.index(thing)]
             if thing in self.bagoftree_exe:
                 del self.bagoftree_exe[self.bagoftree_exe.index(thing)]
             if thing in self.bagofthings_exe:
@@ -3001,48 +3069,54 @@ class Chaosbot(sc2.BotAI):
         self.routine = 'throw_nopaycheck'
         # build the thing if possible
         # ambiwalk_thrown: (scvt,th,pl) between throw request and actual payment start
-        if thing == REFINERY:
-            if self.find_tobuildwalk_a_place(thing):
-                place = self.function_result_Point2
-                scvt = self.get_near_scvt_to_goodjob(place)
-                if await self.build_thing_tobuildwalk(scvt, thing, place):
-                    self.write_layout(thing, place)
-                    self.log_success('thrown ' + thing.name)
-                    self.ambiwalk_thrown.add((scvt,thing, place))
-        elif thing in self.all_structures_tobuildwalk:
-            if self.find_tobuildwalk_a_place(thing):
-                place = self.function_result_Point2
-                scvt = self.get_near_scvt_to_goodjob(place)
-                if await self.build_thing_tobuildwalk(scvt, thing, place):
-                    self.write_layout(thing, place)
-                    self.log_success('thrown '+thing.name)
-                    self.ambiwalk_thrown.add((scvt,thing,place))
-        elif thing in (ORBITALCOMMAND,PLANETARYFORTRESS):
-            ccs = self.structures(COMMANDCENTER).ready
-            if len(ccs) > 0:
-                cc = random.choice(ccs)
+        # throw max 5 parallel
+        parallel = 0
+        for scvt in self.structure_of_trabu_scvt:
+            if self.structure_of_trabu_scvt[scvt] == thing:
+                parallel = parallel + 1
+        if parallel < 5:
+            if thing == REFINERY:
+                if self.find_tobuildwalk_a_place(thing):
+                    place = self.function_result_Point2
+                    scvt = self.get_near_scvt_to_goodjob(place)
+                    if await self.build_thing_tobuildwalk(scvt, thing, place):
+                        self.write_layout(thing, place)
+                        self.log_success('thrown ' + thing.name)
+                        self.ambiwalk_thrown.add((scvt,thing, place))
+            elif thing in self.all_structures_tobuildwalk:
+                if self.find_tobuildwalk_a_place(thing):
+                    place = self.function_result_Point2
+                    scvt = self.get_near_scvt_to_goodjob(place)
+                    if await self.build_thing_tobuildwalk(scvt, thing, place):
+                        self.write_layout(thing, place)
+                        self.log_success('thrown '+thing.name)
+                        self.ambiwalk_thrown.add((scvt,thing,place))
+            elif thing in (ORBITALCOMMAND,PLANETARYFORTRESS):
+                ccs = self.structures(COMMANDCENTER).ready
+                if len(ccs) > 0:
+                    cc = random.choice(ccs)
+                    place = cc.position
+                    if await self.build_thing(thing, place):
+                        self.log_success('thrown ' + thing.name)
+                        self.ambiwalk_thrown.add((self.notag, thing, place))
+            elif thing in self.all_upgrades:
+                cc = random.choice(self.structures(ARMORY).ready)
                 place = cc.position
                 if await self.build_thing(thing, place):
                     self.log_success('thrown ' + thing.name)
-                    self.ambiwalk_thrown.add((self.notag, thing, place))
-        elif thing in self.all_upgrades:
-            cc = random.choice(self.structures(ARMORY).ready)
-            place = cc.position
-            if await self.build_thing(thing, place):
-                self.log_success('thrown ' + thing.name)
-        elif thing in self.all_labs:
-            for strtype in (BARRACKS,FACTORY,STARPORT):
-                sps = self.structures(strtype).ready
-                if len(sps) > 0:
-                    sp = random.choice(sps)
-                    place = sp.position
-                    if await self.build_thing(thing, place):
-                        self.log_success('thrown ' + thing.name)
-                        self.ambiwalk_thrown.add((self.notag,thing, place))
-        else: # mar
-            place = self.nowhere
-            if await self.build_thing(thing, place):
-                self.log_success('thrown '+thing.name)
+            elif thing in self.all_labs:
+                for strtype in (BARRACKS,FACTORY,STARPORT):
+                    sps = self.structures(strtype).ready
+                    if len(sps) > 0:
+                        sp = random.choice(sps)
+                        place = sp.position
+                        if await self.build_thing(thing, place):
+                            self.log_success('thrown ' + thing.name)
+                            self.ambiwalk_thrown.add((self.notag,thing, place))
+            else: # mar
+                place = self.nowhere
+                if await self.build_thing(thing, place):
+                    self.log_success('thrown '+thing.name)
 
 
     async def supplydepots_adlib(self):
@@ -3106,6 +3180,8 @@ class Chaosbot(sc2.BotAI):
                 if self.supply_used < 194:
                     if (self.army_supply < good_army_supply):
                         await self.throw(MARINE)
+                        if self.minerals > 1500:
+                            await self.throw(BARRACKS)
                     else: # expand, defend
                         if mts < ccs * 8:
                             await self.throw(MISSILETURRET)
@@ -3115,8 +3191,21 @@ class Chaosbot(sc2.BotAI):
                         await self.throw(MISSILETURRET)
                     await self.throw(COMMANDCENTER)
 
+    def reset_workers(self):
+        self.routine = 'reset_workers'
+        if self.count_of_job['traveller'] > 10:
+            self.log_success('Something went terribly wrong. Resetting workers.')
+            for scvt in self.all_scvt:
+                self.job_of_scvt[scvt] = 'idler'
+            self.goal_of_trabu_scvt = {}
+            self.structure_of_trabu_scvt = {}
+            self.ambiwalk_exe = set()
+            self.ambiwalk_thrown = set()
+            self.ambition_of_strt = {}
+            self.mimt_of_scvt = {}
+            self.gast_of_scvt = {}
 
-    #*********************************************************************************************************************
+#*********************************************************************************************************************
 
     def may_do_now(self, scvt,building,goal) -> bool:
         md = ((scvt, building, goal) in self.ambiwalk_thrown)
@@ -3387,6 +3476,13 @@ class Chaosbot(sc2.BotAI):
 #*********************************************************************************************************************
 #   army movement routines
 
+    def see_enemies(self):
+        for ene in self.enemy_units:
+            if ene.type_id not in self.all_workertypes:
+                self.seen_enemy_units.add(ene)
+        for ene in self.enemy_structures:
+            self.seen_enemy_structuretypes.add(ene.type_id)
+
     def close_to_a_my_base(self,pos) -> bool:
         clos = False
         for tow in self.all_bases:
@@ -3422,8 +3518,8 @@ class Chaosbot(sc2.BotAI):
                 qual = 10
                 for ene in self.enemy_structures:
                     if ene.type_id in (MISSILETURRET,PHOTONCANNON,SPORECRAWLER):
-#                       bc.radius+spore.air_range+spore.radius   estimate
-                        if self.near(point,ene.position,8):
+#                       bc.radius+spore.air_range+spore.radius   estimate 1.5+7+0.5
+                        if self.near(point,ene.position,9):
                             qual = qual-1
         return qual
 
@@ -3496,12 +3592,13 @@ class Chaosbot(sc2.BotAI):
         for srt in [BATTLECRUISER,MARINE,MARAUDER]:
             if (self.attack_type != 'jumpy') or (srt != BATTLECRUISER):
                 for ar in self.units(srt).ready.idle:
-                    if (self.cheese_phase == 'Z') or (not self.near(ar.position,self.cheese_prison_pos,4)):
-                        if not (ar.tag in self.bct_in_repair):
-                            if self.quality_of_army_position(ar.position) <= 5:
-                                sent = sent + 1
-                                self.log_command(srt.name+'.attack(tp)')
-                                ar.attack(tp)
+                    if (self.cheese_phase in ('A','Z')) or (not self.near(ar.position,self.cheese_prison_pos,4)):
+                        if ar.tag not in self.martag_to_bunker:
+                            if ar.tag not in self.bct_in_repair:
+                                if self.quality_of_army_position(ar.position) <= 5:
+                                    sent = sent + 1
+                                    self.log_command(srt.name+'.attack(tp)')
+                                    ar.attack(tp)
         if sent > 0:
             self.log_army(' with '+str(sent))
 #       
@@ -3807,7 +3904,7 @@ class Chaosbot(sc2.BotAI):
                 # calc enemies and defenders
                 enemies = []
                 for ene in self.enemy_units + self.enemy_structures:
-                    if self.near(tow.position,ene.position,20):
+                    if self.belongs_to(tow.position,ene.position):
                         if not ene.is_flying:
                             enemies.append(ene)
                 defenders = set()
@@ -3816,7 +3913,7 @@ class Chaosbot(sc2.BotAI):
                     if scvt in self.all_scvt:
                         job = self.job_of_scvt[scvt]
                         if (job == 'defender'):
-                            if self.near(tow.position, myscv.position, 30):
+                            if self.belongs_to(tow.position, myscv.position):
                                 defenders.add(myscv)
                 if len(defenders) > 0:
                     # dismiss veterans
@@ -3840,7 +3937,7 @@ class Chaosbot(sc2.BotAI):
                     toget = len(enemies) + 3 - len(defenders)
                     for myscv in self.units(SCV):
                         if toget > 0:
-                            if self.near(tow.position,myscv.position,20):
+                            if self.belongs_to(tow.position,myscv.position):
                                 if myscv.health >= 12:
                                     scvt = myscv.tag
                                     if scvt in self.all_scvt:
@@ -3923,8 +4020,125 @@ class Chaosbot(sc2.BotAI):
                             self.cheese_tank_count = self.cheese_tank_count + 1
 
 
+    def recruite(self):
+        # recruit 2 marines and send them to cheese2_bunker
+        for mari in self.units(MARINE):
+            if len(self.martag_to_bunker) < 2:
+                if mari.tag not in self.martag_to_bunker:
+                    if self.cheese_bunker == None:
+                        self.log_command('mari.move(self.cheese2_bunker_pos)')
+                        mari.move(self.cheese2_bunker_pos)
+                        self.martag_to_bunker.add(mari.tag)
+                    elif len(self.cheese_bunker.passengers) == 4:
+                        self.log_command('mari.move(self.cheese2_bunker_pos)')
+                        mari.move(self.cheese2_bunker_pos)
+                        self.martag_to_bunker.add(mari.tag)
+                    elif not self.near(mari.position,self.cheese_bunker.position,7):
+                        self.log_command('mari.move(self.cheese2_bunker_pos)')
+                        mari.move(self.cheese2_bunker_pos)
+                        self.martag_to_bunker.add(mari.tag)
+        if len(self.martag_to_bunker) < 2:
+            for bar in self.structures(BARRACKS).ready.idle:
+                if self.can_pay(MARINE) and not self.we_started_a(MARINE):
+                    self.log_command('bar.train(MARINE)')
+                    bar.train(MARINE)
+
+
+
+    async def bunkercheese2(self):
+        self.routine = 'bunkercheese2'
+        if self.cheese2_phase == 'A':
+            if (self.cheese_phase >= 'B') and (self.cheese_phase < 'Z'):
+                for ene in self.enemy_structures:
+                    if ene.type_id in (COMMANDCENTER,NEXUS,HATCHERY):
+                        if ene.position != self.enemyloc:
+                            # get place for a bunker
+                            besttry = 9999
+                            self.cheese2_bunker_pos = self.nowhere
+                            for dx in range(-10,10):
+                                for dy in range(-10,10):
+                                    maypos = Point2((ene.position.x+dx, ene.position.y+dy))
+                                    self.put_on_the_grid(BUNKER, maypos)
+                                    maypos = self.function_result_Point2
+                                    if self.check_layout(BUNKER,maypos):
+                                        sd = self.sdist(ene.position,maypos)
+                                        # next constant is the ideal distance for the bunker
+                                        try0 = abs(sd-79)
+                                        if try0 < besttry:
+                                            self.cheese2_bunker_pos = maypos
+                                            besttry = try0
+                                            self.cheese2_phase = 'B'
+        elif self.cheese2_phase == 'B':
+            # build a bunker near his second townhall
+            place = self.cheese2_bunker_pos
+            thing = BUNKER
+            scvt = self.get_near_scvt_to_goodjob(place)
+            if await self.build_thing_tobuildwalk(scvt, thing, place):
+                self.write_layout(thing, place)
+                self.log_success('thrown ' + thing.name)
+                self.ambiwalk_thrown.add((scvt, thing, place))
+                self.cheese2_phase = 'C'
+        elif self.cheese2_phase == 'C':
+            for bu in self.structures(BUNKER):
+                if bu.position == self.cheese2_bunker_pos:
+                    self.cheese2_bunker = bu
+                    self.cheese2_phase = 'D'
+        elif self.cheese2_phase == 'D':
+            # recruit
+            self.recruite()
+            # bunker still there?
+            if self.cheese2_bunker not in self.structures(BUNKER):
+                self.cheese2_phase = 'Z'
+                self.martag_to_bunker = set()
+            # wait for bunker ready
+            for bu in self.structures(BUNKER).ready:
+                if bu.position == self.cheese2_bunker_pos:
+                    self.cheese2_phase = 'E'
+        elif self.cheese2_phase == 'E':
+            # recruit
+            self.recruite()
+            # bunker still there?
+            if self.cheese2_bunker not in self.structures(BUNKER):
+                self.cheese2_phase = 'Z'
+                self.martag_to_bunker = set()
+            # repair that bunker
+            if self.cheese_scv != None:
+                scv = self.cheese_scv
+                scv.move(self.cheese2_bunker_pos)
+                self.job_of_scvt[scv.tag] = 'arearepairer'
+                self.cheese_scv = None
+            # bunker ready, load
+            for mari in self.units(MARINE):
+                if mari.tag in self.martag_to_bunker:
+                    if self.near(mari.position,self.cheese2_bunker_pos,7):
+                        self.log_command('self.cheese2_bunker(AbilityId.LOAD_BUNKER,mari)')
+                        self.cheese2_bunker(AbilityId.LOAD_BUNKER,mari)
+            if len(self.cheese2_bunker.passengers) >= 2:
+                self.cheese2_phase = 'Z'
+
+
+
+
     async def bunkercheese(self):
         self.routine = 'bunkercheese'
+        # break off the cheese?
+        if (self.cheese_phase >= 'B') and (self.cheese_phase < 'Z'):
+            startedbuildings = 0
+            for barra in self.structures(BARRACKS).ready:
+                if barra.position != self.cheese_barracks_pos:
+                    if self.near(barra.position,self.cheese_landing_pos,7):
+                        startedbuildings = startedbuildings+1
+            for bunk in self.structures(BUNKER):
+                if self.near(bunk.position,self.cheese_bunker_pos,7):
+                    self.cheese_bunker = bunk
+                    startedbuildings = startedbuildings + 1
+            if startedbuildings == 0:
+                self.cheese_phase = 'Z'
+                self.cheese_scv = None
+                self.cheese_tank = None
+                self.cheese_mine = None
+                self.log_success('ending the bunkercheese')
+        # follow a large series of phases
         if self.cheese_phase == 'Anobunker':
             if await self.build_thing_tobuildwalk(self.cheese_scv.tag, BUNKER, self.cheese_bunker_pos):
                 self.ambiwalk_thrown.add((self.cheese_scv.tag,BUNKER,self.cheese_bunker_pos))
@@ -3988,8 +4202,6 @@ class Chaosbot(sc2.BotAI):
             if self.cheese_bunker not in self.structures(BUNKER):
                 if self.cheese_scv in self.units(SCV):
                     self.cheese_phase = 'Anobunker'
-                    # execute bunkercheese before make_planning_exe
-                    self.but_i_had_structures = 0
             if self.cheese_bunker in self.structures(BUNKER).ready:
                 # rally and load
                 self.log_command('self.cheese_barracks(AbilityId.RALLY_BUILDING,self.cheese_bunker)')
@@ -4007,8 +4219,9 @@ class Chaosbot(sc2.BotAI):
                 if self.near(mari.position, self.cheese_landing_pos, 7):
                     self.cheese_marines.add(mari)
             for mari in self.cheese_marines:
-                self.log_command('self.cheese_bunker(AbilityId.LOAD_BUNKER,mari)')
-                self.cheese_bunker(AbilityId.LOAD_BUNKER,mari)
+                if len(self.cheese_bunker.passengers) < 4:
+                    self.log_command('self.cheese_bunker(AbilityId.LOAD_BUNKER,mari)')
+                    self.cheese_bunker(AbilityId.LOAD_BUNKER,mari)
             self.cheese_phase = 'E'
         elif self.cheese_phase == 'E':
             # we want to unload the cheese_scv, but it is said only unloadall works
@@ -4028,8 +4241,9 @@ class Chaosbot(sc2.BotAI):
                     if self.near(mari.position, self.cheese_landing_pos, 7):
                         self.cheese_marines.add(mari)
                 for mari in self.cheese_marines:
-                    self.log_command('self.cheese_bunker(AbilityId.LOAD_BUNKER,mari)')
-                    self.cheese_bunker(AbilityId.LOAD_BUNKER,mari)
+                    if len(self.cheese_bunker.passengers) < 4:
+                        self.log_command('self.cheese_bunker(AbilityId.LOAD_BUNKER,mari)')
+                        self.cheese_bunker(AbilityId.LOAD_BUNKER,mari)
                 self.cheese_phase = 'H'
             else: # cheese_scv is still inside the bunker
                 self.cheese_phase = 'E'
@@ -4040,8 +4254,9 @@ class Chaosbot(sc2.BotAI):
                 if self.near(mari.position, self.cheese_landing_pos, 7):
                     self.cheese_marines.add(mari)
             for mari in self.cheese_marines:
-                self.log_command('self.cheese_bunker(AbilityId.LOAD_BUNKER,mari)')
-                self.cheese_bunker(AbilityId.LOAD_BUNKER,mari)
+                if len(self.cheese_bunker.passengers) < 4:
+                    self.log_command('self.cheese_bunker(AbilityId.LOAD_BUNKER,mari)')
+                    self.cheese_bunker(AbilityId.LOAD_BUNKER,mari)
             # the real meaning of this phase is to wait for the factory
             for facta in self.structures(FACTORY).ready:
                 if facta.position == self.cheese_factory_pos:
@@ -4085,20 +4300,27 @@ class Chaosbot(sc2.BotAI):
             ba = self.cheese_barracks
             oldpoint = ba.position
             oldsdist = self.sdist(oldpoint,self.enemyloc)
-            altpoint = Point2((oldpoint.x + random.randrange(-4, 4), (oldpoint.y + random.randrange(-4, 4))))
-            altsdist = self.sdist(altpoint,self.enemyloc)
+            self.erase_layout(ARMORY, oldpoint)
+            altpoint = oldpoint
+            altsdist = oldsdist
             tries = 0
-            while ((not self.check_layout(ARMORY, altpoint)) or (altsdist >= oldsdist)) and (tries < 50) :
+            while ((not self.check_layout(ARMORY, altpoint)) or (altsdist >= oldsdist)) and (tries < 100) :
                 tries = tries + 1
                 altpoint = Point2((oldpoint.x + random.randrange(-4, 4), (oldpoint.y + random.randrange(-4, 4))))
                 altsdist = self.sdist(altpoint,self.enemyloc)
-            if tries < 50:
+            if tries < 100:
+                if not self.cheese_barracks.is_idle:
+                    self.log_command('self.cheese_barracks(AbilityId.CANCEL)')
+                    self.cheese_barracks(AbilityId.CANCEL)
                 self.home_of_flying_struct[ba.tag] = altpoint
                 self.landings_of_flying_struct[ba.tag] = 0
                 self.log_success('up cheesebarracks')
                 self.log_command('ba(AbilityId.LIFT')
                 ba(AbilityId.LIFT)
+                self.write_layout(ARMORY, altpoint)
                 self.cheese_phase = 'M'
+            else:
+                self.write_layout(ARMORY, oldpoint)
         elif self.cheese_phase == 'M':
             if self.can_pay(WIDOWMINE) and not self.we_started_a(WIDOWMINE):
                 self.log_command('self.cheese_factory.train(WIDOWMINE)')
@@ -4119,7 +4341,7 @@ class Chaosbot(sc2.BotAI):
                 self.cheese_mine(AbilityId.BURROWDOWN_WIDOWMINE)
                 self.cheese_phase = 'Z'
         # call the last phase Z
-        self.log_cheese('')
+        self.log_cheese()
 
 
 #*********************************************************************************************************************
@@ -4174,6 +4396,29 @@ class Chaosbot(sc2.BotAI):
                 # it will try to land itself
 
 
+    def wall_barracks_redirect(self):
+        wallseen = False
+        for bu in self.structures(BARRACKS) + self.structures(BARRACKSFLYING):
+            if bu.position == self.wall_barracks_pos:
+                wallseen = True
+            if bu.tag in self.home_of_flying_struct:
+                if self.home_of_flying_struct[bu.tag] == self.wall_barracks_pos:
+                    wallseen = True
+        if not wallseen:
+            first = True
+            for bu in self.structures(BARRACKS).ready.idle + self.structures(BARRACKSFLYING):
+                if (self.cheese_phase == 'Z') or (bu != self.cheese_barracks):
+                    if first:
+                        first = False
+                        self.log_success('redirecting a barracks to the wall')
+                        self.home_of_flying_struct[bu.tag] = self.wall_barracks_pos
+                        if bu not in self.structures(BARRACKSFLYING):
+                            self.landings_of_flying_struct[bu.tag] = 0
+                            self.log_success('up BARRACKS')
+                            self.log_command('bu(AbilityId.LIFT')
+                            bu(AbilityId.LIFT)
+
+
     async def do_wall_barracks(self):
         self.routine = 'do_wall_barracks'
         if not self.wall_barracks_managed:
@@ -4202,6 +4447,7 @@ class Chaosbot(sc2.BotAI):
                 for scv in self.units(SCV).idle:
                     if self.near(scv.position,sd.position,1.5):
                         whereto = self.flee(sd.position,2)
+                        self.log_command('scv.move(whereto)')
                         scv.move(whereto)
         for sd in self.structures(SUPPLYDEPOT).ready:
             if sd.tag in self.updowns:
@@ -4972,8 +5218,7 @@ class Chaosbot(sc2.BotAI):
                     max_cc_health = cc.health
             if self.supply_used>190:
                 self.game_result = 'win'
-                await self._client.chat_send('probably a win', team_only=False)
-                self.log_success('win')
+                self.log_success('probably a win')
                 for nr in range(0, len(self.strategy)):
                     if self.game_choice[nr]:
                         self.strategy[nr] = 0.9*self.strategy[nr]+0.1
@@ -4982,8 +5227,7 @@ class Chaosbot(sc2.BotAI):
                 self.write_strategy()
             elif max_cc_health < 500:
                 self.game_result = 'loss'
-                await self._client.chat_send('probably a loss', team_only=False)
-                self.log_success('loss')
+                self.log_success('probably a loss')
                 for nr in range(0, len(self.strategy)):
                     if self.game_choice[nr]:
                         self.strategy[nr] = 0.9*self.strategy[nr]
@@ -4997,11 +5241,13 @@ def main():
     # Easy/Medium/Hard/VeryHard
     all_maps = ['ThunderbirdLE','EternalEmpireLE','EverDreamLE','NightshadeLE','SimulacrumLE','ZenLE','GoldenWallLE']
     map = random.choice(all_maps)
+    #map = 'ZenLE'
     species = random.choice([Race.Terran,Race.Zerg,Race.Protoss])
+    #species = Race.Zerg
     run_game(maps.get(map), [
         Bot(Race.Terran, Chaosbot()),
         Computer(species, Difficulty.VeryHard)
-        ], realtime = True)
+        ], realtime = False)
 
 if __name__ == "__main__":
     main()
