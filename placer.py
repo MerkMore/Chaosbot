@@ -2,7 +2,7 @@
 # Makes text for building placement
 # appends the output to file "data/placement.txt"
 # author: MerkMore
-# version 12 sep 2020
+# version 27 sep 2020
 from layout_if_py import layout_if
 import random
 from math import sqrt, sin, cos, acos, pi
@@ -59,6 +59,28 @@ class prog:
         enemybasearea = set([self.enemystartsquare])
         self.extend(enemybasearea)
         self.logg('enemybasearea '+str(len(enemybasearea)))
+        self.get_edge(enemybasearea)
+        ramp = self.edge.copy()
+        self.filter_color(ramp,2)
+        ramp = self.filterresult.copy()
+        self.logg('enemyramp '+str(len(ramp)))
+        # for a multi-ramp map, the central ramp is chosen
+        mapcenter = (100,100)
+        alsoramp = set()
+        bestsd = 99999
+        for square in ramp:
+            sd = self.sdist(square,mapcenter)
+            if sd < bestsd:
+                bestsd = sd
+                alsoramp = set([square])
+        self.extend(alsoramp)
+        ramp = ramp & alsoramp
+        self.logg('restricted to 1 ramp, ramp '+str(len(ramp)))
+        self.get_center(ramp)
+        x = 0.001*round(1000*(self.center[0]+0.5))
+        y = 0.001*round(1000*(self.center[1]+0.5))
+        text.write('position ENEMYRAMP ' + str(x) + ' ' + str(y) + '\n')
+        #
         startcc = set([self.startsquare])
         self.extend(startcc)
         self.logg('startcc '+str(len(startcc)))
@@ -85,6 +107,10 @@ class prog:
         self.extend(alsoramp)
         ramp = ramp & alsoramp
         self.logg('restricted to 1 ramp, ramp '+str(len(ramp)))
+        self.get_center(ramp)
+        x = 0.001*round(1000*(self.center[0]+0.5))
+        y = 0.001*round(1000*(self.center[1]+0.5))
+        text.write('position HOMERAMP ' + str(x) + ' ' + str(y) + '\n')
         self.get_edge(ramp)
         aroundramp = self.edge.copy()
         self.filter_color(aroundramp,0)
@@ -195,14 +221,14 @@ class prog:
 #       also slightly negative weigh in the flydistance to enemy
 #       also slightly negative weigh in the flydistance to home
         best = -999
-        for pog in range(0,5000):
+        for pog in range(0,10000):
             square = (random.randrange(0,200),random.randrange(0,200))
             walk = self.walking[square[0]][square[1]]
             fly = self.fly(square,self.enemystartsquare)
             homefly = self.fly(square,self.startsquare)
-            if (walk >= 0) and (fly>10) and (fly<35):
+            if (walk >= 0) and (fly>10) and (fly<40):
                 wafy = (walk - fly)
-                wafy = wafy - 0.7*fly
+                wafy = wafy - 0.5*fly
                 wafy = wafy - 0.03*homefly
                 if wafy>best:
                     best = wafy
@@ -244,155 +270,167 @@ class prog:
             if sd >= 16*16:
                 corners.add(cornersquare)
         self.logg('corners far from creep '+str(len(corners)))
-        best = None
-        bestdist = 80000
-        for cornersquare in corners:
-            dist = self.sdist(cornersquare,barracksresult)
-            if dist < bestdist:
-                bestdist = dist
-                best = cornersquare
-        cornersquare = best
-        self.logg('cornersquare '+str(cornersquare[0])+' '+str(cornersquare[1]))
-#       now try to lock this square in with 2 3x3 blocks
-        cornersquares = set([cornersquare])
-        aroundcc = set([self.enemystartsquare])
-        totry = set()
-        for dx in range(-6,6):
-            for dy in range(-6,6):
-                square = (cornersquare[0]+dx,cornersquare[1]+dy)
-                if self.get_color(square) == 0:
-                    totry.add(square)
-        self.logg('per block '+str(len(totry))+' positions')
-        solutions = []
-        for b0 in totry:
-            if self.tryplace(3,b0):
-                self.logg('trying block 0 at '+str(b0[0])+' '+str(b0[1]))
-                for b1 in totry:
-                    if (b1[0]>b0[0]) or ((b1[0]==b0[0]) and (b1[1]>b0[1])):
-                        if self.tryplace(3,b1):
-                            if self.get_color(cornersquare) == 0:
-                                if not self.has_path(cornersquares,aroundcc):
-                                    solutions.append((b0,b1))
-                                    self.logg('      a solution')
-                            self.colorplace(3,b1,0)
-                self.colorplace(3,b0,0)
-        self.logg('found '+str(len(solutions))+' 2-block corner  solutions')
-        if len(solutions)>0:
-            asol = solutions[0]
-            for (b0,b1) in solutions:
-                self.colorplace(3,b0,4)
-                self.colorplace(3,b1,4)
-                prison = cornersquares.copy()
-                self.extend(prison)
-                if len(prison)>=3:
-                    asol = (b0,b1)
-                    asolprison = prison.copy()
-                self.colorplace(3,b0,0)
-                self.colorplace(3,b1,0)
-            # of those, the closest to the enemy should be the bunker
-            sd0 = self.sdist(asol[0],self.enemystartsquare)
-            sd1 = self.sdist(asol[1],self.enemystartsquare)
-            if sd0 < sd1:
-                text.write('position INFESTEDBUNKER '+str(asol[0][0]+1.5)+' '+str(asol[0][1]+1.5)+'\n')
-                text.write('position INFESTEDLANDING '+str(asol[1][0]+1.5)+' '+str(asol[1][1]+1.5)+'\n')
-            else:
-                text.write('position INFESTEDLANDING ' + str(asol[0][0] + 1.5) + ' ' + str(asol[0][1] + 1.5) + '\n')
-                text.write('position INFESTEDBUNKER ' + str(asol[1][0] + 1.5) + ' ' + str(asol[1][1] + 1.5) + '\n')
-            self.do_place_shape(0,asol[0])
-            self.do_place_shape(0,asol[1])
-            # write average asolprison
-            summ0 = 0
-            summ1 = 0
-            n = 0
-            for (x,y) in asolprison:
-                summ0 = summ0+x
-                summ1 = summ1+y
-                n = n+1
-            avera0 = summ0/n
-            avera1 = summ1/n
-            # use the middle of the squares
-            avera0 = avera0+0.5
-            avera1 = avera1+0.5
-            # round a bit
-            avera0 = 0.001*round(1000*avera0)
-            avera1 = 0.001*round(1000*avera1)
-            text.write('position INFESTEDPRISON '+str(avera0)+' '+str(avera1)+'\n')
-            self.logg('position INFESTEDPRISON '+str(avera0)+' '+str(avera1))
-            # get a 5x5 freespace outside enemybasearea, as a tankmove point
-            rough = (round(2*avera0 - self.enemystartsquare[0]), round(2*avera1 - self.enemystartsquare[1]))
-            if (rough[0]<0) or (rough[0]>=200) or (rough[1]<0) or (rough[1]>=200):
-                rough = (random.randrange(0, 200), random.randrange(0, 200))
+        # happy if we can find 2 2block prisoning at least 3 squares
+        happy = False
+        while not happy:
+            best = None
+            bestdist = 80000
+            for cornersquare in corners:
+                dist = self.sdist(cornersquare,barracksresult)
+                if dist < bestdist:
+                    bestdist = dist
+                    best = cornersquare
+            cornersquare = best
+            self.logg('cornersquare '+str(cornersquare[0])+' '+str(cornersquare[1]))
+            # now try to lock this square in with 2 3x3 blocks
+            cornersquares = set([cornersquare])
+            aroundcc = set([self.enemystartsquare])
+            totry = set()
+            for dx in range(-6,6):
+                for dy in range(-6,6):
+                    square = (cornersquare[0]+dx,cornersquare[1]+dy)
+                    if self.get_color(square) == 0:
+                        totry.add(square)
+            self.logg('per block '+str(len(totry))+' positions')
+            solutions = []
+            for b0 in totry:
+                if self.tryplace(3,b0):
+                    self.logg('trying block 0 at '+str(b0[0])+' '+str(b0[1]))
+                    for b1 in totry:
+                        if (b1[0]>b0[0]) or ((b1[0]==b0[0]) and (b1[1]>b0[1])):
+                            if self.tryplace(3,b1):
+                                if self.get_color(cornersquare) == 0:
+                                    if not self.has_path(cornersquares,aroundcc):
+                                        solutions.append((b0,b1))
+                                        self.logg('      a solution')
+                                self.colorplace(3,b1,0)
+                    self.colorplace(3,b0,0)
+            self.logg('found '+str(len(solutions))+' 2-block corner  solutions')
+            happy = False
+            if len(solutions)>0:
+                asol = solutions[0]
+                for (b0,b1) in solutions:
+                    self.colorplace(3,b0,4)
+                    self.colorplace(3,b1,4)
+                    prison = cornersquares.copy()
+                    self.extend(prison)
+                    if len(prison)>=3:
+                        asol = (b0,b1)
+                        asolprison = prison.copy()
+                        happy = True
+                    self.colorplace(3,b0,0)
+                    self.colorplace(3,b1,0)
+            # if not happy, delete that one from corners
+            if not happy:
+                corners.remove(cornersquare)
+        # happy
+        # of those, the closest to the enemy should be the bunker
+        sd0 = self.sdist(asol[0],self.enemystartsquare)
+        sd1 = self.sdist(asol[1],self.enemystartsquare)
+        if sd0 < sd1:
+            text.write('position INFESTEDBUNKER '+str(asol[0][0]+1.5)+' '+str(asol[0][1]+1.5)+'\n')
+            text.write('position INFESTEDLANDING '+str(asol[1][0]+1.5)+' '+str(asol[1][1]+1.5)+'\n')
+        else:
+            text.write('position INFESTEDLANDING ' + str(asol[0][0] + 1.5) + ' ' + str(asol[0][1] + 1.5) + '\n')
+            text.write('position INFESTEDBUNKER ' + str(asol[1][0] + 1.5) + ' ' + str(asol[1][1] + 1.5) + '\n')
+        self.do_place_shape(0,asol[0])
+        self.do_place_shape(0,asol[1])
+        # write average asolprison
+        summ0 = 0
+        summ1 = 0
+        n = 0
+        for (x,y) in asolprison:
+            summ0 = summ0+x
+            summ1 = summ1+y
+            n = n+1
+        avera0 = summ0/n
+        avera1 = summ1/n
+        # use the middle of the squares
+        avera0 = avera0+0.5
+        avera1 = avera1+0.5
+        # round a bit
+        avera0 = 0.001*round(1000*avera0)
+        avera1 = 0.001*round(1000*avera1)
+        text.write('position INFESTEDPRISON '+str(avera0)+' '+str(avera1)+'\n')
+        self.logg('position INFESTEDPRISON '+str(avera0)+' '+str(avera1))
+        # get a 5x5 freespace outside enemybasearea, as a tankmove point
+        rough = (round(2*avera0 - self.enemystartsquare[0]), round(2*avera1 - self.enemystartsquare[1]))
+        if (rough[0]<0) or (rough[0]>=200) or (rough[1]<0) or (rough[1]>=200):
+            rough = (random.randrange(0, 200), random.randrange(0, 200))
+        sd = self.sdist(rough,self.enemystartsquare)
+        while (sd<10*10) or (sd>50*50):
+            rough = (random.randrange(0, 200), random.randrange(0, 200))
             sd = self.sdist(rough,self.enemystartsquare)
-            while (sd<10*10) or (sd>50*50):
-                rough = (random.randrange(0, 200), random.randrange(0, 200))
-                sd = self.sdist(rough,self.enemystartsquare)
-            self.logg('rough '+str(rough[0])+','+str(rough[1]))
-            placed = False
-            dist = 0
-            while not placed:
-                dist = dist + 1
-                for dx in range(-dist, dist):
-                    for dy in range(-dist, dist):
-                        square = (rough[0] + dx, rough[1] + dy)
-                        if self.can_place_shape(2,square):
-                            freespace = (square[0]+1,square[1]+1)
-                            placed = True
-            self.logg('freespace '+str(freespace[0])+','+str(freespace[1]))
-            # get a 2x2 place for a tank near cheeseprison but outside enemybasearea
-            self.logg('B')
-            around = (round(avera0),round(avera1))
-            bestsd = 9999
-            for x in range(around[0]-10,around[0]+10):
-                for y in range(around[1]-10,around[1]+10):
-                    square = (x,y)
-                    if square not in enemybasearea:
-                        if self.istile(square): # can place a tank
-                            if self.has_tankpath(square,freespace):
-                                sd = self.sdist(square,around)
-                                if sd < bestsd:
-                                    bestsquare = square
-                                    bestsd = sd
-            tanksquare = bestsquare
-            text.write('position INFESTEDTANK '+str(tanksquare[0])+' '+str(tanksquare[1])+'\n')
-            self.logg('position INFESTEDTANK '+str(tanksquare[0])+' '+str(tanksquare[1]))
-            # Color the tankpath until we found a factory place.
-            surely = self.has_tankpath(tanksquare, freespace) # to get the right tankpath
-            self.color_tankpath(4)
-            stored_tankpath = self.tankpath.copy()
-            self.logg('tankpath ' + str(len(self.tankpath)))
-            # now we can draw the barracks, even if it is on the tankspot
-            self.do_place_shape(0,barracksresult)
-            # make freespace reachable
-            self.colortile(freespace,0)
-            # factory
-            # get infested_factory place, about 8 from the infestedbarracks, away from the enemy
-            vector = (barracksresult[0] - self.enemystartsquare[0], barracksresult[1] - self.enemystartsquare[1])
-            factor = 8 / sqrt(self.sdist(barracksresult, self.enemystartsquare))
-            factorysuggestion = (round(barracksresult[0] + factor * vector[0]), \
-                                 round(barracksresult[1] + factor * vector[1]))
-            # now we hope to place a factory there
-            leftunder = (factorysuggestion[0] - 1, factorysuggestion[1] - 1)
-            placed = False
-            dist = 0
-            while not placed:
-                dist = dist + 1
-                for dx in range(-dist, dist):
-                    for dy in range(-dist, dist):
+        self.logg('rough '+str(rough[0])+','+str(rough[1]))
+        placed = False
+        dist = 0
+        while not placed:
+            dist = dist + 1
+            for dx in range(-dist, dist):
+                for dy in range(-dist, dist):
+                    square = (rough[0] + dx, rough[1] + dy)
+                    if self.can_place_shape(2,square):
+                        freespace = (square[0]+2,square[1]+2)
+                        placed = True
+        self.logg('freespace '+str(freespace[0])+','+str(freespace[1]))
+        # get a 2x2 place for a tank near cheeseprison but outside enemybasearea
+        self.logg('B')
+        around = (round(avera0),round(avera1))
+        bestsd = 9999
+        for x in range(around[0]-10,around[0]+10):
+            for y in range(around[1]-10,around[1]+10):
+                square = (x,y)
+                if square not in enemybasearea:
+                    if self.istile(square): # can place a tank
+                        sd = self.sdist(square,around)
+                        if sd < bestsd:
+                            if self.has_tankpath(square, freespace):
+                                bestsquare = square
+                                bestsd = sd
+        tanksquare = bestsquare
+        text.write('position INFESTEDTANK '+str(tanksquare[0])+' '+str(tanksquare[1])+'\n')
+        self.logg('position INFESTEDTANK '+str(tanksquare[0])+' '+str(tanksquare[1]))
+        # Color the tankpath until we found a factory place.
+        surely = self.has_tankpath(tanksquare, freespace) # to get the right tankpath
+        self.color_tankpath(4)
+        stored_tankpath = self.tankpath.copy()
+        self.logg('tankpath ' + str(len(self.tankpath)))
+        # now we can draw the barracks, even if it is on the tankspot
+        self.do_place_shape(0,barracksresult)
+        # make freespace reachable
+        self.colortile(freespace,0)
+        # for debugging, a photo
+        layout_if.photo_layout()
+        # factory
+        # get infested_factory place, about 14 from the infestedbarracks, away from the enemy
+        vector = (barracksresult[0] - self.enemystartsquare[0], barracksresult[1] - self.enemystartsquare[1])
+        factor = 14 / sqrt(self.sdist(barracksresult, self.enemystartsquare))
+        factorysuggestion = (round(barracksresult[0] + factor * vector[0]), \
+                             round(barracksresult[1] + factor * vector[1]))
+        # now we hope to place a factory there
+        leftunder = (factorysuggestion[0] - 1, factorysuggestion[1] - 1)
+        placed = False
+        dist = 0
+        while not placed:
+            dist = dist + 1
+            for dx in range(-dist, dist):
+                for dy in range(-dist, dist):
+                    if abs(dx)+abs(dy)+max(abs(dx),abs(dy)) == dist:
                         maybe = (leftunder[0] + dx, leftunder[1] + dy)
                         tile = (maybe[0]+1,maybe[1]+1)
                         if self.can_place_shape(1, maybe):
                             if self.has_tankpath(tile,freespace):
                                 factoryresult = maybe
                                 placed = True
-            # Usually this result is a good cheese building place
-            text.write('position INFESTEDFACTORY ' + str(factoryresult[0] + 1.5) + ' ' + str(factoryresult[1] + 1.5) + '\n')
-            self.logg('position INFESTEDFACTORY ' + str(factoryresult[0] + 1.5) + ' ' + str(factoryresult[1] + 1.5))
-            self.do_place_shape(1,factoryresult)
-            # erase the stored tankpath roughly
-            self.tankpath = stored_tankpath
-            self.color_tankpath(0)
-            self.do_place_shape(0,barracksresult)
-            self.do_place_shape(1,factoryresult)
+        # Usually this result is a good cheese building place
+        text.write('position INFESTEDFACTORY ' + str(factoryresult[0] + 1.5) + ' ' + str(factoryresult[1] + 1.5) + '\n')
+        self.logg('position INFESTEDFACTORY ' + str(factoryresult[0] + 1.5) + ' ' + str(factoryresult[1] + 1.5))
+        self.do_place_shape(1,factoryresult)
+        # erase the stored tankpath roughly
+        self.tankpath = stored_tankpath
+        self.color_tankpath(0)
+        self.do_place_shape(0,barracksresult)
+        self.do_place_shape(1,factoryresult)
         # make scout positions just inside the enemy base
         self.get_edge(enemybasearea)
         outside = self.edge.copy()
