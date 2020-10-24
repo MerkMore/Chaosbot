@@ -2,7 +2,7 @@
 # Makes text for building placement
 # appends the output to file "data/placement.txt"
 # author: MerkMore
-# version 27 sep 2020
+# version 21 oct 2020
 from layout_if_py import layout_if
 import random
 from math import sqrt, sin, cos, acos, pi
@@ -27,23 +27,33 @@ class prog:
 #   the map with walk-distances to enemystartsquare
     walking = []
     tankpath = []
+    maps = []
 
     def main(self):
-        layout_if.load_layout()
-        print('I can append to data/placement.txt')
-        self.mapplace = 'map: '+layout_if.mapname+' '+str(layout_if.startx)+' '+str(layout_if.starty)
-        print('looking for:   '+self.mapplace)
-        text = open('data/placement.txt','r')
+        # get maps
+        self.maps = []
+        print('data/layout.txt:')
+        with open('data/layout.txt','r') as open_file:
+            for linen in open_file:
+                line = linen.rstrip('\n')
+                if (line[0] == 'm') and (line[1] == 'a') and (line[2] == 'p'):
+                    print(line)
+                    self.maps.append(line)
+        # get placement.txt (there may be some output already)
+        text = open('data/placement.txt', 'r')
         content = text.read().splitlines()
-        for line in content:
-            if (line[0] == 'm') and (line[1] == 'a') and (line[2] == 'p'):
-                print(line)
         text.close()
-        if self.mapplace in content:
-            print('No action, the map is already in data/placement.txt')
-        else:
-            print('Not found, so I will append to data/placement.txt')
-            self.appendthemap()
+        for self.mapplace in self.maps:
+            old = False
+            for line in content:
+                if line == self.mapplace:
+                    old = True
+            if old:
+                print(self.mapplace+' is already in data/placement.txt')
+            else:
+                print('analyzing '+self.mapplace)
+                layout_if.load_layout(self.mapplace)
+                self.appendthemap()
 
 
     def appendthemap(self):
@@ -400,7 +410,7 @@ class prog:
         # make freespace reachable
         self.colortile(freespace,0)
         # for debugging, a photo
-        layout_if.photo_layout()
+        #layout_if.photo_layout()
         # factory
         # get infested_factory place, about 14 from the infestedbarracks, away from the enemy
         vector = (barracksresult[0] - self.enemystartsquare[0], barracksresult[1] - self.enemystartsquare[1])

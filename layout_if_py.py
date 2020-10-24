@@ -3,7 +3,7 @@
 # interface for the layout structure, used and defined in Merkbot.py, used in placer.py
 #
 # author: MerkMore
-# version 18 aug 2020
+# version 21 oct 2020
 # python -m pip install Pillow
 from PIL import Image, ImageDraw
 
@@ -24,54 +24,76 @@ class layout_if:
     black = (0,0,0)
     yellow = (255,255,0)
     #   
-     
+
+    linenr = 0
+    goodlines = []
     
     def save_layout():
-        text = open('data/layout.txt','w')
-        text.write('========================================='+'\n')
-        text.write(layout_if.mapname+'\n')
-        text.write(str(layout_if.startx)+'\n')
-        text.write(str(layout_if.starty)+'\n')
-        text.write(str(layout_if.enemyx)+'\n')
-        text.write(str(layout_if.enemyy)+'\n')
-        for col in range(0,200):
-            stri = ''
-            for row in range(0,100):
-                stri = stri+str(layout_if.layout[col][row])
-            text.write(stri+'\n')
-            stri = ''
-            for row in range(100,200):
-                stri = stri+str(layout_if.layout[col][row])
-            text.write(stri+'\n')
-        text.write('========================================='+'\n')
-        text.close()
+        mapplace = 'map: '+layout_if.mapname+' '+str(layout_if.startx)+' '+str(layout_if.starty)
+        old = False
+        with open('data/layout.txt','r') as open_file:
+            for linen in open_file:
+                line = linen.rstrip('\n')
+                if line == mapplace:
+                    old = True
+        if not old:
+            text = open('data/layout.txt','a')
+            text.write('========================================='+'\n')
+            text.write(mapplace+'\n')
+            text.write(layout_if.mapname+'\n')
+            text.write(str(layout_if.startx)+'\n')
+            text.write(str(layout_if.starty)+'\n')
+            text.write(str(layout_if.enemyx)+'\n')
+            text.write(str(layout_if.enemyy)+'\n')
+            for col in range(0,200):
+                stri = ''
+                for row in range(0,100):
+                    stri = stri+str(layout_if.layout[col][row])
+                text.write(stri+'\n')
+                stri = ''
+                for row in range(100,200):
+                    stri = stri+str(layout_if.layout[col][row])
+                text.write(stri+'\n')
+            text.write('========================================='+'\n')
+            text.close()
     
+    def get_line():
+        line = layout_if.goodlines[layout_if.linenr]
+        layout_if.linenr += 1
+        return line
     
-    def load_layout():
+    def load_layout(mapplace):
         layout_if.layout = []
-        text = open('data/layout.txt','r')
-        stri=text.readline().rstrip()
-        if stri[0] != '=':
-            print('data/layout.txt has a wrong shape')
-        layout_if.mapname = text.readline().rstrip()
-        layout_if.startx = float(text.readline().rstrip())        
-        layout_if.starty = float(text.readline().rstrip())        
-        layout_if.enemyx = float(text.readline().rstrip())
-        layout_if.enemyy = float(text.readline().rstrip())
+        layout_if.goodlines = []
+        good = False
+        with open('data/layout.txt','r') as open_file:
+            for linen in open_file:
+                line = linen.rstrip('\n')
+                if line == mapplace:
+                    good = True
+                elif line[0] == '=':
+                    good = False
+                if good:
+                    layout_if.goodlines.append(line)
+        if len(layout_if.goodlines) == 0:
+            print('data/layout.txt does not contain '+mapplace)
+        layout_if.linenr = 0
+        dummy = layout_if.get_line()
+        layout_if.mapname = layout_if.get_line()
+        layout_if.startx = float(layout_if.get_line())        
+        layout_if.starty = float(layout_if.get_line())        
+        layout_if.enemyx = float(layout_if.get_line())
+        layout_if.enemyy = float(layout_if.get_line())
         for col in range(0,200):
             collist = []
-            stri=text.readline().rstrip()        
+            stri=layout_if.get_line()        
             for row in range(0,100):
                 collist.append(float(stri[row]))
-            stri=text.readline().rstrip()        
+            stri=layout_if.get_line()        
             for row in range(0,100):
                 collist.append(float(stri[row]))
             layout_if.layout.append(collist)
-        stri=text.readline().rstrip()        
-        if stri[0] != '=':
-            print('data/layout.txt has a wrong shape')
-        text.close()
-    
+
     
     def photo_layout():
         img = Image.new('RGB', (450, 450),layout_if.grey)
