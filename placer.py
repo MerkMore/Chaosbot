@@ -1,8 +1,8 @@
 # Placer.py
 # Makes text for building placement
-# appends the output to file "data/placement.txt"
+# appends the output to file "data\placement.txt"
 # author: MerkMore
-# version 21 oct 2020
+# version 27 oct 2020
 from layout_if_py import layout_if
 import random
 from math import sqrt, sin, cos, acos, pi
@@ -13,6 +13,7 @@ from math import sqrt, sin, cos, acos, pi
 # 2 = ramp
 # 3 = nogo
 # 4 = building
+# 5 = nobuild
 #
 
 class prog:
@@ -32,15 +33,15 @@ class prog:
     def main(self):
         # get maps
         self.maps = []
-        print('data/layout.txt:')
-        with open('data/layout.txt','r') as open_file:
+        print('data\layout.txt:')
+        with open('data\layout.txt','r') as open_file:
             for linen in open_file:
                 line = linen.rstrip('\n')
                 if (line[0] == 'm') and (line[1] == 'a') and (line[2] == 'p'):
                     print(line)
                     self.maps.append(line)
         # get placement.txt (there may be some output already)
-        text = open('data/placement.txt', 'r')
+        text = open('data\placement.txt', 'r')
         content = text.read().splitlines()
         text.close()
         for self.mapplace in self.maps:
@@ -49,7 +50,7 @@ class prog:
                 if line == self.mapplace:
                     old = True
             if old:
-                print(self.mapplace+' is already in data/placement.txt')
+                print(self.mapplace+' is already in data\placement.txt')
             else:
                 print('analyzing '+self.mapplace)
                 layout_if.load_layout(self.mapplace)
@@ -57,15 +58,15 @@ class prog:
 
 
     def appendthemap(self):
-        text = open('data/placement.txt','a')
+        text = open('data\placement.txt','a')
         text.write('#####'+'\n')
         text.write(self.mapplace+'\n')
-#
-#       startx,y can be 36.5,112.5 but we identify that square with the tuple (36,112)
+        #
+        #       startx,y can be 36.5,112.5 but we identify that square with the tuple (36,112)
         self.startsquare = (round(layout_if.startx-0.5),round(layout_if.starty-0.5))
         self.enemystartsquare = (round(layout_if.enemyx - 0.5), round(layout_if.enemyy - 0.5))
         self.logg('enemy start '+str(self.enemystartsquare[0])+' '+str(self.enemystartsquare[1]))
-#       We will work with sets of squares.
+        #       We will work with sets of squares.
         enemybasearea = set([self.enemystartsquare])
         self.extend(enemybasearea)
         self.logg('enemybasearea '+str(len(enemybasearea)))
@@ -130,11 +131,11 @@ class prog:
             self.logg('path found')
         else:
             self.logg('no path found')
-#       now we try to close the path with the 3 blocks
-#       make totry. That is possible positions for blocks to be put 
+        #       now we try to close the path with the 3 blocks
+        #       make totry. That is possible positions for blocks to be put
         self.get_center(aroundramp)
         self.rampcenter = self.center
-#       for blocks, the position is described by the leftunder corner
+        #       for blocks, the position is described by the leftunder corner
         totry = set()
         for dx in range(-6,6):
             for dy in range(-6,6):
@@ -164,14 +165,51 @@ class prog:
             for (b0,b1,b2) in solutions:
                 self.colorplace(2,b0,4)
                 self.colorplace(2,b1,4)
-                if self.can_place_shape(1,b2):
+                if self.can_place_shape(3.5,b2):
                     asol = (b0,b1,b2)
                 self.colorplace(2,b0,0)
                 self.colorplace(2,b1,0)
             text.write('position SUPPLYDEPOT '+str(asol[0][0]+1)+' '+str(asol[0][1]+1)+'\n')
             text.write('position SUPPLYDEPOT '+str(asol[1][0]+1)+' '+str(asol[1][1]+1)+'\n')
             text.write('position BARRACKS '+str(asol[2][0]+1.5)+' '+str(asol[2][1]+1.5)+'\n')
-#       walking
+        # against building clutter, color a tankpath from start to center
+        starttile = self.startsquare
+        # it starts being colored 4
+        cccorner = (self.startsquare[0] - 2, self.startsquare[1] - 2)
+        self.colorplace(5, cccorner, 0)
+        # centertile
+        around = (round(0.5*(self.startsquare[0]+self.enemystartsquare[0])),
+                  round(0.5*(self.startsquare[1]+self.enemystartsquare[1])))
+        bestsd = 9999
+        for x in range(around[0]-10,around[0]+10):
+            for y in range(around[1]-10,around[1]+10):
+                square = (x,y)
+                if self.istile(square): # can place a tank
+                    sd = self.sdist(square,around)
+                    if sd < bestsd:
+                        bestsquare = square
+                        bestsd = sd
+        centertile = bestsquare
+        # place the wallbarracks but not the walldepots
+        (b0, b1, b2) = asol
+        self.colorplace(3, b2, 4)
+        if self.has_tankpath(starttile,centertile):
+            self.color_tankpath(5)
+            # give the info to Merkbot
+            lineel = 0
+            stri = 'path '
+            for tile in self.tankpath:
+                stri = stri + str(tile[0]) + ' ' + str(tile[1])+'  '
+                lineel += 1
+                if lineel == 10:
+                    text.write(stri + '\n')
+                    lineel = 0
+                    stri = 'path '
+            if lineel != 0:
+                text.write(stri + '\n')
+        self.colorplace(3, b2, 0)
+        self.colorplace(5, cccorner, 4)
+        #       walking enemy
         self.walking = []
         for col in range(0, 200):
             collist = []
@@ -180,7 +218,7 @@ class prog:
             self.walking.append(collist)
         self.walking[self.enemystartsquare[0]][self.enemystartsquare[1]] = 0
         dist = 0
-#       edge will contain all squares with dist
+        #       edge will contain all squares with dist
         edge = [self.enemystartsquare]
         while len(edge)>0:
             self.logg('edge ' + str(len(edge)))
@@ -194,8 +232,8 @@ class prog:
                             self.walking[nsquare[0]][nsquare[1]] = dist
                             new_edge.append(nsquare)
             edge = new_edge.copy()
-#       now, find some hidden fusioncore positions
-        for shape in (0,2):
+        #       now, find some hidden fusioncore positions
+        for shape in (3,3.5):
             alters = []
             while len(alters)<10000:
                 alt = (random.randrange(0,200),random.randrange(0,200))
@@ -223,7 +261,7 @@ class prog:
                 choices.append(best)
             for alt in choices:
                 self.do_place_shape(shape,alt)
-                if shape == 0:
+                if shape == 3:
                     text.write('position FUSIONCORE * '+str(alt[0]+1.5)+' '+str(alt[1]+1.5)+'\n')
                 else:
                     text.write('position STARPORT * '+str(alt[0]+1.5)+' '+str(alt[1]+1.5)+'\n')
@@ -246,7 +284,7 @@ class prog:
                     self.logg('pos '+str(square[0])+','+str(square[1])+' wafy '+str(wafy)+'   walk '+str(walk)+'  fly '+str(fly))
 #       now we hope to place a single barracks there
         leftunder = (bestsquare[0]-1,bestsquare[1]-1)
-        placed = self.can_place_shape(0,leftunder)
+        placed = self.can_place_shape(3,leftunder)
         barracksresult = leftunder
         dist = 0
         while not placed:
@@ -255,13 +293,13 @@ class prog:
                 for dy in range(-dist,dist):
                     maybe = (leftunder[0]+dx,leftunder[1]+dy)
                     if maybe not in enemybasearea:
-                        if self.can_place_shape(0,maybe):
+                        if self.can_place_shape(3,maybe):
                             barracksresult = maybe
                             placed = True
 #       if not unlucky, this result is a good cheese building place
         text.write('position INFESTEDBARRACKS '+str(barracksresult[0]+1.5)+' '+str(barracksresult[1]+1.5)+'\n')
         # do not draw the barracks, as later we want to place a tank here
-        # self.do_place_shape(0,barracksresult)
+        # self.do_place_shape(3,barracksresult)
 #       go find a corner in the enemy base
         corners = set()
         for square in enemybasearea:
@@ -343,8 +381,8 @@ class prog:
         else:
             text.write('position INFESTEDLANDING ' + str(asol[0][0] + 1.5) + ' ' + str(asol[0][1] + 1.5) + '\n')
             text.write('position INFESTEDBUNKER ' + str(asol[1][0] + 1.5) + ' ' + str(asol[1][1] + 1.5) + '\n')
-        self.do_place_shape(0,asol[0])
-        self.do_place_shape(0,asol[1])
+        self.do_place_shape(3,asol[0])
+        self.do_place_shape(3,asol[1])
         # write average asolprison
         summ0 = 0
         summ1 = 0
@@ -379,7 +417,7 @@ class prog:
             for dx in range(-dist, dist):
                 for dy in range(-dist, dist):
                     square = (rough[0] + dx, rough[1] + dy)
-                    if self.can_place_shape(2,square):
+                    if self.can_place_shape(5,square):
                         freespace = (square[0]+2,square[1]+2)
                         placed = True
         self.logg('freespace '+str(freespace[0])+','+str(freespace[1]))
@@ -402,11 +440,11 @@ class prog:
         self.logg('position INFESTEDTANK '+str(tanksquare[0])+' '+str(tanksquare[1]))
         # Color the tankpath until we found a factory place.
         surely = self.has_tankpath(tanksquare, freespace) # to get the right tankpath
-        self.color_tankpath(4)
+        self.color_tankpath(5)
         stored_tankpath = self.tankpath.copy()
         self.logg('tankpath ' + str(len(self.tankpath)))
         # now we can draw the barracks, even if it is on the tankspot
-        self.do_place_shape(0,barracksresult)
+        self.do_place_shape(3,barracksresult)
         # make freespace reachable
         self.colortile(freespace,0)
         # for debugging, a photo
@@ -428,19 +466,19 @@ class prog:
                     if abs(dx)+abs(dy)+max(abs(dx),abs(dy)) == dist:
                         maybe = (leftunder[0] + dx, leftunder[1] + dy)
                         tile = (maybe[0]+1,maybe[1]+1)
-                        if self.can_place_shape(1, maybe):
+                        if self.can_place_shape(3.5, maybe):
                             if self.has_tankpath(tile,freespace):
                                 factoryresult = maybe
                                 placed = True
         # Usually this result is a good cheese building place
         text.write('position INFESTEDFACTORY ' + str(factoryresult[0] + 1.5) + ' ' + str(factoryresult[1] + 1.5) + '\n')
         self.logg('position INFESTEDFACTORY ' + str(factoryresult[0] + 1.5) + ' ' + str(factoryresult[1] + 1.5))
-        self.do_place_shape(1,factoryresult)
+        self.do_place_shape(3.5,factoryresult)
         # erase the stored tankpath roughly
         self.tankpath = stored_tankpath
         self.color_tankpath(0)
-        self.do_place_shape(0,barracksresult)
-        self.do_place_shape(1,factoryresult)
+        self.do_place_shape(3,barracksresult)
+        self.do_place_shape(3.5,factoryresult)
         # make scout positions just inside the enemy base
         self.get_edge(enemybasearea)
         outside = self.edge.copy()
@@ -489,9 +527,9 @@ class prog:
 
 
     def do_place_shape(self,shape,alt):
-#       leftunder definition
-        if shape == 0:
-#           fusioncore
+        #       leftunder definition
+        if shape == 3:
+            #           fusioncore
             layout_if.layout[alt[0]+0][alt[1]+0] = 4
             layout_if.layout[alt[0]+0][alt[1]+1] = 4
             layout_if.layout[alt[0]+0][alt[1]+2] = 4
@@ -501,8 +539,8 @@ class prog:
             layout_if.layout[alt[0]+2][alt[1]+0] = 4
             layout_if.layout[alt[0]+2][alt[1]+1] = 4
             layout_if.layout[alt[0]+2][alt[1]+2] = 4
-        else:
-#           starport                                 
+        elif shape == 3.5:
+            #           starport
             layout_if.layout[alt[0]+0][alt[1]+0] = 4
             layout_if.layout[alt[0]+0][alt[1]+1] = 4
             layout_if.layout[alt[0]+0][alt[1]+2] = 4
@@ -522,7 +560,7 @@ class prog:
         # leftunder definition
         can = (alt[0] >= 0) and (alt[0]+4 < 200) and (alt[1] >= 0) and (alt[1]+4 < 200)
         if can:
-            if shape == 0:
+            if shape == 3:
                 # fusioncore
                 can = can and (layout_if.layout[alt[0]+0][alt[1]+0] == 0)
                 can = can and (layout_if.layout[alt[0]+0][alt[1]+1] == 0)
@@ -533,7 +571,7 @@ class prog:
                 can = can and (layout_if.layout[alt[0]+2][alt[1]+0] == 0)
                 can = can and (layout_if.layout[alt[0]+2][alt[1]+1] == 0)
                 can = can and (layout_if.layout[alt[0]+2][alt[1]+2] == 0)
-            elif shape == 1:
+            elif shape == 3.5:
                 # starport
                 can = can and (layout_if.layout[alt[0]+0][alt[1]+0] == 0)
                 can = can and (layout_if.layout[alt[0]+0][alt[1]+1] == 0)
@@ -548,7 +586,7 @@ class prog:
                 can = can and (layout_if.layout[alt[0]+3][alt[1]+1] == 0)
                 can = can and (layout_if.layout[alt[0]+4][alt[1]+0] == 0)
                 can = can and (layout_if.layout[alt[0]+4][alt[1]+1] == 0)
-            else:
+            elif shape == 5:
                 # 5x5 space
                 can = can and (layout_if.layout[alt[0] + 0][alt[1] + 0] == 0)
                 can = can and (layout_if.layout[alt[0] + 0][alt[1] + 1] == 0)
@@ -586,23 +624,11 @@ class prog:
         if self.logging:
             print(stri)
     
-    def colorplace(self,am,square,color):
-        if am==2:
-            layout_if.layout[square[0]+0][square[1]+0] = color
-            layout_if.layout[square[0]+0][square[1]+1] = color
-            layout_if.layout[square[0]+1][square[1]+0] = color
-            layout_if.layout[square[0]+1][square[1]+1] = color
-        if am==3:
-            layout_if.layout[square[0]+0][square[1]+0] = color
-            layout_if.layout[square[0]+0][square[1]+1] = color
-            layout_if.layout[square[0]+0][square[1]+2] = color
-            layout_if.layout[square[0]+1][square[1]+0] = color
-            layout_if.layout[square[0]+1][square[1]+1] = color
-            layout_if.layout[square[0]+1][square[1]+2] = color
-            layout_if.layout[square[0]+2][square[1]+0] = color
-            layout_if.layout[square[0]+2][square[1]+1] = color
-            layout_if.layout[square[0]+2][square[1]+2] = color
-
+    def colorplace(self, am,square,color):
+        # grab the building by its leftunder point
+        for dx in range(0,am):
+            for dy in range(0,am):
+                layout_if.layout[square[0] + dx][square[1] + dy] = color
 
     def tryplace(self,am,square):
         can = True

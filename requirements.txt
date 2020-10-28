@@ -22,6 +22,8 @@ pyglet==1.5.7
 s2clientprotocol==5.0.2.81102.0
 scipy==1.5.2
 six==1.15.0
+snakeviz==2.1.0
+tornado==6.0.4
 virtualenv==20.0.33
 virtualenv-clone==0.5.4
 win32-setctime==1.0.3
