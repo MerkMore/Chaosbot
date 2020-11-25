@@ -369,14 +369,15 @@ class bunker_if:
     async def salvage(bun):
         # to be called repeatedly until a bunker is gone
         if bun in bunker_if.structures(BUNKER).ready:
+            # chosen is to set the passengers free
             for man in bun.passengers:
                 if man.tag in bunker_if.marinetags:
                     bunker_if.marinetags.remove(man.tag)
-            if bun.tag in bunker_if.bunkertags:
-                bunker_if.bunkertags.remove(bun.tag)
-            if AbilityId.EFFECT_SALVAGE in (await bunker_if.get_available_abilities([bun]))[0]:
-                bunker_if.log('bun(AbilityId.SALVAGE_BUNKER)')
-                bun(AbilityId.EFFECT_SALVAGE)
+            # no bunker_if.bunkertags.remove(bun.tag), this happens after it is gone
+            if len(bun.passengers) == 0:
+                if AbilityId.EFFECT_SALVAGE in (await bunker_if.get_available_abilities([bun]))[0]:
+                    bunker_if.log('bun(AbilityId.SALVAGE_BUNKER)')
+                    bun(AbilityId.EFFECT_SALVAGE)
             if len(bun.passengers) > 0:
                 bunker_if.log('bun(AbilityId.UNLOADALL_BUNKER)')
                 bun(AbilityId.UNLOADALL_BUNKER)

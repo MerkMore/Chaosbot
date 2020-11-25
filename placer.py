@@ -2,7 +2,7 @@
 # Makes text for building placement
 # appends the output to file "data\placement.txt"
 # author: MerkMore
-# version 27 oct 2020
+# version 20 nov 2020
 from layout_if_py import layout_if
 import random
 from math import sqrt, sin, cos, acos, pi
@@ -17,7 +17,7 @@ from math import sqrt, sin, cos, acos, pi
 #
 
 class prog:
-#
+    #
     mapplace = ''
     filterresult = set()
     startsquare = (0,0)
@@ -25,7 +25,7 @@ class prog:
     rampcenter = (0,0)
     center = (0,0)
     logging = True
-#   the map with walk-distances to enemystartsquare
+    #   the map with walk-distances to enemystartsquare
     walking = []
     tankpath = []
     maps = []
@@ -67,7 +67,13 @@ class prog:
         self.enemystartsquare = (round(layout_if.enemyx - 0.5), round(layout_if.enemyy - 0.5))
         self.logg('enemy start '+str(self.enemystartsquare[0])+' '+str(self.enemystartsquare[1]))
         #       We will work with sets of squares.
-        enemybasearea = set([self.enemystartsquare])
+        startcc = set([self.enemystartsquare])
+        self.extend(startcc)
+        self.logg('enemystartcc '+str(len(startcc)))
+        self.get_edge(startcc)
+        aroundcc = self.edge.copy()
+        self.logg('aroundcc '+str(len(aroundcc)))
+        enemybasearea = aroundcc.copy()
         self.extend(enemybasearea)
         self.logg('enemybasearea '+str(len(enemybasearea)))
         self.get_edge(enemybasearea)
@@ -180,7 +186,7 @@ class prog:
         # centertile
         around = (round(0.5*(self.startsquare[0]+self.enemystartsquare[0])),
                   round(0.5*(self.startsquare[1]+self.enemystartsquare[1])))
-        bestsd = 9999
+        bestsd = 99999
         for x in range(around[0]-10,around[0]+10):
             for y in range(around[1]-10,around[1]+10):
                 square = (x,y)
@@ -209,6 +215,9 @@ class prog:
                 text.write(stri + '\n')
         self.colorplace(3, b2, 0)
         self.colorplace(5, cccorner, 4)
+        # enemy starts being colored 4
+        cccorner = (self.enemystartsquare[0] - 2, self.enemystartsquare[1] - 2)
+        self.colorplace(5, cccorner, 0)
         #       walking enemy
         self.walking = []
         for col in range(0, 200):
@@ -238,9 +247,9 @@ class prog:
             while len(alters)<10000:
                 alt = (random.randrange(0,200),random.randrange(0,200))
                 dis = self.sdist(alt,self.startsquare)
-                if (dis>25*25) and (dis<70*70):
+                if (dis>20*20) and (dis<70*70):
                     dis = self.sdist(alt,self.rampcenter)
-                    if (dis>25*25):
+                    if (dis>30*30):
                         if self.can_place_shape(shape,alt):
                             if self.walking[alt[0]][alt[1]] > 0:
                                 alters.append(alt)
@@ -265,9 +274,14 @@ class prog:
                     text.write('position FUSIONCORE * '+str(alt[0]+1.5)+' '+str(alt[1]+1.5)+'\n')
                 else:
                     text.write('position STARPORT * '+str(alt[0]+1.5)+' '+str(alt[1]+1.5)+'\n')
-#       now we will estimate a high value of walking-flying
-#       also slightly negative weigh in the flydistance to enemy
-#       also slightly negative weigh in the flydistance to home
+        # erase all buildings for the rest of the program
+        for x in range(0,200):
+            for y in range(0,200):
+                if layout_if.layout[x][y] == 4:
+                    layout_if.layout[x][y] = 0
+        #       now we will estimate a high value of walking-flying
+        #       also slightly negative weigh in the flydistance to enemy
+        #       also slightly negative weigh in the flydistance to home
         best = -999
         for pog in range(0,10000):
             square = (random.randrange(0,200),random.randrange(0,200))
