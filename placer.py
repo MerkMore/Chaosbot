@@ -2,7 +2,7 @@
 # Makes text for building placement
 # appends the output to file "data\placement.txt"
 # author: MerkMore
-# version 20 nov 2020
+# version 6 dec 2020
 from layout_if_py import layout_if
 import random
 from math import sqrt, sin, cos, acos, pi
@@ -19,16 +19,27 @@ from math import sqrt, sin, cos, acos, pi
 class prog:
     #
     mapplace = ''
+    mapleft = 0
+    mapright = 0
+    mapbot = 0
+    maptop = 0
+    mapcenter = (0,0)
     filterresult = set()
     startsquare = (0,0)
     enemystartsquare = (0,0)
-    rampcenter = (0,0)
-    center = (0,0)
+    enemynatural = (0,0)
+    ramptopcenter = (0,0)
+    centerresult = (0,0)
+    edgeresult = set()
     logging = True
-    #   the map with walk-distances to enemystartsquare
-    walking = []
+    walking = []    # the map with walk-distances to enemystartsquare
     tankpath = []
+    diskpath = []
     maps = []
+    expansions = set()
+    path_direction = (0,0)
+    asol = []
+    asolprison = set()
 
     def main(self):
         # get maps
@@ -55,97 +66,136 @@ class prog:
                 print('analyzing '+self.mapplace)
                 layout_if.load_layout(self.mapplace)
                 self.appendthemap()
-
+                layout_if.photo_layout()
+                layout_if.photo_height()
 
     def appendthemap(self):
         text = open('data\placement.txt','a')
         text.write('#####'+'\n')
         text.write(self.mapplace+'\n')
         #
+        # mapleft,mapright,mapbot,maptop
+        self.mapleft = 99999
+        self.mapright = 0
+        self.mapbot = 99999
+        self.maptop = 0
+        for x in range(0,200):
+            for y in range(0,200):
+                if layout_if.layout[x][y] != 3:
+                    self.mapleft = min(self.mapleft,x)
+                    self.mapright = max(self.mapright,x+1)
+                    self.mapbot = min(self.mapbot,y)
+                    self.maptop = max(self.maptop,y+1)
+        self.mapcenter = (round((self.mapleft+self.mapright)/2),round((self.mapbot+self.maptop)/2))
+        self.logg('mapcenter '+str(self.mapcenter[0])+','+str(self.mapcenter[1]))
+        #
         #       startx,y can be 36.5,112.5 but we identify that square with the tuple (36,112)
         self.startsquare = (round(layout_if.startx-0.5),round(layout_if.starty-0.5))
         self.enemystartsquare = (round(layout_if.enemyx - 0.5), round(layout_if.enemyy - 0.5))
-        self.logg('enemy start '+str(self.enemystartsquare[0])+' '+str(self.enemystartsquare[1]))
+        self.logg('enemy start '+str(self.enemystartsquare[0])+','+str(self.enemystartsquare[1]))
+        self.expansions = set()
+        for x in range(0,200):
+            for y in range(0,200):
+                lo = (x,y)
+                if self.has_cc(lo):
+                    self.expansions.add(lo)
+        self.logg('expansions '+str(len(self.expansions)))
+        #
         #       We will work with sets of squares.
-        startcc = set([self.enemystartsquare])
+        startcc = set([self.enemystartsquare]) # there is a building
         self.extend(startcc)
         self.logg('enemystartcc '+str(len(startcc)))
-        self.get_edge(startcc)
-        aroundcc = self.edge.copy()
+        self.get_edge(startcc) # empty boundery around the cc
+        aroundcc = self.edgeresult.copy()
         self.logg('aroundcc '+str(len(aroundcc)))
         enemybasearea = aroundcc.copy()
-        self.extend(enemybasearea)
+        self.extend(enemybasearea) # the whole enemy top area
         self.logg('enemybasearea '+str(len(enemybasearea)))
         self.get_edge(enemybasearea)
-        ramp = self.edge.copy()
-        self.filter_color(ramp,2)
-        ramp = self.filterresult.copy()
-        self.logg('enemyramp '+str(len(ramp)))
+        ramptop = self.edgeresult.copy()
+        self.filter_color(ramptop,2)
+        ramptop = self.filterresult.copy() # the parts of ramp touching the top area
+        self.logg('enemyramptop '+str(len(ramptop)))
         # for a multi-ramp map, the central ramp is chosen
-        mapcenter = (100,100)
-        alsoramp = set()
+        alsoramptop = set()
         bestsd = 99999
-        for square in ramp:
-            sd = self.sdist(square,mapcenter)
+        for square in ramptop:
+            sd = self.sdist(square,self.mapcenter)
             if sd < bestsd:
                 bestsd = sd
-                alsoramp = set([square])
-        self.extend(alsoramp)
-        ramp = ramp & alsoramp
-        self.logg('restricted to 1 ramp, ramp '+str(len(ramp)))
+                alsoramptop = set([square])
+        self.extend(alsoramptop)
+        ramptop = ramptop & alsoramptop
+        self.logg('restricted to 1 ramptop, ramptop '+str(len(ramptop)))
+        ramp = ramptop.copy()
+        self.extend(ramp)
         self.get_center(ramp)
-        x = 0.001*round(1000*(self.center[0]+0.5))
-        y = 0.001*round(1000*(self.center[1]+0.5))
+        enemyramp = self.centerresult
+        x = 0.001*round(1000*(self.centerresult[0]+0.5))
+        y = 0.001*round(1000*(self.centerresult[1]+0.5))
         text.write('position ENEMYRAMP ' + str(x) + ' ' + str(y) + '\n')
+        closest = 99999
+        for lo in self.expansions:
+            sd = self.sdist(lo,self.enemystartsquare)
+            if sd > 8: # lo is leftunder, startsquare is middle
+                sd = self.sdist(lo,self.centerresult)
+                if sd < closest:
+                    closest = sd
+                    self.enemynatural = (lo[0]+2,lo[1]+2)
+        x = self.enemynatural[0]+0.5
+        y = self.enemynatural[1]+0.5
+        text.write('position ENEMYNATURAL ' + str(x) + ' ' + str(y) + '\n')
         #
-        startcc = set([self.startsquare])
+        startcc = set([self.startsquare]) # cc
         self.extend(startcc)
         self.logg('startcc '+str(len(startcc)))
         self.get_edge(startcc)
-        aroundcc = self.edge.copy()
+        aroundcc = self.edgeresult.copy()
         self.logg('aroundcc '+str(len(aroundcc)))
         basearea = aroundcc.copy()
         self.extend(basearea)
         self.logg('basearea '+str(len(basearea)))
         self.get_edge(basearea)
-        ramp = self.edge.copy()
-        self.filter_color(ramp,2)
-        ramp = self.filterresult.copy()
-        self.logg('ramp '+str(len(ramp)))
+        ramptop = self.edgeresult.copy()
+        self.filter_color(ramptop,2)
+        ramptop = self.filterresult.copy()
+        self.logg('ramptop '+str(len(ramptop)))
         # for a multi-ramp map, the central ramp is chosen
-        mapcenter = (100,100)
-        alsoramp = set()
+        alsoramptop = set()
         bestsd = 99999
-        for square in ramp:
-            sd = self.sdist(square,mapcenter)
+        for square in ramptop:
+            sd = self.sdist(square,self.mapcenter)
             if sd < bestsd:
                 bestsd = sd
-                alsoramp = set([square])
-        self.extend(alsoramp)
-        ramp = ramp & alsoramp
-        self.logg('restricted to 1 ramp, ramp '+str(len(ramp)))
+                alsoramptop = set([square])
+        self.extend(alsoramptop)
+        ramptop = ramptop & alsoramptop
+        self.logg('restricted to 1 ramptop, ramptop '+str(len(ramptop)))
+        ramp = ramptop.copy()
+        self.extend(ramp)
         self.get_center(ramp)
-        x = 0.001*round(1000*(self.center[0]+0.5))
-        y = 0.001*round(1000*(self.center[1]+0.5))
+        x = 0.001*round(1000*(self.centerresult[0]+0.5))
+        y = 0.001*round(1000*(self.centerresult[1]+0.5))
         text.write('position HOMERAMP ' + str(x) + ' ' + str(y) + '\n')
-        self.get_edge(ramp)
-        aroundramp = self.edge.copy()
-        self.filter_color(aroundramp,0)
-        aroundramp = self.filterresult.copy()
-        self.logg('aroundramp '+str(len(aroundramp)))
-        if self.has_path(aroundramp,aroundcc):
+        self.get_edge(ramptop)
+        aroundramptop = self.edgeresult.copy()
+        self.filter_color(aroundramptop,0)
+        aroundramptop = self.filterresult.copy()
+        self.logg('aroundramptop '+str(len(aroundramptop)))
+        self.path_direction = self.startsquare
+        if self.has_zeropath(aroundramptop,aroundcc):
             self.logg('path found')
         else:
             self.logg('no path found')
         #       now we try to close the path with the 3 blocks
         #       make totry. That is possible positions for blocks to be put
-        self.get_center(aroundramp)
-        self.rampcenter = self.center
+        self.get_center(aroundramptop)
+        self.ramptopcenter = self.centerresult
         #       for blocks, the position is described by the leftunder corner
         totry = set()
         for dx in range(-6,6):
             for dy in range(-6,6):
-                square = (self.rampcenter[0]+dx,self.rampcenter[1]+dy)
+                square = (self.ramptopcenter[0]+dx,self.ramptopcenter[1]+dy)
                 if self.get_color(square) == 0:
                     totry.add(square)
         self.logg('per block '+str(len(totry))+' positions')
@@ -156,10 +206,11 @@ class prog:
                 for b1 in totry:
                     if (b1[0]>b0[0]) or ((b1[0]==b0[0]) and (b1[1]>b0[1])):
                         if self.tryplace(2,b1):
-                            self.logg('   trying block 1 at '+str(b1[0])+' '+str(b1[1]))
+                            # self.logg('   trying block 1 at '+str(b1[0])+' '+str(b1[1]))
                             for b2 in totry:
                                 if self.tryplace(3,b2):
-                                    if not self.has_path(aroundramp,aroundcc):
+                                    self.filter_color(aroundramptop,0)
+                                    if not self.has_zeropath(self.filterresult,aroundcc):
                                         solutions.append((b0,b1,b2))
                                         self.logg('      a solution')
                                     self.colorplace(3,b2,0)
@@ -184,8 +235,7 @@ class prog:
         cccorner = (self.startsquare[0] - 2, self.startsquare[1] - 2)
         self.colorplace(5, cccorner, 0)
         # centertile
-        around = (round(0.5*(self.startsquare[0]+self.enemystartsquare[0])),
-                  round(0.5*(self.startsquare[1]+self.enemystartsquare[1])))
+        around = self.mapcenter
         bestsd = 99999
         for x in range(around[0]-10,around[0]+10):
             for y in range(around[1]-10,around[1]+10):
@@ -214,11 +264,13 @@ class prog:
             if lineel != 0:
                 text.write(stri + '\n')
         self.colorplace(3, b2, 0)
+        # draw back the startcc
         self.colorplace(5, cccorner, 4)
+        #
         # enemy starts being colored 4
         cccorner = (self.enemystartsquare[0] - 2, self.enemystartsquare[1] - 2)
         self.colorplace(5, cccorner, 0)
-        #       walking enemy
+        # walking enemy
         self.walking = []
         for col in range(0, 200):
             collist = []
@@ -227,17 +279,16 @@ class prog:
             self.walking.append(collist)
         self.walking[self.enemystartsquare[0]][self.enemystartsquare[1]] = 0
         dist = 0
-        #       edge will contain all squares with dist
+        # edge will contain all squares with dist
         edge = [self.enemystartsquare]
         while len(edge)>0:
-            self.logg('edge ' + str(len(edge)))
             dist = dist+1
             new_edge = []
             for square in edge:
                 self.get_neighbours(square)
                 for nsquare in self.neighbours:
                     if self.walking[nsquare[0]][nsquare[1]] == -1:
-                        if layout_if.layout[nsquare[0]][nsquare[1]] in (0,2,5):
+                        if layout_if.layout[nsquare[0]][nsquare[1]] in (0,2):
                             self.walking[nsquare[0]][nsquare[1]] = dist
                             new_edge.append(nsquare)
             edge = new_edge.copy()
@@ -248,7 +299,7 @@ class prog:
                 alt = (random.randrange(0,200),random.randrange(0,200))
                 dis = self.sdist(alt,self.startsquare)
                 if (dis>20*20) and (dis<70*70):
-                    dis = self.sdist(alt,self.rampcenter)
+                    dis = self.sdist(alt,self.ramptopcenter)
                     if (dis>30*30):
                         if self.can_place_shape(shape,alt):
                             if self.walking[alt[0]][alt[1]] > 0:
@@ -274,11 +325,159 @@ class prog:
                     text.write('position FUSIONCORE * '+str(alt[0]+1.5)+' '+str(alt[1]+1.5)+'\n')
                 else:
                     text.write('position STARPORT * '+str(alt[0]+1.5)+' '+str(alt[1]+1.5)+'\n')
+        #
         # erase all buildings for the rest of the program
+        #
         for x in range(0,200):
             for y in range(0,200):
                 if layout_if.layout[x][y] == 4:
                     layout_if.layout[x][y] = 0
+        #
+        # find reaperjumpspots near the enemybasearea
+        square = tuple(enemybasearea)[0]
+        dsquare = (square[0]*2,square[1]*2)
+        (baselayout, baseheight) = self.get_terrain(dsquare)
+        darea = {dsquare}
+        self.terrain_extend(darea)
+        self.terrain_get_edge(darea)
+        possi = self.edgeresult.copy()
+        self.terrain_get_edge(possi)
+        possi = possi | self.edgeresult
+        reaperall = set()
+        for dsquare in possi:
+            (layout,height) = self.get_terrain(dsquare)
+            if height == baseheight - 16:
+                self.logg('reaperjumppoint '+str(layout)+' '+str(height)+' '+str(dsquare[0]/2)+','+str(dsquare[1]/2))
+                reaperall.add(dsquare)
+        # get one representant per cluster
+        reaperspots = set()
+        while len(reaperall) > 0:
+            one = tuple(reaperall)[0]
+            reaperspots.add(one)
+            todel = {one}
+            stable = False
+            while not stable:
+                curlen = len(todel)
+                toadd = set()
+                for aone in todel:
+                    self.terrain_get_neighbours(aone)
+                    for aneigh in self.neighbours:
+                        if aneigh in reaperall:
+                            toadd.add(aneigh)
+                todel = todel | toadd
+                stable = (len(todel) == curlen)
+            reaperall -= todel
+        for dsquare in reaperspots:
+            x = dsquare[0] / 2
+            y = dsquare[1] / 2
+            self.logg('position REAPERJUMP ' + str(x) + ' ' + str(y))
+            text.write('position REAPERJUMP ' + str(x) + ' ' + str(y) + '\n')
+        # get the reaperjumpspot away from enemyramp and near mapcenter
+        bestqual = -99999
+        for dsquare in reaperspots:
+            square = (dsquare[0] / 2,dsquare[1] / 2)
+            qual = 2 * self.octagondist(square,enemyramp) - self.octagondist(square,self.mapcenter)
+            if qual > bestqual:
+                bestqual = qual
+                reaperjumpspot = square
+        # get the enemybasearea point near the reaperjumpspot
+        bestsd = 99999
+        for square in enemybasearea:
+            sd = self.sdist(square, reaperjumpspot)
+            if sd < bestsd:
+                bestsquare = square
+                bestsd = sd
+        if bestsd != 99999:
+            reaperbasejump = bestsquare
+        # get the reaperbarracksspot
+        wantsize = 8 # try to get it unscoutable from the top
+        hassize = self.circledist(reaperjumpspot,self.mapcenter)
+        vec = (self.mapcenter[0] - reaperjumpspot[0], self.mapcenter[1] - reaperjumpspot[1])
+        vec = (vec[0] * wantsize / hassize, vec[1] * wantsize / hassize)
+        around = (round(reaperjumpspot[0] + vec[0]),round(reaperjumpspot[1] + vec[1]))
+        self.logg('reaperbarracks around '+str(around[0])+','+str(around[1]))
+        bestsd = 99999
+        for x in range(around[0]-15,around[0]+15):
+            for y in range(around[1]-15,around[1]+15):
+                square = (x,y)
+                if self.can_place_shape(3.5,square): # can place barracks
+                    acceptable = True
+                    for ba in enemybasearea:
+                        if self.sdist(square,ba) < wantsize*wantsize:
+                            acceptable = False
+                    if acceptable:
+                        sd = self.sdist(square,reaperjumpspot)
+                        if sd < bestsd:
+                            bestsquare = square
+                            bestsd = sd
+        if bestsd != 99999:
+            x = bestsquare[0] + 1.5
+            y = bestsquare[1] + 1.5
+            text.write('position REAPERBARRACKS ' + str(x) + ' ' + str(y) + '\n')
+            self.logg('position REAPERBARRACKS ' + str(x) + ' ' + str(y))
+        else:
+            self.logg('no reaperbarracks')
+        # block reaperbasejump with two bunkers
+        if self.twoblock(reaperbasejump):
+            text.write('position REAPERBUNKER '+str(self.asol[0][0]+1.5)+' '+str(self.asol[0][1]+1.5)+'\n')
+            text.write('position REAPERBUNKER '+str(self.asol[1][0]+1.5)+' '+str(self.asol[1][1]+1.5)+'\n')
+            self.get_center(self.asolprison)
+            # use the middle of the squares
+            avera0 = self.centerresult[0] + 0.5
+            avera1 = self.centerresult[1] + 0.5
+            # round a bit
+            avera0 = 0.001 * round(1000 * avera0)
+            avera1 = 0.001 * round(1000 * avera1)
+            text.write('position REAPERPRISON ' + str(avera0) + ' ' + str(avera1) + '\n')
+            self.logg('position REAPERPRISON ' + str(avera0) + ' ' + str(avera1))
+        else:
+            self.logg('no reaperprison')
+        #
+        # estimate a choke as enemynatural in the direction of mapcenter dist 0.5*dist(enemystart,enemynatural)
+        wantsize = 0.5 * self.circledist(self.enemynatural,self.enemystartsquare)
+        hassize = self.circledist(self.enemynatural,self.mapcenter)
+        vec = (self.mapcenter[0] - self.enemynatural[0], self.mapcenter[1] - self.enemynatural[1])
+        vec = (vec[0] * wantsize / hassize, vec[1] * wantsize / hassize)
+        estimate = (round(self.enemynatural[0] + vec[0]),round(self.enemynatural[1] + vec[1]))
+        self.logg('estimate en. nat. choke '+str(estimate[0])+','+str(estimate[1]))
+        # centertile
+        around = (round(0.33*(self.startsquare[0]+2*self.enemystartsquare[0])),
+                  round(0.33*(self.startsquare[1]+2*self.enemystartsquare[1])))
+        bestsd = 99999
+        for x in range(around[0]-20,around[0]+20):
+            for y in range(around[1]-20,around[1]+20):
+                square = (x,y)
+                if self.istile(square): # can place a tank
+                    sd = self.sdist(square,around)
+                    if sd < bestsd:
+                        bestsquare = square
+                        bestsd = sd
+        centertile = bestsquare
+        ennattile = (round(self.enemynatural[0]),round(self.enemynatural[1]))
+        pathstart = {ennattile}
+        pathend = {centertile}
+        self.path_direction = centertile
+        if not self.has_path(pathstart, pathend):
+            self.logg('no path from enemynatural to centertile?!')
+        # now get good chokes around estimate
+        chokes = set()
+        for dx in range(-19,20):
+            for dy in range(-19,20):
+                choke = (estimate[0]+dx,estimate[1]+dy)
+                self.mask_disk(choke,10)
+                if self.istile(ennattile) and self.istile(centertile):
+                    if not self.has_path(pathstart,pathend):
+                        chokes.add(choke)
+                self.mask_disk(choke, 10) # unmask
+            #
+        self.logg('found chokes: '+str(len(chokes)))
+        if len(chokes) > 0:
+            self.get_center(chokes)
+            x = 0.001*round(1000*(self.centerresult[0])) # do not add 0.5 as these are real centers
+            y = 0.001*round(1000*(self.centerresult[1]))
+            text.write('position ENEMYNATURALCHOKE ' + str(x) + ' ' + str(y) + '\n')
+        #
+        #
         #       now we will estimate a high value of walking-flying
         #       also slightly negative weigh in the flydistance to enemy
         #       also slightly negative weigh in the flydistance to home
@@ -296,7 +495,7 @@ class prog:
                     best = wafy
                     bestsquare = square
                     self.logg('pos '+str(square[0])+','+str(square[1])+' wafy '+str(wafy)+'   walk '+str(walk)+'  fly '+str(fly))
-#       now we hope to place a single barracks there
+        #       now we hope to place a single barracks there
         leftunder = (bestsquare[0]-1,bestsquare[1]-1)
         placed = self.can_place_shape(3,leftunder)
         barracksresult = leftunder
@@ -310,11 +509,11 @@ class prog:
                         if self.can_place_shape(3,maybe):
                             barracksresult = maybe
                             placed = True
-#       if not unlucky, this result is a good cheese building place
+        #       if not unlucky, this result is a good cheese building place
         text.write('position INFESTEDBARRACKS '+str(barracksresult[0]+1.5)+' '+str(barracksresult[1]+1.5)+'\n')
         # do not draw the barracks, as later we want to place a tank here
         # self.do_place_shape(3,barracksresult)
-#       go find a corner in the enemy base
+        #       go find a corner in the enemy base
         corners = set()
         for square in enemybasearea:
             ownneighs = 0
@@ -332,84 +531,30 @@ class prog:
             if sd >= 16*16:
                 corners.add(cornersquare)
         self.logg('corners far from creep '+str(len(corners)))
-        # happy if we can find 2 2block prisoning at least 3 squares
-        happy = False
-        while not happy:
-            best = None
-            bestdist = 80000
-            for cornersquare in corners:
-                dist = self.sdist(cornersquare,barracksresult)
-                if dist < bestdist:
-                    bestdist = dist
-                    best = cornersquare
-            cornersquare = best
-            self.logg('cornersquare '+str(cornersquare[0])+' '+str(cornersquare[1]))
-            # now try to lock this square in with 2 3x3 blocks
-            cornersquares = set([cornersquare])
-            aroundcc = set([self.enemystartsquare])
-            totry = set()
-            for dx in range(-6,6):
-                for dy in range(-6,6):
-                    square = (cornersquare[0]+dx,cornersquare[1]+dy)
-                    if self.get_color(square) == 0:
-                        totry.add(square)
-            self.logg('per block '+str(len(totry))+' positions')
-            solutions = []
-            for b0 in totry:
-                if self.tryplace(3,b0):
-                    self.logg('trying block 0 at '+str(b0[0])+' '+str(b0[1]))
-                    for b1 in totry:
-                        if (b1[0]>b0[0]) or ((b1[0]==b0[0]) and (b1[1]>b0[1])):
-                            if self.tryplace(3,b1):
-                                if self.get_color(cornersquare) == 0:
-                                    if not self.has_path(cornersquares,aroundcc):
-                                        solutions.append((b0,b1))
-                                        self.logg('      a solution')
-                                self.colorplace(3,b1,0)
-                    self.colorplace(3,b0,0)
-            self.logg('found '+str(len(solutions))+' 2-block corner  solutions')
-            happy = False
-            if len(solutions)>0:
-                asol = solutions[0]
-                for (b0,b1) in solutions:
-                    self.colorplace(3,b0,4)
-                    self.colorplace(3,b1,4)
-                    prison = cornersquares.copy()
-                    self.extend(prison)
-                    if len(prison)>=3:
-                        asol = (b0,b1)
-                        asolprison = prison.copy()
-                        happy = True
-                    self.colorplace(3,b0,0)
-                    self.colorplace(3,b1,0)
-            # if not happy, delete that one from corners
-            if not happy:
-                corners.remove(cornersquare)
-        # happy
+        todel = set()
+        for cornersquare in corners:
+            if self.twoblock(cornersquare):
+                if len(self.asolprison) < 3:
+                    todel.add(cornersquare)
+            else:
+                todel.add(cornersquare)
+        corners -= todel
         # of those, the closest to the enemy should be the bunker
-        sd0 = self.sdist(asol[0],self.enemystartsquare)
-        sd1 = self.sdist(asol[1],self.enemystartsquare)
+        sd0 = self.sdist(self.asol[0],self.enemystartsquare)
+        sd1 = self.sdist(self.asol[1],self.enemystartsquare)
         if sd0 < sd1:
-            text.write('position INFESTEDBUNKER '+str(asol[0][0]+1.5)+' '+str(asol[0][1]+1.5)+'\n')
-            text.write('position INFESTEDLANDING '+str(asol[1][0]+1.5)+' '+str(asol[1][1]+1.5)+'\n')
+            text.write('position INFESTEDBUNKER '+str(self.asol[0][0]+1.5)+' '+str(self.asol[0][1]+1.5)+'\n')
+            text.write('position INFESTEDLANDING '+str(self.asol[1][0]+1.5)+' '+str(self.asol[1][1]+1.5)+'\n')
         else:
-            text.write('position INFESTEDLANDING ' + str(asol[0][0] + 1.5) + ' ' + str(asol[0][1] + 1.5) + '\n')
-            text.write('position INFESTEDBUNKER ' + str(asol[1][0] + 1.5) + ' ' + str(asol[1][1] + 1.5) + '\n')
-        self.do_place_shape(3,asol[0])
-        self.do_place_shape(3,asol[1])
+            text.write('position INFESTEDLANDING ' + str(self.asol[0][0] + 1.5) + ' ' + str(self.asol[0][1] + 1.5) + '\n')
+            text.write('position INFESTEDBUNKER ' + str(self.asol[1][0] + 1.5) + ' ' + str(self.asol[1][1] + 1.5) + '\n')
+        self.do_place_shape(3,self.asol[0])
+        self.do_place_shape(3,self.asol[1])
         # write average asolprison
-        summ0 = 0
-        summ1 = 0
-        n = 0
-        for (x,y) in asolprison:
-            summ0 = summ0+x
-            summ1 = summ1+y
-            n = n+1
-        avera0 = summ0/n
-        avera1 = summ1/n
+        self.get_center(self.asolprison)
         # use the middle of the squares
-        avera0 = avera0+0.5
-        avera1 = avera1+0.5
+        avera0 = self.centerresult[0]+0.5
+        avera1 = self.centerresult[1]+0.5
         # round a bit
         avera0 = 0.001*round(1000*avera0)
         avera1 = 0.001*round(1000*avera1)
@@ -466,7 +611,7 @@ class prog:
         # factory
         # get infested_factory place, about 14 from the infestedbarracks, away from the enemy
         vector = (barracksresult[0] - self.enemystartsquare[0], barracksresult[1] - self.enemystartsquare[1])
-        factor = 14 / sqrt(self.sdist(barracksresult, self.enemystartsquare))
+        factor = 14 / self.circledist(barracksresult, self.enemystartsquare)
         factorysuggestion = (round(barracksresult[0] + factor * vector[0]), \
                              round(barracksresult[1] + factor * vector[1]))
         # now we hope to place a factory there
@@ -495,7 +640,7 @@ class prog:
         self.do_place_shape(3.5,factoryresult)
         # make scout positions just inside the enemy base
         self.get_edge(enemybasearea)
-        outside = self.edge.copy()
+        outside = self.edgeresult.copy()
         self.logg('outside '+str(len(outside)))
         green = set()
         for square in outside:
@@ -504,15 +649,15 @@ class prog:
         outeroutside = outside - green
         self.logg('outeroutside '+str(len(outeroutside)))
         self.get_edge(outeroutside)
-        inside = self.edge.copy()
+        inside = self.edgeresult.copy()
         inside = inside & enemybasearea
         self.logg('inside '+str(len(inside)))
         for square in outside:
             if self.get_color(square) == 2:
-                rampsquare = square
-        radius = sqrt(self.sdist(rampsquare,self.enemystartsquare))
-        thecos = (rampsquare[0]-self.enemystartsquare[0])/radius
-        thesin = (rampsquare[1]-self.enemystartsquare[1])/radius
+                ramptopsquare = square
+        radius = self.circledist(ramptopsquare,self.enemystartsquare)
+        thecos = (ramptopsquare[0]-self.enemystartsquare[0])/radius
+        thesin = (ramptopsquare[1]-self.enemystartsquare[1])/radius
         if thesin > 0:
             alfa = acos(thecos)
         else:
@@ -530,13 +675,52 @@ class prog:
             text.write('position SCOUT '+str(bestsquare[0]+0.5)+' '+str(bestsquare[1]+0.5)+'\n')
 #
 #       that is all
-        layout_if.photo_layout()
         text.write('#####'+'\n')
         text.close()
 
 
 
-
+    def twoblock(self, cornersquare) -> bool:
+        # try to lock this enemybasearea square in with 2 3x3 blocks
+        # return self.asol ([0] and [1] leftunderpoints of 3x3 blocks)
+        # return self.asolprison (the enclosed squares)
+        cornersquares = set([cornersquare])
+        aroundcc = set([self.enemystartsquare])
+        self.path_direction = self.enemystartsquare
+        totry = set()
+        for dx in range(-6, 6):
+            for dy in range(-6, 6):
+                square = (cornersquare[0] + dx, cornersquare[1] + dy)
+                if self.get_color(square) == 0:
+                    totry.add(square)
+        self.logg('per block ' + str(len(totry)) + ' positions')
+        solutions = []
+        for b0 in totry:
+            if self.tryplace(3, b0):
+                self.logg('trying block 0 at ' + str(b0[0]) + ' ' + str(b0[1]))
+                for b1 in totry:
+                    if (b1[0] > b0[0]) or ((b1[0] == b0[0]) and (b1[1] > b0[1])):
+                        if self.tryplace(3, b1):
+                            if self.get_color(cornersquare) == 0:
+                                if not self.has_zeropath(cornersquares, aroundcc):
+                                    solutions.append((b0, b1))
+                                    self.logg('      a solution')
+                            self.colorplace(3, b1, 0)
+                self.colorplace(3, b0, 0)
+        self.logg('found ' + str(len(solutions)) + ' 2-block corner  solutions')
+        bestlen = 0
+        if len(solutions) > 0:
+            for (b0, b1) in solutions:
+                self.colorplace(3, b0, 4)
+                self.colorplace(3, b1, 4)
+                prison = cornersquares.copy()
+                self.extend(prison)
+                if len(prison) >= bestlen:
+                    self.asol = (b0, b1)
+                    self.asolprison = prison.copy()
+                self.colorplace(3, b0, 0)
+                self.colorplace(3, b1, 0)
+        return (len(solutions) > 0)
 
 
 
@@ -630,9 +814,36 @@ class prog:
         return can
 
 
-
-
-
+    def has_cc(self, alt) -> bool:
+        has = (alt[0] >= 0) and (alt[0] + 4 < 200) and (alt[1] >= 0) and (alt[1] + 4 < 200)
+        if has:
+            has = has and (layout_if.layout[alt[0] + 0][alt[1] + 0] == 4)
+            if has:
+                has = has and (layout_if.layout[alt[0] + 0][alt[1] + 1] == 4)
+                has = has and (layout_if.layout[alt[0] + 0][alt[1] + 2] == 4)
+                has = has and (layout_if.layout[alt[0] + 0][alt[1] + 3] == 4)
+                has = has and (layout_if.layout[alt[0] + 0][alt[1] + 4] == 4)
+                has = has and (layout_if.layout[alt[0] + 1][alt[1] + 0] == 4)
+                has = has and (layout_if.layout[alt[0] + 1][alt[1] + 1] == 4)
+                has = has and (layout_if.layout[alt[0] + 1][alt[1] + 2] == 4)
+                has = has and (layout_if.layout[alt[0] + 1][alt[1] + 3] == 4)
+                has = has and (layout_if.layout[alt[0] + 1][alt[1] + 4] == 4)
+                has = has and (layout_if.layout[alt[0] + 2][alt[1] + 0] == 4)
+                has = has and (layout_if.layout[alt[0] + 2][alt[1] + 1] == 4)
+                has = has and (layout_if.layout[alt[0] + 2][alt[1] + 2] == 4)
+                has = has and (layout_if.layout[alt[0] + 2][alt[1] + 3] == 4)
+                has = has and (layout_if.layout[alt[0] + 2][alt[1] + 4] == 4)
+                has = has and (layout_if.layout[alt[0] + 3][alt[1] + 0] == 4)
+                has = has and (layout_if.layout[alt[0] + 3][alt[1] + 1] == 4)
+                has = has and (layout_if.layout[alt[0] + 3][alt[1] + 2] == 4)
+                has = has and (layout_if.layout[alt[0] + 3][alt[1] + 3] == 4)
+                has = has and (layout_if.layout[alt[0] + 3][alt[1] + 4] == 4)
+                has = has and (layout_if.layout[alt[0] + 4][alt[1] + 0] == 4)
+                has = has and (layout_if.layout[alt[0] + 4][alt[1] + 1] == 4)
+                has = has and (layout_if.layout[alt[0] + 4][alt[1] + 2] == 4)
+                has = has and (layout_if.layout[alt[0] + 4][alt[1] + 3] == 4)
+                has = has and (layout_if.layout[alt[0] + 4][alt[1] + 4] == 4)
+        return has
 
     def logg(self,stri):
         if self.logging:
@@ -741,16 +952,16 @@ class prog:
         aset = bigset.copy()
 
     def get_edge(self,aset):
-        # self.edge is the squares around aset
+        # self.edgeresult is the squares around aset
         square = aset.pop()
         aset.add(square)
         mycolor = self.get_color(square)
-        self.edge = set()
+        self.edgeresult = set()
         for square in aset:
             self.get_neighbours(square)
             for nsquare in self.neighbours:
                 if self.get_color(nsquare) != mycolor:
-                    self.edge.add(nsquare)
+                    self.edgeresult.add(nsquare)
 
     def filter_color(self,aset,mustcolor):
         wrong = set()        
@@ -760,7 +971,7 @@ class prog:
         self.filterresult = aset - wrong
 
     def get_center(self,aset):
-#       self.center is a square near the middle of aset
+        # self.centerresult is a square near the middle of aset
         n = len(aset)
         sumx = 0
         sumy = 0
@@ -769,10 +980,10 @@ class prog:
             sumy = sumy + square[1]
         avgx = round(sumx/n)
         avgy = round(sumy/n) 
-        self.center = (avgx,avgy)
+        self.centerresult = (avgx,avgy)
 
     def make_spo(self,aset):
-#       list self.spo with (x,y,sd) from aset
+        #       list self.spo with (x,y,sd) from aset
         self.spo = []
         for square in aset:
             sd = self.sdist(square,self.startsquare)
@@ -810,7 +1021,7 @@ class prog:
 
     def add_spo(self,square):
 #       square should not be in spo yet
-        sd = self.sdist(square,self.startsquare)
+        sd = self.sdist(square,self.path_direction)
         self.spo.append((square[0],square[1],sd))
         thigh = len(self.spo)-1
         while thigh>0:
@@ -823,10 +1034,32 @@ class prog:
 
 
     def has_path(self,in_aset,bset) -> bool:
-#       bset should be near self.startsquare
+        # bset should be near self.path_direction
         aset = in_aset.copy()
-        self.filter_color(aset,0)
-        aset = self.filterresult.copy()
+        if len(aset) == 0:
+            hp = False
+        else:
+            if len(aset & bset) > 0:
+                hp = True
+            else:
+                hp = False
+                self.make_spo(aset)
+                seen = aset.copy()
+                while (len(self.spo)>0) and (not hp):
+                    square = self.spo[0]
+                    self.pop_spo()
+                    self.get_neighbours(square)
+                    for nsquare in self.neighbours:
+                        if self.get_color(nsquare) in [0,2]:
+                            if nsquare not in seen:
+                                seen.add(nsquare)
+                                hp = hp or (nsquare in bset)
+                                self.add_spo(nsquare)
+        return hp
+
+    def has_zeropath(self,in_aset,bset) -> bool:
+        # bset should be near self.path_direction
+        aset = in_aset.copy()
         if len(aset) == 0:
             hp = False
         else:
@@ -906,13 +1139,94 @@ class prog:
         return hp
 
 
+    # disk routines
+    def mask_disk(self,mid,diskdiameter):
+        # mask (or unmask) a circle on the layout
+        # diskdiameter > 0, diskdiameter whole number
+        # if diskdiameter odd, mid must contain halves
+        r = diskdiameter / 2
+        left = round(mid[0]-r)
+        right = round(mid[0]+r)
+        bot = round(mid[1]-r)
+        top = round(mid[1]+r)
+        can = (left >= 0) and (right < 200) and (bot >= 0) and (top < 200)
+        if can:
+            for x in range(left, right):
+                for y in range(bot, top):
+                    squaremid = (x+0.5,y+0.5)
+                    if self.sdist(squaremid,mid) <= r * r:
+                        was = layout_if.layout[x][y]
+                        if was < 10:
+                            layout_if.layout[x][y] = was + 10
+                        else:
+                            layout_if.layout[x][y] = was - 10
 
-#   distance
+    #   distance
     def sdist(self,p,q) -> int:
+        # circle-distance (quadrat)
         return (p[0]-q[0])**2 + (p[1]-q[1])**2
  
     def fly(self,p,q) -> int:
+        # the square-distance, fitting to the neighbours-function.
         return max(abs(p[0]-q[0]),abs(p[1]-q[1]))
+
+    def octagondist(self, p, q) -> int:
+        dx = abs(p[0] - q[0])
+        dy = abs(p[1] - q[1])
+        return dx + dy + max(dx, dy)
+
+    def circledist(self, p,q) -> float:
+        return sqrt(self.sdist(p,q))
+
+    ############## terrain routines ###################################
+
+    def get_terrain(self, dpoint):
+        # for a dpoint of the 399x399 grid, return (layout,height)
+        if (dpoint[0] < 0) or (dpoint[0] >= 399) or (dpoint[1] < 0) or (dpoint[1] >= 399):
+            print('dpoint ERROR')
+        else:
+            return (layout_if.layout[dpoint[0] // 2][dpoint[1] // 2], layout_if.height[(dpoint[0]+1) // 2][(dpoint[1]+1) // 2])
+
+    def terrain_get_neighbours(self,square):
+        self.neighbours = set()
+        self.neighbours.add((square[0] - 1, square[1] + 0))
+        self.neighbours.add((square[0] + 0, square[1] - 1))
+        self.neighbours.add((square[0] + 1, square[1] + 0))
+        self.neighbours.add((square[0] + 0, square[1] + 1))
+        self.neighbours.add((square[0] - 1, square[1] - 1))
+        self.neighbours.add((square[0] + 1, square[1] - 1))
+        self.neighbours.add((square[0] + 1, square[1] + 1))
+        self.neighbours.add((square[0] - 1, square[1] + 1))
+
+    def terrain_extend(self,aset):
+        # aset is enlarged with same terrain
+        square = aset.pop()
+        aset.add(square)
+        myterrain = self.get_terrain(square)
+        smallset = set()
+        bigset = aset
+        while len(smallset)<len(bigset):
+            smallset = bigset.copy()
+            for square in smallset:
+                self.terrain_get_neighbours(square)
+                for nsquare in self.neighbours:
+                    if self.get_terrain(nsquare) == myterrain:
+                        bigset.add(nsquare)
+        aset = bigset.copy()
+
+    def terrain_get_edge(self,aset):
+        # self.edgeresult is the squares around aset
+        square = aset.pop()
+        aset.add(square)
+        myterrain = self.get_terrain(square)
+        self.edgeresult = set()
+        for square in aset:
+            self.terrain_get_neighbours(square)
+            for nsquare in self.neighbours:
+                if self.get_terrain(nsquare) != myterrain:
+                    self.edgeresult.add(nsquare)
+
+
 
 solo = prog()
 solo.main()
