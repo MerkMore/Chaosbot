@@ -2,7 +2,7 @@
 # Makes text for building placement
 # appends the output to file "data\placement.txt"
 # author: MerkMore
-# version 6 dec 2020
+# version 01 jan 2021
 from layout_if_py import layout_if
 import random
 from math import sqrt, sin, cos, acos, pi
@@ -65,9 +65,11 @@ class prog:
             else:
                 print('analyzing '+self.mapplace)
                 layout_if.load_layout(self.mapplace)
+                #layout_if.photo_layout() # debug
+                #layout_if.photo_height() # debug
                 self.appendthemap()
-                layout_if.photo_layout()
-                layout_if.photo_height()
+                #layout_if.photo_layout() # debug
+                #layout_if.photo_height() # debug
 
     def appendthemap(self):
         text = open('data\placement.txt','a')
@@ -134,17 +136,32 @@ class prog:
         x = 0.001*round(1000*(self.centerresult[0]+0.5))
         y = 0.001*round(1000*(self.centerresult[1]+0.5))
         text.write('position ENEMYRAMP ' + str(x) + ' ' + str(y) + '\n')
+        # enemynatural
         closest = 99999
         for lo in self.expansions:
             sd = self.sdist(lo,self.enemystartsquare)
-            if sd > 8: # lo is leftunder, startsquare is middle
-                sd = self.sdist(lo,self.centerresult)
+            if sd > 3*3:
+                sd = self.sdist(lo,enemyramp)
                 if sd < closest:
                     closest = sd
                     self.enemynatural = (lo[0]+2,lo[1]+2)
         x = self.enemynatural[0]+0.5
         y = self.enemynatural[1]+0.5
         text.write('position ENEMYNATURAL ' + str(x) + ' ' + str(y) + '\n')
+        # enemythird
+        closest = 99999
+        for lo in self.expansions:
+            sd = self.sdist(lo,self.enemystartsquare)
+            if sd > 3*3:
+                sd = self.sdist(lo, self.enemynatural)
+                if sd > 3 * 3:
+                    sd = self.sdist(lo,enemyramp)
+                    if sd < closest:
+                        closest = sd
+                        self.enemythird = (lo[0]+2,lo[1]+2)
+        x = self.enemythird[0]+0.5
+        y = self.enemythird[1]+0.5
+        text.write('position ENEMYTHIRD ' + str(x) + ' ' + str(y) + '\n')
         #
         startcc = set([self.startsquare]) # cc
         self.extend(startcc)
@@ -292,7 +309,7 @@ class prog:
                             self.walking[nsquare[0]][nsquare[1]] = dist
                             new_edge.append(nsquare)
             edge = new_edge.copy()
-        #       now, find some hidden fusioncore positions
+        # now, find some hidden fusioncore positions
         for shape in (3,3.5):
             alters = []
             while len(alters)<10000:
@@ -333,6 +350,46 @@ class prog:
                 if layout_if.layout[x][y] == 4:
                     layout_if.layout[x][y] = 0
         #
+        # scout
+        # make scout positions just inside the enemy base
+        self.logg('enemybasearea '+str(len(enemybasearea)))
+        self.get_edge(enemybasearea)
+        outside = self.edgeresult.copy()
+        self.logg('outside '+str(len(outside)))
+        green = set()
+        for square in outside:
+            if self.get_color(square) == 1:
+                green.add(square)
+        outeroutside = outside - green
+        self.logg('outeroutside '+str(len(outeroutside)))
+        self.get_edge(outeroutside)
+        inside = self.edgeresult.copy()
+        inside = inside & enemybasearea
+        self.logg('inside '+str(len(inside)))
+        for square in outeroutside:
+            if self.get_color(square) == 2:
+                ramptopsquare = square
+        self.logg('a rampsquare '+str(ramptopsquare[0])+' '+str(ramptopsquare[1]))
+        radius = self.circledist(ramptopsquare,self.enemystartsquare)
+        self.logg('radius '+str(radius))
+        thecos = (ramptopsquare[0]-self.enemystartsquare[0])/radius
+        thesin = (ramptopsquare[1]-self.enemystartsquare[1])/radius
+        if thesin > 0:
+            alfa = acos(thecos)
+        else:
+            alfa = 2*pi - acos(thecos)
+        # make 15 points around enemystartsquare
+        for nr in range(0,15):
+            beta = alfa + nr * 2*pi/15
+            circlepoint = (self.enemystartsquare[0] + cos(beta)*radius*1.3 , self.enemystartsquare[1] + sin(beta)*radius*1.3)
+            bestsdist = 99999
+            for square in inside:
+                sd = self.sdist(square,circlepoint)
+                if sd < bestsdist:
+                    bestsquare = square
+                    bestsdist = sd
+            text.write('position SCOUT '+str(bestsquare[0]+0.5)+' '+str(bestsquare[1]+0.5)+'\n')
+        # reapers
         # find reaperjumpspots near the enemybasearea
         square = tuple(enemybasearea)[0]
         dsquare = (square[0]*2,square[1]*2)
@@ -342,97 +399,93 @@ class prog:
         self.terrain_get_edge(darea)
         possi = self.edgeresult.copy()
         self.terrain_get_edge(possi)
-        possi = possi | self.edgeresult
+        possi = self.edgeresult
         reaperall = set()
         for dsquare in possi:
             (layout,height) = self.get_terrain(dsquare)
-            if height == baseheight - 16:
+            if (height == baseheight - 16) and (layout == 0):
                 self.logg('reaperjumppoint '+str(layout)+' '+str(height)+' '+str(dsquare[0]/2)+','+str(dsquare[1]/2))
                 reaperall.add(dsquare)
-        # get one representant per cluster
-        reaperspots = set()
-        while len(reaperall) > 0:
-            one = tuple(reaperall)[0]
-            reaperspots.add(one)
-            todel = {one}
-            stable = False
-            while not stable:
-                curlen = len(todel)
-                toadd = set()
-                for aone in todel:
-                    self.terrain_get_neighbours(aone)
-                    for aneigh in self.neighbours:
-                        if aneigh in reaperall:
-                            toadd.add(aneigh)
-                todel = todel | toadd
-                stable = (len(todel) == curlen)
-            reaperall -= todel
-        for dsquare in reaperspots:
+        for dsquare in reaperall:
             x = dsquare[0] / 2
             y = dsquare[1] / 2
             self.logg('position REAPERJUMP ' + str(x) + ' ' + str(y))
             text.write('position REAPERJUMP ' + str(x) + ' ' + str(y) + '\n')
-        # get the reaperjumpspot away from enemyramp and near mapcenter
-        bestqual = -99999
-        for dsquare in reaperspots:
-            square = (dsquare[0] / 2,dsquare[1] / 2)
-            qual = 2 * self.octagondist(square,enemyramp) - self.octagondist(square,self.mapcenter)
-            if qual > bestqual:
-                bestqual = qual
-                reaperjumpspot = square
-        # get the enemybasearea point near the reaperjumpspot
-        bestsd = 99999
-        for square in enemybasearea:
-            sd = self.sdist(square, reaperjumpspot)
-            if sd < bestsd:
-                bestsquare = square
-                bestsd = sd
-        if bestsd != 99999:
-            reaperbasejump = bestsquare
-        # get the reaperbarracksspot
-        wantsize = 8 # try to get it unscoutable from the top
-        hassize = self.circledist(reaperjumpspot,self.mapcenter)
-        vec = (self.mapcenter[0] - reaperjumpspot[0], self.mapcenter[1] - reaperjumpspot[1])
-        vec = (vec[0] * wantsize / hassize, vec[1] * wantsize / hassize)
-        around = (round(reaperjumpspot[0] + vec[0]),round(reaperjumpspot[1] + vec[1]))
-        self.logg('reaperbarracks around '+str(around[0])+','+str(around[1]))
-        bestsd = 99999
-        for x in range(around[0]-15,around[0]+15):
-            for y in range(around[1]-15,around[1]+15):
-                square = (x,y)
-                if self.can_place_shape(3.5,square): # can place barracks
-                    acceptable = True
-                    for ba in enemybasearea:
-                        if self.sdist(square,ba) < wantsize*wantsize:
-                            acceptable = False
-                    if acceptable:
-                        sd = self.sdist(square,reaperjumpspot)
-                        if sd < bestsd:
-                            bestsquare = square
-                            bestsd = sd
-        if bestsd != 99999:
-            x = bestsquare[0] + 1.5
-            y = bestsquare[1] + 1.5
-            text.write('position REAPERBARRACKS ' + str(x) + ' ' + str(y) + '\n')
-            self.logg('position REAPERBARRACKS ' + str(x) + ' ' + str(y))
-        else:
-            self.logg('no reaperbarracks')
-        # block reaperbasejump with two bunkers
-        if self.twoblock(reaperbasejump):
-            text.write('position REAPERBUNKER '+str(self.asol[0][0]+1.5)+' '+str(self.asol[0][1]+1.5)+'\n')
-            text.write('position REAPERBUNKER '+str(self.asol[1][0]+1.5)+' '+str(self.asol[1][1]+1.5)+'\n')
-            self.get_center(self.asolprison)
-            # use the middle of the squares
-            avera0 = self.centerresult[0] + 0.5
-            avera1 = self.centerresult[1] + 0.5
-            # round a bit
-            avera0 = 0.001 * round(1000 * avera0)
-            avera1 = 0.001 * round(1000 * avera1)
-            text.write('position REAPERPRISON ' + str(avera0) + ' ' + str(avera1) + '\n')
-            self.logg('position REAPERPRISON ' + str(avera0) + ' ' + str(avera1))
-        else:
-            self.logg('no reaperprison')
+            # color it to debug
+            #square = (dsquare[0] // 2,dsquare[1] // 2)
+            #self.colorplace(1,square,5)
+        # make reaperbasespots, real squares inside the enemy base
+        reaperbasespots = set()
+        for dsquare in reaperall:
+            jumpsquare = (dsquare[0] / 2,dsquare[1] / 2) # can have halves
+            bestsd = 99999
+            for square in enemybasearea:
+                sd = self.sdist(square, jumpsquare)
+                if sd < bestsd:
+                    bestsquare = square
+                    bestsd = sd
+            reaperbasespots.add(bestsquare)
+        self.logg('reaperbasespots '+str(len(reaperbasespots)))
+        # restrict to blockable with two bunkers
+        goodspots = set()
+        for square in reaperbasespots:
+            if self.twoblock(square):
+                goodspots.add(square)
+        self.logg('goodspots ' + str(len(goodspots)))
+        if len(goodspots) > 0:
+            # get the goodspot away from enemyramp and near mapcenter
+            bestqual = -99999
+            for square in goodspots:
+                qual = 2 * self.octagondist(square,enemyramp) - self.octagondist(square,self.mapcenter)
+                if qual > bestqual:
+                    bestqual = qual
+                    reaperjumpspot = square
+            self.logg('reaperjumpspot '+str(reaperjumpspot[0])+' '+str(reaperjumpspot[1]))
+            # block reaperbasejump with two bunkers
+            if self.twoblock(reaperjumpspot):
+                text.write('position REAPERBUNKER1 '+str(self.asol[0][0]+1.5)+' '+str(self.asol[0][1]+1.5)+'\n')
+                text.write('position REAPERBUNKER2 '+str(self.asol[1][0]+1.5)+' '+str(self.asol[1][1]+1.5)+'\n')
+                self.get_center(self.asolprison)
+                # use the middle of the squares
+                avera0 = self.centerresult[0] + 0.5
+                avera1 = self.centerresult[1] + 0.5
+                # round a bit
+                avera0 = 0.001 * round(1000 * avera0)
+                avera1 = 0.001 * round(1000 * avera1)
+                text.write('position REAPERPRISON ' + str(avera0) + ' ' + str(avera1) + '\n')
+                self.logg('position REAPERPRISON ' + str(avera0) + ' ' + str(avera1))
+            else:
+                self.logg('no reaperprison')
+            # get the reaperbarracksspot
+            wantsize = 12 # try to get it unscoutable from the top
+            hassize = self.circledist(reaperjumpspot,self.mapcenter)
+            vec = (self.mapcenter[0] - reaperjumpspot[0], self.mapcenter[1] - reaperjumpspot[1])
+            vec = (vec[0] * wantsize / hassize, vec[1] * wantsize / hassize)
+            around = (round(reaperjumpspot[0] + vec[0]),round(reaperjumpspot[1] + vec[1]))
+            self.logg('reaperbarracks around '+str(around[0])+','+str(around[1]))
+            bestsd = 99999
+            for x in range(around[0]-15,around[0]+15):
+                for y in range(around[1]-15,around[1]+15):
+                    square = (x,y)
+                    if self.can_place_shape(3.5,square): # can place barracks
+                        acceptable = True
+                        for ba in enemybasearea:
+                            if self.sdist(square,ba) < wantsize*wantsize:
+                                acceptable = False
+                        if acceptable:
+                            sd = self.sdist(square,reaperjumpspot)
+                            if sd < bestsd:
+                                bestsquare = square
+                                bestsd = sd
+            if bestsd != 99999:
+                x = bestsquare[0] + 1.5
+                y = bestsquare[1] + 1.5
+                text.write('position REAPERBARRACKS ' + str(x) + ' ' + str(y) + '\n')
+                self.logg('position REAPERBARRACKS ' + str(x) + ' ' + str(y))
+            else:
+                self.logg('no reaperbarracks')
         #
+        # liberators
         # estimate a choke as enemynatural in the direction of mapcenter dist 0.5*dist(enemystart,enemynatural)
         wantsize = 0.5 * self.circledist(self.enemynatural,self.enemystartsquare)
         hassize = self.circledist(self.enemynatural,self.mapcenter)
@@ -632,47 +685,9 @@ class prog:
         # Usually this result is a good cheese building place
         text.write('position INFESTEDFACTORY ' + str(factoryresult[0] + 1.5) + ' ' + str(factoryresult[1] + 1.5) + '\n')
         self.logg('position INFESTEDFACTORY ' + str(factoryresult[0] + 1.5) + ' ' + str(factoryresult[1] + 1.5))
-        self.do_place_shape(3.5,factoryresult)
         # erase the stored tankpath roughly
         self.tankpath = stored_tankpath
         self.color_tankpath(0)
-        self.do_place_shape(3,barracksresult)
-        self.do_place_shape(3.5,factoryresult)
-        # make scout positions just inside the enemy base
-        self.get_edge(enemybasearea)
-        outside = self.edgeresult.copy()
-        self.logg('outside '+str(len(outside)))
-        green = set()
-        for square in outside:
-            if self.get_color(square) == 1:
-                green.add(square)
-        outeroutside = outside - green
-        self.logg('outeroutside '+str(len(outeroutside)))
-        self.get_edge(outeroutside)
-        inside = self.edgeresult.copy()
-        inside = inside & enemybasearea
-        self.logg('inside '+str(len(inside)))
-        for square in outside:
-            if self.get_color(square) == 2:
-                ramptopsquare = square
-        radius = self.circledist(ramptopsquare,self.enemystartsquare)
-        thecos = (ramptopsquare[0]-self.enemystartsquare[0])/radius
-        thesin = (ramptopsquare[1]-self.enemystartsquare[1])/radius
-        if thesin > 0:
-            alfa = acos(thecos)
-        else:
-            alfa = 2*pi - acos(thecos)
-        # make 15 points around enemystartsquare
-        for nr in range(0,15):
-            beta = alfa + nr * 2*pi/15
-            circlepoint = (self.enemystartsquare[0] + cos(beta)*radius*1.3 , self.enemystartsquare[1] + sin(beta)*radius*1.3)
-            bestsdist = 9999
-            for square in inside:
-                sd = self.sdist(square,circlepoint)
-                if sd < bestsdist:
-                    bestsquare = square
-                    bestsdist = sd
-            text.write('position SCOUT '+str(bestsquare[0]+0.5)+' '+str(bestsquare[1]+0.5)+'\n')
 #
 #       that is all
         text.write('#####'+'\n')
@@ -725,9 +740,9 @@ class prog:
 
 
     def do_place_shape(self,shape,alt):
-        #       leftunder definition
+        # leftunder definition
         if shape == 3:
-            #           fusioncore
+            # fusioncore
             layout_if.layout[alt[0]+0][alt[1]+0] = 4
             layout_if.layout[alt[0]+0][alt[1]+1] = 4
             layout_if.layout[alt[0]+0][alt[1]+2] = 4
@@ -738,7 +753,7 @@ class prog:
             layout_if.layout[alt[0]+2][alt[1]+1] = 4
             layout_if.layout[alt[0]+2][alt[1]+2] = 4
         elif shape == 3.5:
-            #           starport
+            # starport
             layout_if.layout[alt[0]+0][alt[1]+0] = 4
             layout_if.layout[alt[0]+0][alt[1]+1] = 4
             layout_if.layout[alt[0]+0][alt[1]+2] = 4
@@ -815,6 +830,7 @@ class prog:
 
 
     def has_cc(self, alt) -> bool:
+        # Is alt the leftunder point of a cc?
         has = (alt[0] >= 0) and (alt[0] + 4 < 200) and (alt[1] >= 0) and (alt[1] + 4 < 200)
         if has:
             has = has and (layout_if.layout[alt[0] + 0][alt[1] + 0] == 4)

@@ -147,7 +147,11 @@ class layout_if:
             for row in range(0,399): # min 0 max 398
                 swaprow = 398-row # min 0 max 398
                 # info = (layout_if.height[(col+1) // 2][(row+1) // 2] + layout_if.layout[col // 2][row // 2]) % 7
-                info = layout_if.height[(col + 1) // 2][(row + 1) // 2] % 7
+                # info = layout_if.height[(col + 1) // 2][(row + 1) // 2] % 7
+                if layout_if.layout[col // 2][row // 2] in [0,2]:
+                    info = layout_if.height[(col + 1) // 2][(row + 1) // 2] % 7
+                else:
+                    info = 0
                 if info == 0:
                     rgb = layout_if.white
                 elif info == 1:
