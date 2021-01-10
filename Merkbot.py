@@ -220,6 +220,7 @@ class Chaosbot(sc2.BotAI):
     basekind_of_kind = {}
     antiair_detector = [] # cannons
     supply_of_army = {}
+    airground_of_unit = {} # 'air'/'ground'
     builddura_of_thing = {}
     size_of_structure = {}
     species_of_structure = {}
@@ -242,6 +243,7 @@ class Chaosbot(sc2.BotAI):
     danger_of_bcenemy = {}
     hate_of_bcenemy = {}
     nobuild_path = set()
+    set_rally = set() # of (point where a building comes, the rallypoint that is not set yet)
     # timing constants
     gas_speed = 0.95 # simplified from liquipedia
     mim_speed = 0.95
@@ -273,6 +275,9 @@ class Chaosbot(sc2.BotAI):
     structures_of_expo = {} # structures
     enemy_units_of_expo = {} # enemy_units
     enemy_structures_of_expo = {} # enemy_structures
+    ground_dps_of_expo = {} # strength of me minus enemy
+    air_dps_of_expo = {} # strength of me minus enemy
+    worth_of_expo = {} # positive, only buildings: mineralcost + 2*gascost
     #
     #   ############### GAMESTATE
     #   gamestate values constant in this frame after gamestate:
@@ -668,6 +673,7 @@ class Chaosbot(sc2.BotAI):
             self.expansion_advisor()
             self.turrets_adlib()
             await self.lift()
+            self.do_rally()
         await self.manage_the_wall()
         await self.cheese_army()
         await self.attack_with_bc()
@@ -835,25 +841,26 @@ class Chaosbot(sc2.BotAI):
         self.init_structures('T',MAINCELLBLOCK, 0, 5)
         # scv
         self.builddura_of_thing[SCV] = 12
-        # army, builddura, supply
-        self.init_army(MARINE,18,1)
-        self.init_army(MARAUDER,21,2)
-        self.init_army(REAPER,32,1)
-        self.init_army(HELLION,21,2)
-        self.init_army(CYCLONE,32,3)
-        self.init_army(WIDOWMINE,21,2)
-        self.init_army(WIDOWMINEBURROWED,21,2)
-        self.init_army(SIEGETANK,32,3)
-        self.init_army(SIEGETANKSIEGED,32,3)
-        self.init_army(VIKINGFIGHTER,30,2)
-        self.init_army(MEDIVAC,30,2)
-        self.init_army(RAVEN,43,2)
-        self.init_army(LIBERATOR,43,3)
-        self.init_army(LIBERATORAG,43,3)
-        self.init_army(BANSHEE,43,2)
-        self.init_army(BATTLECRUISER,64,6)
-        self.init_army(GHOST,29,2)
-        self.init_army(NUKESILONOVA,43,0)
+        self.airground_of_unit[SCV] = 'ground'
+        # army, builddura, supply, is air/ground
+        self.init_army(MARINE,18,1,'ground')
+        self.init_army(MARAUDER,21,2,'ground')
+        self.init_army(REAPER,32,1,'ground')
+        self.init_army(HELLION,21,2,'ground')
+        self.init_army(CYCLONE,32,3,'ground')
+        self.init_army(WIDOWMINE,21,2,'ground')
+        self.init_army(WIDOWMINEBURROWED,21,2,'ground')
+        self.init_army(SIEGETANK,32,3,'ground')
+        self.init_army(SIEGETANKSIEGED,32,3,'ground')
+        self.init_army(VIKINGFIGHTER,30,2,'air')
+        self.init_army(MEDIVAC,30,2,'air')
+        self.init_army(RAVEN,43,2,'air')
+        self.init_army(LIBERATOR,43,3,'air')
+        self.init_army(LIBERATORAG,43,3,'air')
+        self.init_army(BANSHEE,43,2,'air')
+        self.init_army(BATTLECRUISER,64,6,'air')
+        self.init_army(GHOST,29,2,'ground')
+        self.init_army(NUKESILONOVA,43,0,'ground')
         # upgrade, builddura
         self.init_upgrade(PUNISHERGRENADES, 43) #concussive shells
         self.init_upgrade(STIMPACK, 100)
@@ -1124,6 +1131,7 @@ class Chaosbot(sc2.BotAI):
                     self.wall_depot0_pos = Point2((float(woord[2]), float(woord[3])))
                 elif self.wall_depot1_pos == self.nowhere:
                     self.wall_depot1_pos = Point2((float(woord[2]), float(woord[3])))
+        self.set_rally.add((self.wall_barracks_pos,self.wall_barracks_pos.towards(self.loved_pos, 2)))
         # nobuild a tankpath to the center
         for tile in self.nobuild_path:
             self.nobuild_tile(tile)
@@ -1159,6 +1167,10 @@ class Chaosbot(sc2.BotAI):
             del visit[visit.index(bestpos)]
             self.scout2_pos.append(bestpos)
             nowpos = bestpos
+        #
+        # mapspecific
+        if self.game_info.map_name == 'Golden Wall LE':
+            self.miner_bound = 18
         #
         self.init_liberator_spots()
         self.init_expansion_doubles()
@@ -1328,11 +1340,8 @@ class Chaosbot(sc2.BotAI):
         pl = open('data/names.txt','r')
         self.all_names = pl.read().splitlines()
         pl.close()
-        # mapspecific
-        if self.game_info.map_name == 'Golden Wall LE':
-            self.miner_bound = 18
         # chat
-        await self._client.chat_send('Chaosbot version 7 jan 2021, made by MerkMore', team_only=False)
+        await self._client.chat_send('Chaosbot version 10 jan 2021, made by MerkMore', team_only=False)
         #
         #layout_if.photo_layout()
 
@@ -1704,6 +1713,8 @@ class Chaosbot(sc2.BotAI):
         self.marauder_goal = bar1_pos.towards(self.loved_pos,3)
         self.production_pause.add((SCV,23,FACTORY))
         self.production_pause.add((REFINERY,1,FACTORY))
+        self.set_rally.add((bar1_pos,self.marauder_goal))
+        self.set_rally.add((bar2_pos,self.marauder_goal))
 
 
     def log_preps(self):
@@ -2002,6 +2013,11 @@ class Chaosbot(sc2.BotAI):
         # common distance
         sd = (p.x-q.x)*(p.x-q.x) + (p.y-q.y)*(p.y-q.y)
         return sqrt(sd)
+
+    def simpledist(self,p,q):
+        dx = abs(p.x-q.x)
+        dy = abs(p.y-q.y)
+        return dx + dy + max(dx,dy)
  
     def near(self,p,q,supdist) -> bool:
         # works for integers as well as for floats
@@ -2020,7 +2036,7 @@ class Chaosbot(sc2.BotAI):
         offset = random.choice(self.flee_circle)
         return Point2((posi.x+offset.x*dist,posi.y+offset.y*dist))
 
-    ##########################
+    ########################## OVERVIEW OF THE MAP PER EXPO
 
     # a "maptile" is a 10*10 square tile, the maptiles cover the map
     def maptile_of_pos(self, pos: Point2) -> int:
@@ -2049,50 +2065,60 @@ class Chaosbot(sc2.BotAI):
         return self.expo_of_maptile[self.maptile_of_pos(pos)]
 
     def init_step_expo(self):
-        #
         self.minerals_of_expo = {}
+        self.scvs_of_expo = {}
+        self.units_of_expo = {}
+        self.structures_of_expo = {}
+        self.enemy_units_of_expo = {}
+        self.enemy_structures_of_expo = {}
+        self.ground_dps_of_expo = {}
+        self.air_dps_of_expo = {}
+        self.worth_of_expo = {}
         for expo in range(0,self.expos):
             self.minerals_of_expo[expo] = set()
+            self.scvs_of_expo[expo] = set()
+            self.structures_of_expo[expo] = set()
+            self.enemy_units_of_expo[expo] = set()
+            self.units_of_expo[expo] = set()
+            self.ground_dps_of_expo[expo] = 0
+            self.enemy_structures_of_expo[expo] = set()
+            self.air_dps_of_expo[expo] = 0
+            self.worth_of_expo[expo] = 0
+        #
         for one in self.mineral_field:
             expo = self.expo_of_pos(one.position)
             self.minerals_of_expo[expo].add(one)
-        #for expo in range(0,self.expos):
-        #    print('DEBUG minerals '+str(len(self.minerals_of_expo[expo])))
-        #
-        self.units_of_expo = {}
-        for expo in range(0,self.expos):
-            self.units_of_expo[expo] = set()
-        for one in self.units:
-            expo = self.expo_of_pos(one.position)
-            self.units_of_expo[expo].add(one)
-        #
-        self.scvs_of_expo = {}
-        for expo in range(0,self.expos):
-            self.scvs_of_expo[expo] = set()
         for one in self.units(SCV):
             expo = self.expo_of_pos(one.position)
             self.scvs_of_expo[expo].add(one)
-        #
-        self.structures_of_expo = {}
-        for expo in range(0,self.expos):
-            self.structures_of_expo[expo] = set()
-        for one in self.structures:
+        for one in self.units:
             expo = self.expo_of_pos(one.position)
-            self.structures_of_expo[expo].add(one)
-        #
-        self.enemy_units_of_expo = {}
-        for expo in range(0,self.expos):
-            self.enemy_units_of_expo[expo] = set()
+            kind = one.type_id
+            self.units_of_expo[expo].add(one)
+            self.ground_dps_of_expo[expo] += one.ground_dps
+            self.air_dps_of_expo[expo] += one.air_dps
         for one in self.enemy_units:
             expo = self.expo_of_pos(one.position)
-            self.enemy_units_of_expo[expo].add(one)
-        #
-        self.enemy_structures_of_expo = {}
-        for expo in range(0,self.expos):
-            self.enemy_structures_of_expo[expo] = set()
+            kind = one.type_id
+            self.ground_dps_of_expo[expo] -= one.ground_dps
+            self.air_dps_of_expo[expo] -= one.air_dps
+        for one in self.structures:
+            expo = self.expo_of_pos(one.position)
+            kind = one.type_id
+            self.structures_of_expo[expo].add(one)
+            self.ground_dps_of_expo[expo] += one.ground_dps
+            self.air_dps_of_expo[expo] += one.air_dps
+            cost = self.calculate_unit_value(kind)
+            self.worth_of_expo[expo] += cost.minerals + 2*cost.vespene
         for one in self.enemy_structures:
             expo = self.expo_of_pos(one.position)
+            kind = one.type_id
             self.enemy_structures_of_expo[expo].add(one)
+            self.ground_dps_of_expo[expo] -= one.ground_dps
+            self.air_dps_of_expo[expo] -= one.air_dps
+            cost = self.calculate_unit_value(kind)
+            self.worth_of_expo[expo] += cost.minerals + 2 * cost.vespene
+        #
 
     #*********************************************************************************************************************
 
@@ -2169,11 +2195,12 @@ class Chaosbot(sc2.BotAI):
         self.danger_of_bcenemy[thing] = danger
         self.hate_of_bcenemy[thing] = hate
 
-    def init_army(self,thing,dura,supply):
+    def init_army(self,thing,dura,supply,airground):
         self.routine = 'init_army'
         self.all_army.append(thing)
         self.supply_of_army[thing] = supply
         self.builddura_of_thing[thing] = dura
+        self.airground_of_unit[thing] = airground
 
     def init_labarmy(self):
         for thing in self.all_army:
@@ -2261,7 +2288,7 @@ class Chaosbot(sc2.BotAI):
         if building == NUKESILONOVA:
             return Cost(100,100)
         else:
-            return self.calculate_cost(building)
+            return self.calculate_unit_value(building)
 
     def can_pay(self,thing) -> bool:
         cost = self.get_cost(thing)
@@ -6120,7 +6147,7 @@ class Chaosbot(sc2.BotAI):
                 elif state == 'travels':
                     # wait for the jump animation to finish, after that its position changes, and its vision returns
                     # or wait until it has flown ower.
-                    if self.no_move_or_near(bc,64,1):
+                    if self.no_move_or_near(bc,100,1):
                         self.state_of_unittag[bct] = 'finetuning'
                         goal = self.locally_improved(bc.position)
                         self.go_move(bc,goal)
@@ -6356,6 +6383,26 @@ class Chaosbot(sc2.BotAI):
                     self.log_command('mar.attack(tp)')
                     self.go_attack(mar,tp)
         # marauders groupmove
+        groupcentre = self.nowhere
+        n = 0
+        sx = 0
+        sy = 0
+        for mar in self.units(MARAUDER):
+            n += 1
+            sx += mar.position.x
+            sy += mar.position.y
+        if n > 0:
+            groupcentre = Point2((sx / n, sy / n))
+            n = 0
+            sx = 0
+            sy = 0
+            for mar in self.units(MARAUDER):
+                if self.near(mar.position,groupcentre,16):
+                    n += 1
+                    sx += mar.position.x
+                    sy += mar.position.y
+            if n > 0:
+                groupcentre = Point2((sx / n, sy / n))
         reached = 0
         for mar in self.units(MARAUDER):
             if mar.tag not in self.shame_of_unittag:
@@ -6369,6 +6416,10 @@ class Chaosbot(sc2.BotAI):
                         if not mar.has_buff(BuffId.STIMPACKMARAUDER):
                             mar(AbilityId.EFFECT_STIM_MARAUDER)
                     mar.move(altpos)
+                    self.detour_of_unittag[mar.tag] = True
+            if self.near(mar.position,groupcentre,16):
+                if not self.near(mar.position,groupcentre,8):
+                    mar.move(mar.position.towards(groupcentre,8))
                     self.detour_of_unittag[mar.tag] = True
             if self.no_move(mar,50):
                 reached += 1
@@ -6556,7 +6607,7 @@ class Chaosbot(sc2.BotAI):
         for bc in self.units(BATTLECRUISER).ready:
             expo = self.expo_of_pos(bc.position)
             state = self.state_of_unittag[bc.tag]
-            if state not in ['repair','finetuning']:
+            if state not in ['repair','travels','finetuning']:
                 # get targets and dangersum
                 hatemax = 0
                 dangersum = 0
@@ -6616,7 +6667,7 @@ class Chaosbot(sc2.BotAI):
                 if hatemax > 0:
                     self.lasttarget_of_bc[bc] = target
                 # yamato
-                if (hatemax >= 4) and (dangersum < 100):
+                if (hatemax >= 4) and (dangersum < 200):
                     yama = True
                     if target.tag in self.yamatoed:
                         if (self.frame < self.yamatoed[target.tag] + 75):
@@ -6658,8 +6709,6 @@ class Chaosbot(sc2.BotAI):
                 if AbilityId.EFFECT_ANTIARMORMISSILE in abilities:
                     self.log_command('ra(AbilityId.EFFECT_ANTIARMORMISSILE,'+target.name+')')
                     ra(AbilityId.EFFECT_ANTIARMORMISSILE, target)
-
-
 
 
     async def battle_dodge_bile(self):
@@ -6800,6 +6849,16 @@ class Chaosbot(sc2.BotAI):
                             self.goal_of_flying_struct[fac.tag] = spot
                             self.write_layout(FACTORY,spot)
 
+
+    def do_rally(self):
+        # effect the rallys planned in set_rally
+        todel = set()
+        for (buipos,ralpos) in self.set_rally:
+            for bui in self.structures.ready:
+                if bui.position == buipos:
+                    bui(AbilityId.RALLY_BUILDING,ralpos)
+                    todel.add((buipos,ralpos))
+        self.set_rally -= todel
 
     def unit_power(self,thing) -> int:
         # estimate of fighting power
@@ -8066,8 +8125,6 @@ class Chaosbot(sc2.BotAI):
                             self.special_tags.add(struc.tag)
                             if (struc_type == SUPPLYDEPOT):
                                 self.wall_depot_tags.add(struc.tag)
-                            if (struc_type == BARRACKS):
-                                struc(AbilityId.RALLY_BUILDING, struc.position.towards(self.loved_pos, 2))
                             if (struc_type, position) in self.chosenplaces:
                                 del self.chosenplaces[self.chosenplaces.index((struc_type, position))]
                 if not seen:
@@ -8213,10 +8270,9 @@ class Chaosbot(sc2.BotAI):
         for oc in self.structures(ORBITALCOMMAND).ready:
             if oc.energy >= 50:
                 if len(self.mineral_field) > 0:
-                    bestsd = 99999
-                    bestmim = random.choice(self.mineral_field)
+                    bestqual = -99999
                     pog = 0
-                    while (pog < 100) and ((bestsd > 100) or (pog < 20)):
+                    while (pog < 80):
                         pog += 1
                         mim = random.choice(self.mineral_field)
                         itssd = 99999
@@ -8224,8 +8280,9 @@ class Chaosbot(sc2.BotAI):
                             for cc in self.structures(kind).ready:
                                 sd = self.sdist(cc.position,mim.position)
                                 itssd = min(itssd,sd)
-                        if itssd < bestsd:
-                            bestsd = itssd
+                        itsqual = self.simpledist(cc.position,self.loved_pos) - itssd
+                        if itsqual > bestqual:
+                            bestqual = itsqual
                             bestmim = mim
                     mim = bestmim
                     oc(AbilityId.CALLDOWNMULE_CALLDOWNMULE, mim)
@@ -8923,8 +8980,8 @@ class Chaosbot(sc2.BotAI):
 
     def hop_cc(self):
         self.routine = 'hop_cc'
-        tomove = set()
-        moveto = set()
+        tomove = set() # of cc
+        moveto = set() # of ccpos
         # tomove (cc)
         for cc in self.structures(COMMANDCENTER).ready + self.structures(ORBITALCOMMAND).ready:
             if cc.tag not in self.special_tags:
@@ -9028,7 +9085,7 @@ class Chaosbot(sc2.BotAI):
                     seen = True
             if place in self.tankplaces:
                 seen = True
-            if place in self.goal_of_flying_struct:
+            if place in self.goal_of_flying_struct.values():
                 seen = True
             for enetag in self.enemy_buidings_permanent:
                 enepos = self.enemy_buidings_permanent[enetag]
@@ -9108,7 +9165,7 @@ class Chaosbot(sc2.BotAI):
             if random.random() * sum < self.strategy[spec][nr]:
                 radio_nr = nr
         # TO TEST use next line
-        #radio_nr = 12
+        #radio_nr = 19
         for nr in range(0,self.radio_choices):
             self.game_choice.append(nr == radio_nr)
         for nr in range(self.radio_choices,self.game_choices):
@@ -9376,10 +9433,10 @@ class Chaosbot(sc2.BotAI):
 #*********************************************************************************************************************
 def main():
     # Easy/Medium/Hard/VeryHard
-    all_maps = ['OxideLE','PillarsofGoldLE','RomanticideLE','SubmarineLE','DeathauraLE','JagannathaLE','LightshadeLE']
+    all_maps = ['IceandChromeLE','PillarsofGoldLE','EternalEmpireLE','SubmarineLE','DeathauraLE','GoldenWallLE','EverDreamLE']
     map = random.choice(all_maps)
     # TO TEST use next line
-    #map = 'OxideLE'
+    #map = 'SubmarineLE'
     opponentspecies = random.choice([Race.Terran,Race.Zerg,Race.Protoss])
     # TO TEST use next line
     #opponentspecies = Race.Terran

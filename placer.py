@@ -2,7 +2,7 @@
 # Makes text for building placement
 # appends the output to file "data\placement.txt"
 # author: MerkMore
-# version 01 jan 2021
+# version 09 jan 2021
 from layout_if_py import layout_if
 import random
 from math import sqrt, sin, cos, acos, pi
@@ -126,6 +126,7 @@ class prog:
             if sd < bestsd:
                 bestsd = sd
                 alsoramptop = set([square])
+                enemyramptop_tobeusedlater = square
         self.extend(alsoramptop)
         ramptop = ramptop & alsoramptop
         self.logg('restricted to 1 ramptop, ramptop '+str(len(ramptop)))
@@ -366,10 +367,7 @@ class prog:
         inside = self.edgeresult.copy()
         inside = inside & enemybasearea
         self.logg('inside '+str(len(inside)))
-        for square in outeroutside:
-            if self.get_color(square) == 2:
-                ramptopsquare = square
-        self.logg('a rampsquare '+str(ramptopsquare[0])+' '+str(ramptopsquare[1]))
+        ramptopsquare = enemyramptop_tobeusedlater
         radius = self.circledist(ramptopsquare,self.enemystartsquare)
         self.logg('radius '+str(radius))
         thecos = (ramptopsquare[0]-self.enemystartsquare[0])/radius
@@ -486,16 +484,8 @@ class prog:
                 self.logg('no reaperbarracks')
         #
         # liberators
-        # estimate a choke as enemynatural in the direction of mapcenter dist 0.5*dist(enemystart,enemynatural)
-        wantsize = 0.5 * self.circledist(self.enemynatural,self.enemystartsquare)
-        hassize = self.circledist(self.enemynatural,self.mapcenter)
-        vec = (self.mapcenter[0] - self.enemynatural[0], self.mapcenter[1] - self.enemynatural[1])
-        vec = (vec[0] * wantsize / hassize, vec[1] * wantsize / hassize)
-        estimate = (round(self.enemynatural[0] + vec[0]),round(self.enemynatural[1] + vec[1]))
-        self.logg('estimate en. nat. choke '+str(estimate[0])+','+str(estimate[1]))
         # centertile
-        around = (round(0.33*(self.startsquare[0]+2*self.enemystartsquare[0])),
-                  round(0.33*(self.startsquare[1]+2*self.enemystartsquare[1])))
+        around = self.mapcenter
         bestsd = 99999
         for x in range(around[0]-20,around[0]+20):
             for y in range(around[1]-20,around[1]+20):
@@ -506,6 +496,14 @@ class prog:
                         bestsquare = square
                         bestsd = sd
         centertile = bestsquare
+        # estimate a choke as enemynatural in the direction of mapcenter dist 0.5*dist(enemystart,enemynatural)
+        wantsize = 0.5 * self.circledist(self.enemynatural,self.enemystartsquare)
+        hassize = self.circledist(self.enemynatural,self.mapcenter)
+        vec = (self.mapcenter[0] - self.enemynatural[0], self.mapcenter[1] - self.enemynatural[1])
+        vec = (vec[0] * wantsize / hassize, vec[1] * wantsize / hassize)
+        estimate = (round(self.enemynatural[0] + vec[0]),round(self.enemynatural[1] + vec[1]))
+        self.logg('estimate en. nat. choke '+str(estimate[0])+','+str(estimate[1]))
+        # check that a tankpath can be found without choking
         ennattile = (round(self.enemynatural[0]),round(self.enemynatural[1]))
         pathstart = {ennattile}
         pathend = {centertile}
