@@ -1186,7 +1186,7 @@ class Chaosbot(sc2.BotAI):
         for pos in self.expansion_locations_list:
             self.write_layout(COMMANDCENTER,pos)
         #
-        layout_if.mapname = self.game_info.map_name
+        layout_if.mapname = self.family(self.game_info.map_name)
         layout_if.startx = self.loved_pos.x
         layout_if.starty = self.loved_pos.y
         layout_if.enemyx = self.enemy_pos.x
@@ -1342,7 +1342,7 @@ class Chaosbot(sc2.BotAI):
             nowpos = bestpos
         #
         # mapspecific
-        if self.game_info.map_name == 'Golden Wall LE':
+        if self.family(self.game_info.map_name) == 'goldenwall':
             self.miner_bound = 18
         #
         self.init_liberator_spots()
@@ -1800,6 +1800,12 @@ class Chaosbot(sc2.BotAI):
                       +'   cheese3 '+self.cheese3_phase)
 
 
+    def family(self, mapname):
+        mapfamily = ''
+        for ch in mapname.replace('LE', ''):
+            if ('a' <= ch <= 'z') or ('A' <= ch <= 'Z'):
+                mapfamily += ch.lower()
+        return mapfamily
 
 
     def slowed_down(self):
