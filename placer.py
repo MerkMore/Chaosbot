@@ -2,7 +2,7 @@
 # Makes text for building placement
 # appends the output to file "data\placement.txt"
 # author: MerkMore
-# version 09 jan 2021
+# version 04 feb 2021
 from layout_if_py import layout_if
 import random
 from math import sqrt, sin, cos, acos, pi
@@ -546,10 +546,10 @@ class prog:
                     best = wafy
                     bestsquare = square
                     self.logg('pos '+str(square[0])+','+str(square[1])+' wafy '+str(wafy)+'   walk '+str(walk)+'  fly '+str(fly))
-        #       now we hope to place a single barracks there
+        # now we hope to place a single barracks there
         leftunder = (bestsquare[0]-1,bestsquare[1]-1)
         placed = self.can_place_shape(3,leftunder)
-        barracksresult = leftunder
+        barracksproposal = leftunder
         dist = 0
         while not placed:
             dist = dist+1
@@ -558,13 +558,10 @@ class prog:
                     maybe = (leftunder[0]+dx,leftunder[1]+dy)
                     if maybe not in enemybasearea:
                         if self.can_place_shape(3,maybe):
-                            barracksresult = maybe
+                            barracksproposal = maybe
                             placed = True
-        #       if not unlucky, this result is a good cheese building place
-        text.write('position INFESTEDBARRACKS '+str(barracksresult[0]+1.5)+' '+str(barracksresult[1]+1.5)+'\n')
-        # do not draw the barracks, as later we want to place a tank here
-        # self.do_place_shape(3,barracksresult)
-        #       go find a corner in the enemy base
+        # if not unlucky, this result is a good cheese barracks building place
+        # go find a corner in the enemy base
         corners = set()
         for square in enemybasearea:
             ownneighs = 0
@@ -590,6 +587,17 @@ class prog:
             else:
                 todel.add(cornersquare)
         corners -= todel
+        self.logg('two-block prisons '+str(len(corners)))
+        # get one close to barracksproposal
+        bestsd = 99999
+        for cornersquare in corners:
+            sd = self.sdist(cornersquare,barracksproposal)
+            if sd < bestsd:
+                bestcornersquare = cornersquare
+                bestsd = sd
+        cornersquare = bestcornersquare
+        if self.twoblock(cornersquare):
+            self.logg('prison size '+str(len(self.asolprison)))
         # of those, the closest to the enemy should be the bunker
         sd0 = self.sdist(self.asol[0],self.enemystartsquare)
         sd1 = self.sdist(self.asol[1],self.enemystartsquare)
@@ -640,7 +648,7 @@ class prog:
                 square = (x,y)
                 if square not in enemybasearea:
                     if self.istile(square): # can place a tank
-                        sd = self.sdist(square,around)
+                        sd = self.sdist(square,self.centerresult)
                         if sd < bestsd:
                             if self.has_tankpath(square, freespace):
                                 bestsquare = square
@@ -648,23 +656,28 @@ class prog:
         tanksquare = bestsquare
         text.write('position INFESTEDTANK '+str(tanksquare[0])+' '+str(tanksquare[1])+'\n')
         self.logg('position INFESTEDTANK '+str(tanksquare[0])+' '+str(tanksquare[1]))
-        # Color the tankpath until we found a factory place.
-        surely = self.has_tankpath(tanksquare, freespace) # to get the right tankpath
-        self.color_tankpath(5)
-        stored_tankpath = self.tankpath.copy()
-        self.logg('tankpath ' + str(len(self.tankpath)))
-        # now we can draw the barracks, even if it is on the tankspot
-        self.do_place_shape(3,barracksresult)
-        # make freespace reachable
-        self.colortile(freespace,0)
-        # for debugging, a photo
-        #layout_if.photo_layout()
+        # get barracksposition around barracksproposal, close to centerresult prison, it may cross the tankspot
+        self.logg('C')
+        around = barracksproposal
+        bestsd = 9999
+        for x in range(around[0]-10,around[0]+10):
+            for y in range(around[1]-10,around[1]+10):
+                square = (x,y)
+                if square not in enemybasearea:
+                    if self.can_place_shape(3, square):
+                        sd = self.sdist(square,self.centerresult)
+                        if sd < bestsd:
+                            bestsquare = square
+                            bestsd = sd
+        barracksposition = bestsquare
+        text.write('position INFESTEDBARRACKS '+str(barracksposition[0]+1.5)+' '+str(barracksposition[1]+1.5)+'\n')
+        self.do_place_shape(3,barracksposition)
         # factory
         # get infested_factory place, about 14 from the infestedbarracks, away from the enemy
-        vector = (barracksresult[0] - self.enemystartsquare[0], barracksresult[1] - self.enemystartsquare[1])
-        factor = 14 / self.circledist(barracksresult, self.enemystartsquare)
-        factorysuggestion = (round(barracksresult[0] + factor * vector[0]), \
-                             round(barracksresult[1] + factor * vector[1]))
+        vector = (barracksposition[0] - self.enemystartsquare[0], barracksposition[1] - self.enemystartsquare[1])
+        factor = 14 / self.circledist(barracksposition, self.enemystartsquare)
+        factorysuggestion = (round(barracksposition[0] + factor * vector[0]), \
+                             round(barracksposition[1] + factor * vector[1]))
         # now we hope to place a factory there
         leftunder = (factorysuggestion[0] - 1, factorysuggestion[1] - 1)
         placed = False
@@ -683,11 +696,8 @@ class prog:
         # Usually this result is a good cheese building place
         text.write('position INFESTEDFACTORY ' + str(factoryresult[0] + 1.5) + ' ' + str(factoryresult[1] + 1.5) + '\n')
         self.logg('position INFESTEDFACTORY ' + str(factoryresult[0] + 1.5) + ' ' + str(factoryresult[1] + 1.5))
-        # erase the stored tankpath roughly
-        self.tankpath = stored_tankpath
-        self.color_tankpath(0)
-#
-#       that is all
+        #
+        #  that is all
         text.write('#####'+'\n')
         text.close()
 
