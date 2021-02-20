@@ -1,6 +1,6 @@
 # bunker_if_py.py
 # author: MerkMore
-# version: 18 nov 2020
+# version: 19 feb 2021
 # Burny style
 #
 # use:   from bunker_if_py import bunker_if
@@ -25,7 +25,6 @@ class bunker_if:
     #   bunker_if.init_step(self)
     units = None
     structures = None
-    map_center = None
     get_available_abilities = None
     #
     # EXTERNAL
@@ -33,6 +32,7 @@ class bunker_if:
     #   dead things will disappear from these sets.
     hiding_spot = None
     bunkertags = set()
+    door = {}
     scvtags = set()
     marinetags = set()
     do_log = False
@@ -56,7 +56,6 @@ class bunker_if:
     def init_step(self):
         bunker_if.units = self.units
         bunker_if.structures = self.structures
-        bunker_if.map_center = self.game_info.map_center
         bunker_if.get_available_abilities = self.get_available_abilities
 
     def step():
@@ -65,6 +64,7 @@ class bunker_if:
         #
         # EXTERNAL:
         # bunkertags: some bunkers, ready or being built
+        # door: a spot outside a bunker
         # scvtags: some scv job cheeser, to do cold repair.
         # marinetags: some marines.
         # hiding_spot: gathering place for superfluous marines and scvs
@@ -75,7 +75,6 @@ class bunker_if:
         # bunkertags_inited: the bunkertags in bunkertags that did init
         # marinetags_inited: the marinetags in marinetags that did init
         # visible_marinetags: marinetags outside bunkers
-        # door: a spot outside a bunker
         # bunk_ammar[bu.tag]: ideal amount of marines in bunker bu
         # goalbunkertag[man.tag]: for bunk_marine man the bunker it belongs to.
         #                      for scvtags man the bunker it will repair
@@ -89,7 +88,6 @@ class bunker_if:
         #
         load_frames = 20
         load_dist = 6
-        door = {}
         # old_goalbunkertag
         # store old version of goalbunkertag, so goalbunkertag can be corrected without other code in that part
         old_goalbunkertag = bunker_if.goalbunkertag.copy()
@@ -125,9 +123,6 @@ class bunker_if:
                 bunker_if.loadpast[mant] = 0
                 bunker_if.astate[mant] = 'returning'
                 # returning marine will be commanded to walk later
-        # door
-        for bun in bunker_if.structures(BUNKER):
-            door[bun.tag] = bun.position.towards(bunker_if.map_center, 3)
         # init bunkers
         for bunt in bunker_if.bunkertags:
             if bunt not in bunker_if.bunkertags_inited:
@@ -135,8 +130,8 @@ class bunker_if:
                 bunker_if.bunk_ammar[bunt] = 0
                 for bun in bunker_if.structures(BUNKER):
                     if bun.tag == bunt:
-                        bunker_if.log('bun(AbilityId.RALLY_BUILDING,door[bunt])')
-                        bun(AbilityId.RALLY_BUILDING,door[bunt])
+                        bunker_if.log('bun(AbilityId.RALLY_BUILDING,bunker_if.door[bunt])')
+                        bun(AbilityId.RALLY_BUILDING,bunker_if.door[bunt])
         # loadpast
         for mant in bunker_if.marinetags:
             if bunker_if.loadpast[mant] < load_frames:
@@ -234,7 +229,7 @@ class bunker_if:
                                                 man.repair(bun)
                                                 bunker_if.astate[mant] = 'working'
                                             else:
-                                                man.move(door[bunt])
+                                                man.move(bunker_if.door[bunt])
                                                 bunker_if.astate[mant] = 'walking'
             if bunker_if.astate[mant] == 'returning':
                 for man in bunker_if.units(SCV):
@@ -322,8 +317,8 @@ class bunker_if:
                     bunt = bunker_if.goalbunkertag[mant]
                     for man in bunker_if.units(MARINE):
                         if man.tag == mant:
-                            man.move(door[bunt])
                             bunker_if.astate[mant] = 'walking'
+                            man.move(bunker_if.door[bunt])
         # astate changes by end task
         for mant in bunker_if.visible_marinetags:
             if bunker_if.astate[mant] == 'working':
