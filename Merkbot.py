@@ -1676,8 +1676,8 @@ class Chaosbot(sc2.BotAI):
             self.rush_opening = True
             self.buildseries_opening = [SUPPLYDEPOT, REFINERY, BARRACKS, FACTORY, SUPPLYDEPOT, REFINERY,
                                        STARPORT, STARPORT, BARRACKSTECHLAB, SUPPLYDEPOT, FACTORYTECHLAB]
-            x = (3 * self.hisright.x + 2 * self.enemy_pos.x + self.loved_pos.x) / 6
-            y = (3 * self.hisright.y + 2 * self.enemy_pos.y + self.loved_pos.y) / 6
+            x = (2 * self.hisright.x + self.enemy_pos.x + self.loved_pos.x) / 4
+            y = (2 * self.hisright.y + self.enemy_pos.y + self.loved_pos.y) / 4
             around = Point2((x,y))
             barpos = self.somewhere_around(around)
             self.chosenplaces.insert(0, (BARRACKS, barpos))
@@ -1741,7 +1741,7 @@ class Chaosbot(sc2.BotAI):
         self.all_names = pl.read().splitlines()
         pl.close()
         # chat
-        await self._client.chat_send('Chaosbot version 28 mar 2021, made by MerkMore', team_only=False)
+        await self._client.chat_send('Chaosbot version 1 apr 2021, made by MerkMore', team_only=False)
         #
         #layout_if.photo_layout()
 
@@ -1820,7 +1820,7 @@ class Chaosbot(sc2.BotAI):
         self.production_pause_finish.add((SUPPLYDEPOT, 1, ORBITALCOMMAND, 1))
         self.production_pause_finish.add((SCV, 16 + nbases, ORBITALCOMMAND, 1))
         self.production_pause_finish.add((REFINERY, 0, FACTORY, 1))
-        self.opening_create_units = nbases * 16 # 4 barracks * 4 marines/barracks
+        self.opening_create_units = nbases * 24 # 4 barracks * 6 marines/barracks
         self.opening_create_kind = MARINE
         self.supply_rate = 0.12 + 0.03 * nbases
 
@@ -2509,7 +2509,7 @@ class Chaosbot(sc2.BotAI):
         return (random.randrange(0, amount) == 0)
 
     def maxam_of_thing(self,thing) -> int:
-        maxam = 100
+        maxam = 200
         if thing in self.all_structures_tobuildwalk:
             if thing in [ARMORY,FUSIONCORE,ENGINEERINGBAY,GHOSTACADEMY]:
                 maxam = 2
@@ -2539,7 +2539,7 @@ class Chaosbot(sc2.BotAI):
 
     def future_maxam_of_thing(self,thing) -> int:
         self.get_all_future_basepos()
-        maxam = 100
+        maxam = 200
         if thing in self.all_structures_tobuildwalk:
             if thing in [ARMORY,FUSIONCORE,ENGINEERINGBAY,GHOSTACADEMY]:
                 maxam = 2
@@ -5461,22 +5461,22 @@ class Chaosbot(sc2.BotAI):
             # phase
             if self.game_phase == 'init':
                 self.game_phase = 'opening'
-                await self._client.chat_send('opening', team_only=False)
+                #await self._client.chat_send('opening', team_only=False)
                 self.log_success('============================================================ opening =========')
                 self.log_buildseries('game_phase')
             elif self.game_phase == 'opening':
                 self.game_phase = 'midgame'
-                await self._client.chat_send('midgame', team_only=False)
+                #await self._client.chat_send('midgame', team_only=False)
                 self.log_buildseries('game_phase')
                 self.log_success('============================================================ midgame ======')
             elif self.game_phase == 'midgame':
                 self.game_phase = 'lategame'
-                await self._client.chat_send('lategame', team_only=False)
+                #await self._client.chat_send('lategame', team_only=False)
                 self.log_buildseries('game_phase')
                 self.log_success('============================================================ lategame =======')
             elif self.game_phase == 'lategame':
                 self.game_phase = 'endgame'
-                await self._client.chat_send('endgame', team_only=False)
+                #await self._client.chat_send('endgame', team_only=False)
                 self.log_buildseries('game_phase')
                 self.log_success('============================================================ endgame =======')
             # make optimized buildseries
@@ -6086,7 +6086,7 @@ class Chaosbot(sc2.BotAI):
             have = len(self.units(self.opening_create_kind))
             if have > self.opening_create_hadmax:
                 self.opening_create_hadmax = have
-            if 2 * have + self.opening_create_units < 2 * self.opening_create_hadmax:
+            if self.opening_create_units + have < self.opening_create_hadmax:
                 self.opening_create_units = 0
 
     def upgrades_adlib(self):
@@ -6285,9 +6285,15 @@ class Chaosbot(sc2.BotAI):
             # else try new cc at odd position
             for pos in self.possible_cc_positions:
                 if self.check_layout(COMMANDCENTER, pos):
-                    if not gotone:
-                        gotone = True
-                        self.throw_at_spot(COMMANDCENTER, pos, 'extreme_spender', 2)
+                    has_enemy_pf = False
+                    for tpa in self.enemy_structureinfo:
+                        (typ, pfpos, tag) = tpa
+                        if (typ == PLANETARYFORTRESS) and self.near(pfpos,pos,12):
+                            has_enemy_pf = True
+                    if not has_enemy_pf:
+                        if not gotone:
+                            gotone = True
+                            self.throw_at_spot(COMMANDCENTER, pos, 'extreme_spender', 2)
 
     #*********************************************************************************************************************
 
@@ -6971,8 +6977,13 @@ class Chaosbot(sc2.BotAI):
             # stimpack when there is gas
             self.throw_treepayno(BARRACKSTECHLAB, 'marine_fun', 2)
             self.throw_treepayno(STIMPACK, 'marine_fun', 2)
+            # tech-up after stimpack if surplus money
+            if self.we_started_a(STIMPACK):
+                self.throw_treepayno(FACTORY, 'marine_fun', 2)
+            if self.we_started_a(FACTORY):
+                self.throw_treepayno(STARPORT, 'marine_fun', 2)
             # start the attack
-            if (self.opening_create_units <= 0): # not when rich
+            if (self.opening_create_units <= 0) or (self.supply_used > 180):
                 if not self.marine_attacked:
                     self.marine_attacked = True
                     self.marine_attackframe = self.frame
@@ -8790,11 +8801,12 @@ class Chaosbot(sc2.BotAI):
                 n_enemies = 0
                 for ene in self.enemy_units_of_expo[expo]:
                     if not ene.is_flying:
-                        enemies.add(ene.position)
-                        enemy_power += self.unit_power(ene.type_id)
-                        cx = cx + ene.position.x
-                        cy = cy + ene.position.y
-                        n_enemies += 1
+                        if (tow.position == self.loved_pos) or (self.near(ene.position,tow.position,10)):
+                            enemies.add(ene.position)
+                            enemy_power += self.unit_power(ene.type_id)
+                            cx = cx + ene.position.x
+                            cy = cy + ene.position.y
+                            n_enemies += 1
                 for tpa in self.enemy_structureinfo_of_expo[expo]:
                     (typ,pos,tag) = tpa
                     enemies.add(pos)
@@ -9849,12 +9861,12 @@ class Chaosbot(sc2.BotAI):
                     for (thing2, pos2) in self.toswap - self.swapped:
                         if thing2 == TECHLAB:
                             combis.add((pos1,pos2,self.sdist(pos1,pos2)))
-            maxsd = 9*9
+            minsd = 9*9
             for (frompos,topos,sd) in combis:
-                if sd < maxsd:
+                if sd < minsd:
                     combi = (frompos,topos)
-                    maxsd = sd
-            if maxsd < 9*9:
+                    minsd = sd
+            if minsd < 9*9:
                 # use combi
                 self.swapplans.add(combi)
                 (frompos,topos) = combi
@@ -9903,6 +9915,213 @@ class Chaosbot(sc2.BotAI):
                     place = self.position_of_building(bu)
                     self.throw_at_spot(upg, place, 'do_banshees', 1)
 
+
+    def get_nuke_target(self, ghostpos):
+        # -> self.nuke_target
+        nuke_targets = set()
+        bestquality = -99999
+        for tpa in self.enemy_structureinfo:
+            (typ, pos, tag) = tpa
+            expo = self.expo_of_pos(pos)
+            quality = - self.circledist(pos, ghostpos)
+            for other_tpa in self.enemy_structureinfo_of_expo[expo]:
+                (other_typ, other_pos, other_tag) = other_tpa
+                if self.near(pos, other_pos, 4):
+                    quality += 20
+            if quality > bestquality:
+                bestquality = quality
+                nuke_targets = {pos}
+            elif quality == bestquality:
+                nuke_targets.add(pos)
+        if len(nuke_targets) == 0:
+            self.nuke_target = self.enemy_pos
+        elif self.nuke_target not in nuke_targets:
+            bestsd = 99999
+            for nt in nuke_targets:
+                sd = self.sdist(ghostpos, nt)
+                if sd < bestsd:
+                    bestsd = sd
+                    self.nuke_target = nt
+
+    async def ghost_fun(self):
+        if self.ghost_phase > 'A':
+            self.log_success('ghost_phase ' + self.ghost_phase)
+        self.ghost_calmdown = max(0, self.ghost_calmdown - self.chosen_game_step)
+        # fall back
+        if self.we_started_amount(GHOSTACADEMY) < 1:
+            self.ghost_phase = min('B', self.ghost_phase)
+        if self.we_started_amount(BARRACKS) < 2:  # Force second barracks as the first sometimes cannot lab.
+            self.ghost_phase = min('B', self.ghost_phase)
+        if self.we_started_amount(BARRACKSTECHLAB) < 1:
+            self.ghost_phase = min('B', self.ghost_phase)
+        if self.we_started_amount(FACTORY) < 1:
+            self.ghost_phase = min('B', self.ghost_phase)
+        if self.we_started_amount(GHOST) < 1:
+            self.ghost_phase = min('C', self.ghost_phase)
+        # phases
+        if self.ghost_phase == 'A':
+            # continue
+            if (self.supply_used > 180):
+                self.ghost_phase = 'B'
+        elif self.ghost_phase == 'B':
+            # build buildings
+            done = 0
+            if self.we_started_amount(GHOSTACADEMY) < 1:
+                if self.ghost_calmdown == 0:
+                    if self.rich():
+                        self.throw_somewhere(GHOSTACADEMY, 'ghost_fun', 1)
+                    self.ghost_calmdown = 80
+            else:
+                done += 1
+            if self.we_started_amount(BARRACKS) < 2:
+                if self.ghost_calmdown == 0:
+                    if self.rich_nogas():
+                        self.throw_somewhere(BARRACKS, 'ghost_fun', 1)
+                    self.ghost_calmdown = 80
+            else:
+                done += 1
+            if self.we_started_amount(BARRACKSTECHLAB) < 1:
+                if self.rich():
+                    self.throw_somewhere(BARRACKSTECHLAB, 'ghost_fun', 1)
+                self.ghost_calmdown = 80
+            else:
+                done += 1
+            if self.we_started_amount(FACTORY) < 1:
+                if self.ghost_calmdown == 0:
+                    if self.rich_nogas():
+                        self.throw_somewhere(FACTORY, 'ghost_fun', 1)
+                    self.ghost_calmdown = 80
+            else:
+                done += 1
+            # continue
+            if done >= 4:
+                self.ghost_phase = 'C'
+        elif self.ghost_phase == 'C':
+            # buildings are started
+            # build cloack, ghosts, nukes
+            done = 0
+            if self.we_started_amount(GHOST) < 1:
+                if self.ghost_calmdown == 0:
+                    if self.rich():
+                        self.throw_somewhere(GHOST, 'ghost_fun', 1)
+                    self.ghost_calmdown = 80
+            else:
+                done += 1
+            if self.we_started_amount(PERSONALCLOAKING) < 1:
+                if self.ghost_calmdown == 0:
+                    if self.rich():
+                        self.throw_somewhere(PERSONALCLOAKING, 'ghost_fun', 1)
+                    self.ghost_calmdown = 80
+            else:
+                done += 1
+            if self.we_started_amount(NUKESILONOVA) < 1:
+                if self.ghost_calmdown == 0:
+                    if self.rich():
+                        for ga in self.structures(GHOSTACADEMY).ready.idle:
+                            ga(AbilityId.BUILD_NUKE)
+                        self.ghost_calmdown = 80
+            else:
+                done += 1
+            if done >= 3:
+                self.ghost_phase = 'D'
+        elif self.ghost_phase == 'D':
+            # wait for ghost some energy, nuke, restdura max 20 sec
+            # continue
+            done = 0
+            if len(self.units(GHOST)) >= 1:
+                done += 1
+            for ghost in self.units(GHOST):
+                if ghost.energy < 100:
+                    done -= 1
+            if self.we_started_amount(NUKESILONOVA) >= 1:
+                done += 1
+            for (martype, bartype, pos, dura) in self.eggs:
+                if (martype == NUKESILONOVA) and (dura > 20):
+                    done -= 1
+            if done >= 2:
+                self.ghost_phase = 'E'
+                # init
+                for ghost in self.units(GHOST):
+                    pos = ghost.position
+                self.get_nuke_target(pos)
+        elif self.ghost_phase == 'E':
+            # there are ghosts and nukes and a target
+            # if none close to nuking place, go there
+            close = False
+            for ghost in self.units(GHOST):
+                if self.near(ghost.position, self.nuke_target, 13):
+                    close = True
+            if close:
+                self.ghost_phase = 'G'
+            else:
+                target = self.nuke_target
+                radius = 13
+                tooclose = True
+                tries = 0
+                while (tries < 100) and tooclose:
+                    tries += 1
+                    x = target.x + random.randrange(-radius, radius)
+                    y = target.y + random.randrange(-radius, radius)
+                    goal = Point2((x, y))
+                    tooclose = False
+                    for tpa in self.enemy_structureinfo:
+                        (typ, pos, tag) = tpa
+                        if typ in self.antiair_detector:
+                            if self.near(goal, pos, 11.5):
+                                tooclose = True
+                for ghost in self.units(GHOST):
+                    self.go_move(ghost, goal)
+                self.ghost_phase = 'F'
+        elif self.ghost_phase == 'F':
+            # moving to goals
+            for ghost in self.units(GHOST):
+                if self.near(ghost.position, self.nuke_target, 70):
+                    abilities = (await self.get_available_abilities([ghost]))[0]
+                    if AbilityId.BEHAVIOR_CLOAKON_GHOST in abilities:
+                        ghost(AbilityId.BEHAVIOR_CLOAKON_GHOST)
+                if ghost.tag in self.goal_of_unittag:  # dont ask me, it occurred
+                    if self.no_move(ghost, 64):
+                        self.get_nuke_target(ghost.position)
+                        self.ghost_phase = 'E'
+        elif self.ghost_phase == 'G':
+            # goal reached
+            # call nuke
+            done = 0
+            for ghost in self.units(GHOST):
+                if self.near(ghost.position, self.nuke_target, 13):
+                    abilities = (await self.get_available_abilities([ghost]))[0]
+                    if AbilityId.TACNUKESTRIKE_NUKECALLDOWN in abilities:
+                        ghost(AbilityId.TACNUKESTRIKE_NUKECALLDOWN, self.nuke_target)
+                        done += 1
+            # continue
+            if done >= 1:
+                self.ghost_calmdown = 80
+                self.ghost_phase = 'H'
+        elif self.ghost_phase == 'H':
+            # waiting for strike
+            if self.ghost_calmdown == 0:
+                self.ghost_phase = 'I'
+                # init
+                for ghost in self.units(GHOST):
+                    self.go_move(ghost, self.loved_pos)
+        elif self.ghost_phase == 'I':
+            # walking home
+            done = 0
+            for ghost in self.units(GHOST):
+                if not self.near(ghost.position, self.nuke_target, 70):
+                    abilities = (await self.get_available_abilities([ghost]))[0]
+                    if AbilityId.BEHAVIOR_CLOAKOFF_GHOST in abilities:
+                        ghost(AbilityId.BEHAVIOR_CLOAKOFF_GHOST)
+                if not self.no_move(ghost, 64):
+                    done -= 1
+            # continue
+            if done >= 0:
+                self.ghost_phase = 'C'
+                # init
+                for ghost in self.units(GHOST):
+                    abilities = (await self.get_available_abilities([ghost]))[0]
+                    if AbilityId.BEHAVIOR_CLOAKOFF_GHOST in abilities:
+                        ghost(AbilityId.BEHAVIOR_CLOAKOFF_GHOST)
 
 
     async def do_cocoon(self):
@@ -11503,14 +11722,14 @@ class Chaosbot(sc2.BotAI):
                 self.strategy[spec][nr] = float(woord[spec])
         # enemy species
         if self.enemy_race == Race.Zerg:
-            self.species = 0
+            self.enemy_species = 0
         elif self.enemy_race == Race.Terran:
-            self.species = 1
+            self.enemy_species = 1
         elif self.enemy_race == Race.Protoss:
-            self.species = 2
+            self.enemy_species = 2
         else:
-            self.species = 3
-        spec = self.species    
+            self.enemy_species = 3
+        spec = self.enemy_species
         # radio tuning
         sum = 0.0
         for nr in range(0,self.radio_choices):
@@ -11527,7 +11746,7 @@ class Chaosbot(sc2.BotAI):
             if random.random() * sum < self.strategy[spec][nr]:
                 radio_nr = nr
         # TO TEST use next line
-        #radio_nr = 32
+        #radio_nr = 21
         for nr in range(0,self.radio_choices):
             self.game_choice.append(nr == radio_nr)
         for nr in range(self.radio_choices,self.game_choices):
@@ -11536,7 +11755,7 @@ class Chaosbot(sc2.BotAI):
 
     async def win_loss(self):
         # win means "the opening went well"
-        spec = self.species
+        spec = self.enemy_species
         if self.game_result == 'doubt':
             max_cc_health = 0
             for cc in self.all_bases:
@@ -11567,6 +11786,8 @@ class Chaosbot(sc2.BotAI):
                 for nr in range(0, self.game_choices):
                     self.strategy[spec][nr] = max(self.strategy[spec][nr], 0.01)
                     self.strategy[spec][nr] = min(self.strategy[spec][nr], 0.99)
+                for nr in range(0, self.radio_choices):
+                    self.strategy[spec][nr] = min(self.strategy[spec][nr], 0.30)
                 # radio tuning
                 sum = 0.0
                 for nr in range(0, self.radio_choices):
@@ -11599,215 +11820,6 @@ class Chaosbot(sc2.BotAI):
         return walk_dura
 
 
-#*********************************************************************************************************************
-
-    def get_nuke_target(self, ghostpos):
-        # -> self.nuke_target
-        nuke_targets = set()
-        bestquality = -99999
-        for tpa in self.enemy_structureinfo:
-            (typ,pos,tag) = tpa
-            expo = self.expo_of_pos(pos)
-            quality = - self.circledist(pos,ghostpos)
-            for other_tpa in self.enemy_structureinfo_of_expo[expo]:
-                (other_typ,other_pos,other_tag) = other_tpa
-                if self.near(pos,other_pos,4):
-                    quality += 20
-            if quality > bestquality:
-                bestquality = quality
-                nuke_targets = {pos}
-            elif quality == bestquality:
-                nuke_targets.add(pos)
-        if len(nuke_targets) == 0:
-            self.nuke_target = self.enemy_pos
-        elif self.nuke_target not in nuke_targets:
-            bestsd = 99999
-            for nt in nuke_targets:
-                sd = self.sdist(ghostpos,nt)
-                if sd < bestsd:
-                    bestsd = sd
-                    self.nuke_target = nt
-
-
-    async def ghost_fun(self):
-        if self.ghost_phase > 'A':
-            self.log_success('ghost_phase '+self.ghost_phase)
-        self.ghost_calmdown = max(0,self.ghost_calmdown - self.chosen_game_step)
-        # fall back
-        if self.we_started_amount(GHOSTACADEMY) < 1:
-            self.ghost_phase = min('B',self.ghost_phase)
-        if self.we_started_amount(BARRACKS) < 2: # Force second barracks as the first sometimes cannot lab.
-            self.ghost_phase = min('B',self.ghost_phase)
-        if self.we_started_amount(BARRACKSTECHLAB) < 1:
-            self.ghost_phase = min('B',self.ghost_phase)
-        if self.we_started_amount(FACTORY) < 1:
-            self.ghost_phase = min('B', self.ghost_phase)
-        if self.we_started_amount(GHOST) < 1:
-            self.ghost_phase = min('C', self.ghost_phase)
-        # phases
-        if self.ghost_phase == 'A':
-            #continue
-            if (self.supply_used > 180):
-                self.ghost_phase = 'B'
-        elif self.ghost_phase == 'B':
-            # build buildings
-            done = 0
-            if self.we_started_amount(GHOSTACADEMY) < 1:
-                if self.ghost_calmdown == 0:
-                    if self.rich():
-                        self.throw_somewhere(GHOSTACADEMY,'ghost_fun',1)
-                    self.ghost_calmdown = 80
-            else:
-                done += 1
-            if self.we_started_amount(BARRACKS) < 2:
-                if self.ghost_calmdown == 0:
-                    if self.rich_nogas():
-                        self.throw_somewhere(BARRACKS, 'ghost_fun', 1)
-                    self.ghost_calmdown = 80
-            else:
-                done += 1
-            if self.we_started_amount(BARRACKSTECHLAB) < 1:
-                if self.rich():
-                    self.throw_somewhere(BARRACKSTECHLAB, 'ghost_fun', 1)
-                self.ghost_calmdown = 80
-            else:
-                done += 1
-            if self.we_started_amount(FACTORY) < 1:
-                if self.ghost_calmdown == 0:
-                    if self.rich_nogas():
-                        self.throw_somewhere(FACTORY, 'ghost_fun', 1)
-                    self.ghost_calmdown = 80
-            else:
-                done += 1
-            # continue
-            if done >= 4:
-                self.ghost_phase = 'C'
-        elif self.ghost_phase == 'C':
-            # buildings are started
-            # build cloack, ghosts, nukes
-            done = 0
-            if self.we_started_amount(GHOST) < 1:
-                if self.ghost_calmdown == 0:
-                    if self.rich():
-                        self.throw_somewhere(GHOST,'ghost_fun',1)
-                    self.ghost_calmdown = 80
-            else:
-                done += 1
-            if self.we_started_amount(PERSONALCLOAKING) < 1:
-                if self.ghost_calmdown == 0:
-                    if self.rich():
-                        self.throw_somewhere(PERSONALCLOAKING, 'ghost_fun', 1)
-                    self.ghost_calmdown = 80
-            else:
-                done += 1
-            if self.we_started_amount(NUKESILONOVA) < 1:
-                if self.ghost_calmdown == 0:
-                    if self.rich():
-                        for ga in self.structures(GHOSTACADEMY).ready.idle:
-                            ga(AbilityId.BUILD_NUKE)
-                        self.ghost_calmdown = 80
-            else:
-                done += 1
-            if done >= 3:
-                self.ghost_phase = 'D'
-        elif self.ghost_phase == 'D':
-            # wait for ghost some energy, nuke, restdura max 20 sec
-            # continue
-            done = 0
-            if len(self.units(GHOST)) >= 1:
-                done += 1
-            for ghost in self.units(GHOST):
-                if ghost.energy < 100:
-                    done -= 1
-            if self.we_started_amount(NUKESILONOVA) >= 1:
-                done += 1
-            for (martype, bartype, pos, dura) in self.eggs:
-                if (martype == NUKESILONOVA) and (dura > 20):
-                    done -= 1
-            if done >= 2:
-                self.ghost_phase = 'E'
-                # init
-                for ghost in self.units(GHOST):
-                    pos = ghost.position
-                self.get_nuke_target(pos)
-        elif self.ghost_phase == 'E':
-            # there are ghosts and nukes and a target
-            # if none close to nuking place, go there
-            close = False
-            for ghost in self.units(GHOST):
-                if self.near(ghost.position,self.nuke_target,13):
-                    close = True
-            if close:
-                self.ghost_phase = 'G'
-            else:
-                target = self.nuke_target
-                radius = 13
-                tooclose = True
-                tries = 0
-                while (tries < 100) and tooclose:
-                    tries += 1
-                    x = target.x + random.randrange(-radius, radius)
-                    y = target.y + random.randrange(-radius, radius)
-                    goal = Point2((x, y))
-                    tooclose = False
-                    for tpa in self.enemy_structureinfo:
-                        (typ, pos, tag) = tpa
-                        if typ in self.antiair_detector:
-                            if self.near(goal, pos, 11.5):
-                                tooclose = True
-                for ghost in self.units(GHOST):
-                    self.go_move(ghost,goal)
-                self.ghost_phase = 'F'
-        elif self.ghost_phase == 'F':
-            # moving to goals
-            for ghost in self.units(GHOST):
-                if self.near(ghost.position,self.nuke_target,70):
-                    abilities = (await self.get_available_abilities([ghost]))[0]
-                    if AbilityId.BEHAVIOR_CLOAKON_GHOST in abilities:
-                        ghost(AbilityId.BEHAVIOR_CLOAKON_GHOST)
-                if ghost.tag in self.goal_of_unittag: # dont ask me, it occurred
-                    if self.no_move(ghost,64):
-                        self.get_nuke_target(ghost.position)
-                        self.ghost_phase = 'E'
-        elif self.ghost_phase == 'G':
-            # goal reached
-            # call nuke
-            done = 0
-            for ghost in self.units(GHOST):
-                if self.near(ghost.position,self.nuke_target,13):
-                    abilities = (await self.get_available_abilities([ghost]))[0]
-                    if AbilityId.TACNUKESTRIKE_NUKECALLDOWN in abilities:
-                        ghost(AbilityId.TACNUKESTRIKE_NUKECALLDOWN, self.nuke_target)
-                        done += 1
-            # continue
-            if done >= 1:
-                self.ghost_calmdown = 80
-                self.ghost_phase = 'H'
-        elif self.ghost_phase == 'H':
-            # waiting for strike
-            if self.ghost_calmdown == 0:
-                self.ghost_phase = 'I'
-                # init
-                for ghost in self.units(GHOST):
-                    self.go_move(ghost,self.loved_pos)
-        elif self.ghost_phase == 'I':
-            # walking home
-            done = 0
-            for ghost in self.units(GHOST):
-                if not self.near(ghost.position,self.nuke_target,70):
-                    abilities = (await self.get_available_abilities([ghost]))[0]
-                    if AbilityId.BEHAVIOR_CLOAKOFF_GHOST in abilities:
-                        ghost(AbilityId.BEHAVIOR_CLOAKOFF_GHOST)
-                if not self.no_move(ghost,64):
-                    done -= 1
-            # continue
-            if done >= 0:
-                self.ghost_phase = 'C'
-                # init
-                for ghost in self.units(GHOST):
-                    abilities = (await self.get_available_abilities([ghost]))[0]
-                    if AbilityId.BEHAVIOR_CLOAKOFF_GHOST in abilities:
-                        ghost(AbilityId.BEHAVIOR_CLOAKOFF_GHOST)
 
 #*********************************************************************************************************************
 def main():
