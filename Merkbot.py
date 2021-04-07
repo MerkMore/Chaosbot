@@ -170,7 +170,7 @@ from sc2.ids.unit_typeid import LARVA
 class Chaosbot(sc2.BotAI):
     #   ############### CHANGE VALUE AD LIB
     do_slowdown = False
-    slowdown_ticks = 0
+    slowdown_ticks = 99999
     slowness = 0.3
     do_log_success = False
     do_log_fail = False
@@ -399,8 +399,7 @@ class Chaosbot(sc2.BotAI):
     victimtag_of_unittag = {} # cyclones have a victim
     unlockframe_of_cyclonetag = {}
     #
-    special_tags = set()    # walldepots, wallbarracks, ...
-                            # cheese1_tank, cheese1_scv, ...
+    speciality_of_tag = {} # wall/cheese1/ opening_name
     bunker_marines = set()
     cleaning_tank_tags = set()
     cleaning_object_found = False
@@ -518,7 +517,23 @@ class Chaosbot(sc2.BotAI):
     cheese3_bunker2_tag = notag
     cheese3_bunkersites = set()
     cheese3_tanktags = set()
-    #
+    # for workerrush:
+    hisleftmim = None
+    hisrightmim = None
+    hisrampmim = None
+    hisfarmim = None
+    homemim = None
+    workerrushers = 10
+    endworkerrush = 5000
+    enemyrampdist = 10
+    healthybound = 41
+    rushrepairs = set()  # of (repairer_tag,reparee_tag)
+    rushaids = set()  # of (aider_tag,aidee_tag)
+    bravery_of_unittag = {} # per brave workerrush scv an int
+    workerrushstarted = False
+    workerrushstartframe = 120
+    workerback = set() # of tag of worker moving back, trying to stack.
+    workerrushrepdist = 12
     # to swap starport on techlab:
     toswap = set() # of (buildingtype,position)
     swapped = set() # of (buildingtype,position)
@@ -683,7 +698,7 @@ class Chaosbot(sc2.BotAI):
     #   strategy[0] is vs Zerg []
     strategy = []
     game_choice = []
-    radio_choices = 33
+    radio_choices = 34
     game_choices = 52
     game_result = 'doubt'
     opening_name = 'no'
@@ -803,6 +818,7 @@ class Chaosbot(sc2.BotAI):
             await self.do_trainandretry()
         await self.do_pf_rush()
         await self.do_cocoon()
+        self.do_workerrush()
         self.do_banshees()
         self.do_reaper()
         await self.catch_a_bug()
@@ -833,6 +849,7 @@ class Chaosbot(sc2.BotAI):
         self.map_top = self.game_info.playable_area.height+self.game_info.playable_area.y
         #
         self.init_expo()
+        self.init_step_expo()
         # expected_order
         self.init_expected_order('mimminer', AbilityId.HARVEST_RETURN)
         self.init_expected_order('mimminer', AbilityId.HARVEST_GATHER)
@@ -1263,25 +1280,6 @@ class Chaosbot(sc2.BotAI):
         for ut in self.all_army:
             if ut not in [MARINE,MARAUDER,REAPER,GHOST]: # bio
                 self.all_repairable_shooters.add(ut)
-        # give gather init
-        for mim in self.mineral_field:
-            self.count_of_mimt[mim.tag] = 0
-        for scv in self.units(SCV):
-            self.job_of_scvt[scv.tag] = 'mimminer'
-            amimt = self.notag
-            best_sd = 99999
-            for mim in self.mineral_field:
-                if self.count_of_mimt[mim.tag] < 2:
-                    sd = self.sdist(scv.position,mim.position)
-                    if sd < best_sd:
-                        best_sd = sd
-                        amim = mim
-                        amimt = mim.tag
-            scv.gather(amim)
-            self.mimt_of_scvt[scv.tag] = amimt
-            self.count_of_mimt[amimt] += 1
-        self.fix_count_of_job()
-        #
         # strategy choices
         await self.init_strategy()
         #
@@ -1697,10 +1695,43 @@ class Chaosbot(sc2.BotAI):
             self.chosenplaces.append((STARPORT, pos))
             self.opening_create_units = 2
             self.opening_create_kind = BANSHEE
-        # radio_choices = 33
+        if self.game_choice[33]:
+            self.opening_name = 'workerrush'
+            self.buildseries_opening = [SUPPLYDEPOT,BARRACKS,MARINE]
+            self.init_workerrush()
+        # radio_choices = 34
         self.log_success('OPENING: '+self.opening_name)
         #
         self.init_cheese1()
+        #
+        # give gather init
+        for mim in self.mineral_field:
+            self.count_of_mimt[mim.tag] = 0
+        for scv in self.units(SCV):
+            if scv.tag not in self.speciality_of_tag:
+                self.job_of_scvt[scv.tag] = 'mimminer'
+                amimt = self.notag
+                best_sd = 99999
+                for mim in self.mineral_field:
+                    if self.count_of_mimt[mim.tag] < 1:
+                        sd = self.sdist(scv.position,mim.position)
+                        if sd < best_sd:
+                            best_sd = sd
+                            amim = mim
+                            amimt = mim.tag
+                if amimt == self.notag:
+                    best_sd = 99999
+                    for mim in self.mineral_field:
+                        if self.count_of_mimt[mim.tag] < 2:
+                            sd = self.sdist(scv.position, mim.position)
+                            if sd < best_sd:
+                                best_sd = sd
+                                amim = mim
+                                amimt = mim.tag
+                scv.gather(amim)
+                self.mimt_of_scvt[scv.tag] = amimt
+                self.count_of_mimt[amimt] += 1
+        self.fix_count_of_job()
         #
         #  preparing midgame
         self.midgame_things = []
@@ -1746,7 +1777,7 @@ class Chaosbot(sc2.BotAI):
         self.all_names = pl.read().splitlines()
         pl.close()
         # chat
-        await self._client.chat_send('Chaosbot version 1 apr 2021, made by MerkMore', team_only=False)
+        await self._client.chat_send('Chaosbot version 7 apr 2021, made by MerkMore', team_only=False)
         #
         #layout_if.photo_layout()
 
@@ -3196,7 +3227,7 @@ class Chaosbot(sc2.BotAI):
         bestsd = 99999
         for base in self.all_bases:
             expo = self.expo_of_pos(base.position)
-            if len(self.scvs_of_expo[expo]) > 0:
+            if len(self.scvs_of_expo[expo]) >= 3:
                 pos = base.position.towards(self.game_info.map_center,5)
                 sd = self.sdist(pos,point)
                 if sd < bestsd:
@@ -6397,43 +6428,44 @@ class Chaosbot(sc2.BotAI):
     async def build_thing_tobuildwalk(self,scvt,thing,place,owner) -> bool:
         self.log_success('trying to prep '+thing.name+' at '+self.txt(place)+' for '+owner)
         didit = False
-        if (thing,place,owner) in self.thoughts:
-            if thing == COMMANDCENTER:
-                didit = await self.build_commandcenter(scvt,place,owner)
-            elif thing == REFINERY:
-                # no refinery before its commandcenter
-                expa = self.nowhere
-                for ccpos in self.expansion_locations_list:
-                    if self.near(place, ccpos, self.miner_bound):
-                        expa = ccpos
-                canbuild = False
-                for (th,po) in self.birds:
-                    if (po == expa) and (th in [COMMANDCENTER,ORBITALCOMMAND,PLANETARYFORTRESS]):
+        if (self.opening_name != 'workerrush') or (self.frame >= self.endworkerrush):
+            if (thing,place,owner) in self.thoughts:
+                if thing == COMMANDCENTER:
+                    didit = await self.build_commandcenter(scvt,place,owner)
+                elif thing == REFINERY:
+                    # no refinery before its commandcenter
+                    expa = self.nowhere
+                    for ccpos in self.expansion_locations_list:
+                        if self.near(place, ccpos, self.miner_bound):
+                            expa = ccpos
+                    canbuild = False
+                    for (th,po) in self.birds:
+                        if (po == expa) and (th in [COMMANDCENTER,ORBITALCOMMAND,PLANETARYFORTRESS]):
+                            canbuild = True
+                    if expa in self.goal_of_trabu_scvt.values():
                         canbuild = True
-                if expa in self.goal_of_trabu_scvt.values():
-                    canbuild = True
-                if canbuild:
+                    if canbuild:
+                        didit = await self.build_building(scvt,thing,place,owner)
+                    else: # can not build
+                        seen = False
+                        for (th, po, ow) in self.thoughts:
+                            if (th == COMMANDCENTER) and (po == expa):
+                                seen = True
+                        if not seen:
+                            # remove from thoughts and throwspots
+                            self.thoughts.remove((thing,place,owner))
+                            todel = set()
+                            for tps in self.throwspots:
+                                (th, po, status, ow, pri) = tps
+                                if (th == thing) and (po == place):
+                                    todel.add(tps)
+                            for tps in todel:
+                                del self.throwspots[self.throwspots.index(tps)]
+                elif thing in self.all_structures_tobuildwalk:
                     didit = await self.build_building(scvt,thing,place,owner)
-                else: # can not build
-                    seen = False
-                    for (th, po, ow) in self.thoughts:
-                        if (th == COMMANDCENTER) and (po == expa):
-                            seen = True
-                    if not seen:
-                        # remove from thoughts and throwspots
-                        self.thoughts.remove((thing,place,owner))
-                        todel = set()
-                        for tps in self.throwspots:
-                            (th, po, status, ow, pri) = tps
-                            if (th == thing) and (po == place):
-                                todel.add(tps)
-                        for tps in todel:
-                            del self.throwspots[self.throwspots.index(tps)]
-            elif thing in self.all_structures_tobuildwalk:
-                didit = await self.build_building(scvt,thing,place,owner)
-        else: # not in thoughts
-            self.log_success('BUG trying to build '+thing.name+' by '+owner+' but it is not in thoughts.')
-            self.log_thoughts()
+            else: # not in thoughts
+                self.log_success('BUG trying to build '+thing.name+' by '+owner+' but it is not in thoughts.')
+                self.log_thoughts()
         if didit:
             self.log_success('thought to prep ' + thing.name + ' at ' + self.txt(place))
             dura = 1
@@ -6522,6 +6554,8 @@ class Chaosbot(sc2.BotAI):
                     if scv.tag == scvt:
                         self.promote(scv, 'idler')
                         self.log_success('In buildandretry we discarded a ' + building.name)
+                        if self.we_started_amount(building) <= 1:
+                            self.throw_somewhere(building,'do_buildandretry',1)
         self.buildandretry -= todel
         for (scvt, building, goal, startframe) in todel:
             cost = self.get_added_cost(building)
@@ -6594,7 +6628,7 @@ class Chaosbot(sc2.BotAI):
                             for scv in self.units(SCV):
                                 if scv.tag == scvt:
                                     if self.near(scv.position,goal,3):
-                                        self.promote(scv,'fencer')
+                                        self.promote(scv,'fencer') # prevents repeat
                                         self.log_workers('fencing '+building.name+' '+self.name(scvt))
                                         cost = self.get_added_cost(building)
                                         self.purse += cost
@@ -6656,9 +6690,9 @@ class Chaosbot(sc2.BotAI):
 
 
     async def build_building(self,scvt,building,goal,owner) -> bool:
-        #       for tobuildwalk buildings except COMMANDCENTER
+        # for tobuildwalk buildings except COMMANDCENTER
         didit = False
-        #       you do not have to wait for minerals and techtree
+        # you do not have to wait for minerals and techtree
         if (self.check_future_techtree(building)) or (self.game_phase == 'opening'):
             for scv in self.units(SCV):
                 if scv.tag == scvt:
@@ -6691,11 +6725,12 @@ class Chaosbot(sc2.BotAI):
                     scv.attack(goal)
         toget = 1
         for mar in self.units(MARINE):
-            if mar.tag not in self.special_tags | bunker_if.marinetags:
-                if toget > 0:
-                    toget -= 1
-                    self.log_command('mar.attack(goal)')
-                    mar.attack(goal)
+            if mar.tag not in self.speciality_of_tag:
+                if mar.tag not in bunker_if.marinetags:
+                    if toget > 0:
+                        toget -= 1
+                        self.log_command('mar.attack(goal)')
+                        mar.attack(goal)
         scvt = trabu_scvt
         for scv in self.units(SCV):
             if scv.tag == scvt:
@@ -6992,7 +7027,7 @@ class Chaosbot(sc2.BotAI):
                         around = self.random_mappoint()
                         self.marine_goal = self.place_around(ARMORY,around)
                     for mar in self.units(MARINE):
-                        self.special_tags.add(mar.tag)
+                        self.speciality_of_tag[mar.tag] = self.opening_name
                         mar.attack(self.marine_goal)
                     # try agressive bunkers
                     for tpa in self.enemy_structureinfo:
@@ -7008,12 +7043,12 @@ class Chaosbot(sc2.BotAI):
             if self.frame % 17 == 16:
                 if self.frame < self.marine_attackframe + 22.4 * 30:
                     for mar in self.units(MARINE):
-                        if mar.tag not in self.special_tags:
+                        if mar.tag not in self.speciality_of_tag:
                             mar.attack(self.marine_goal)
-                            self.special_tags.add(mar.tag)
+                            self.speciality_of_tag[mar.tag] = self.opening_name
             # idle marines are sent to work
             for mar in self.units(MARINE).idle:
-                if mar.tag in self.special_tags:
+                if mar.tag in self.speciality_of_tag:
                     if not self.near(mar.position, self.marine_goal, 5):
                         mar.attack(self.marine_goal)
             # set a new goal
@@ -7021,14 +7056,14 @@ class Chaosbot(sc2.BotAI):
                 reached = 0
                 total = 0
                 for mar in self.units(MARINE):
-                    if mar.tag in self.special_tags:
+                    if mar.tag in self.speciality_of_tag:
                         total += 1
                         if self.near(mar.position,self.marine_goal,5):
                             reached += 1
                 if reached * 4 > 3 * total:
                     self.marine_goal = self.get_goal()
                     for mar in self.units(MARINE):
-                        if mar.tag in self.special_tags:
+                        if mar.tag in self.speciality_of_tag:
                             mar.attack(self.marine_goal)
             # fly the barracks in
             if self.marine_attacked:
@@ -7638,25 +7673,26 @@ class Chaosbot(sc2.BotAI):
                         scv.attack(place)
         # marines individual move
         for mar in self.units(MARINE):
-            if mar.tag not in self.special_tags | bunker_if.marinetags:
-                tp = self.mineral_field.random.position  # mined out
-                if (STIMPACK, self.nowhere) in self.birds:
-                    if (mar.weapon_cooldown > 0):
-                        if mar.health > 30: # 1.5(x-10)=x
-                            if not mar.has_buff(BuffId.STIMPACK):
-                                mar(AbilityId.EFFECT_STIM_MARINE)
-                if mar.tag not in self.shame_of_unittag:
-                    self.log_command('mar.attack(tp)')
-                    self.go_attack(mar, tp)
-                if mar.tag in self.last_health:
-                    if mar.health != self.last_health[mar.tag]:
-                        altpos = mar.position.towards(self.loved_pos, 0.4)
-                        self.log_command('mar.move(altpos)')
-                        mar.move(altpos)
-                        self.detour_of_unittag[mar.tag] = True
-                if self.no_move(mar, 20):
-                    self.log_command('mar.attack(tp)')
-                    self.go_attack(mar,tp)
+            if mar.tag not in self.speciality_of_tag:
+                if mar.tag not in bunker_if.marinetags:
+                    tp = self.mineral_field.random.position  # mined out
+                    if (STIMPACK, self.nowhere) in self.birds:
+                        if (mar.weapon_cooldown > 0):
+                            if mar.health > 30: # 1.5(x-10)=x
+                                if not mar.has_buff(BuffId.STIMPACK):
+                                    mar(AbilityId.EFFECT_STIM_MARINE)
+                    if mar.tag not in self.shame_of_unittag:
+                        self.log_command('mar.attack(tp)')
+                        self.go_attack(mar, tp)
+                    if mar.tag in self.last_health:
+                        if mar.health != self.last_health[mar.tag]:
+                            altpos = mar.position.towards(self.loved_pos, 0.4)
+                            self.log_command('mar.move(altpos)')
+                            mar.move(altpos)
+                            self.detour_of_unittag[mar.tag] = True
+                    if self.no_move(mar, 20):
+                        self.log_command('mar.attack(tp)')
+                        self.go_attack(mar,tp)
         # marauders groupmove
         wantradius = 5
         groupcentre = self.nowhere
@@ -8033,26 +8069,24 @@ class Chaosbot(sc2.BotAI):
                 todo = 1
                 for tnk in self.units(SIEGETANK):
                     tnkt = tnk.tag
-                    if tnkt not in self.special_tags:
-                        if tnkt not in self.cleaning_tank_tags:
-                            if todo > 0:
-                                todo -= 1
-                                self.cleaning_tank_tags.add(tnkt)
-                                self.special_tags.add(tnkt)
-                                self.emotion_of_unittag[tnkt] = 'enthousiast'
-                                self.prevent_doubling(tnkt)
+                    if tnkt not in self.speciality_of_tag:
+                        if todo > 0:
+                            todo -= 1
+                            self.cleaning_tank_tags.add(tnkt)
+                            self.speciality_of_tag[tnkt] = 'cleaner'
+                            self.emotion_of_unittag[tnkt] = 'enthousiast'
+                            self.prevent_doubling(tnkt)
                 for tnk in self.units(SIEGETANKSIEGED):
                     tnkt = tnk.tag
-                    if tnkt not in self.special_tags:
-                        if tnkt not in self.cleaning_tank_tags:
-                            if todo > 0:
-                                todo -= 1
-                                self.cleaning_tank_tags.add(tnkt)
-                                self.special_tags.add(tnkt)
-                                self.log_command('tnk(AbilityId.UNSIEGE_UNSIEGE)')
-                                tnk(AbilityId.UNSIEGE_UNSIEGE)
-                                self.emotion_of_unittag[tnkt] = 'enthousiast'
-                                self.prevent_doubling(tnkt)
+                    if tnkt not in self.speciality_of_tag:
+                        if todo > 0:
+                            todo -= 1
+                            self.cleaning_tank_tags.add(tnkt)
+                            self.speciality_of_tag[tnkt] = 'cleaner'
+                            self.log_command('tnk(AbilityId.UNSIEGE_UNSIEGE)')
+                            tnk(AbilityId.UNSIEGE_UNSIEGE)
+                            self.emotion_of_unittag[tnkt] = 'enthousiast'
+                            self.prevent_doubling(tnkt)
         if len(self.cleaning_tank_tags) > 0:
             # check cleaning_object
             if self.cleaning_object_found:
@@ -8155,7 +8189,7 @@ class Chaosbot(sc2.BotAI):
         #
         # siege tank at a random own base
         for tnk in self.units(SIEGETANK) + self.units(SIEGETANKSIEGED):
-            if tnk.tag not in self.special_tags:
+            if tnk.tag not in self.speciality_of_tag:
                 tnkt = tnk.tag
                 expo = self.expo_of_pos(tnk.position)
                 if tnkt not in self.emotion_of_unittag:
@@ -8344,7 +8378,7 @@ class Chaosbot(sc2.BotAI):
     def use_widowmine(self):
         for wm in self.units(WIDOWMINE):
             wmt = wm.tag
-            if wmt not in self.special_tags:
+            if wmt not in self.speciality_of_tag:
                 if wmt not in self.emotion_of_unittag:
                     self.emotion_of_unittag[wmt] = 'lazy'
                 if self.emotion_of_unittag[wmt] == 'lazy':
@@ -8390,9 +8424,10 @@ class Chaosbot(sc2.BotAI):
                         self.mine_burried[wmt] = self.frame
         for wm in self.units(WIDOWMINEBURROWED):
             wmt = wm.tag
-            if wmt not in self.special_tags:
+            if wmt not in self.speciality_of_tag:
                 if wmt not in self.emotion_of_unittag:
                     self.emotion_of_unittag[wmt] = 'lodging'
+                    self.mine_burried[wmt] = self.frame
                 if self.emotion_of_unittag[wmt] == 'lodging':
                     if self.frame > self.mine_burried[wmt] + 350: # some 15 sec
                         if wm.is_idle: # prevent repeating command while unburrowing
@@ -8788,9 +8823,17 @@ class Chaosbot(sc2.BotAI):
         power = cost.minerals+2*cost.vespene
         return power
 
+    def clean_speciality_of_tag(self, stri):
+        todel =set()
+        for tag in self.speciality_of_tag:
+            if self.speciality_of_tag[tag] == stri:
+                todel.add(tag)
+        for tag in todel:
+            del self.speciality_of_tag[tag]
+
     async def worker_defence(self):
         for tow in self.all_bases:
-            if tow.tag not in self.special_tags:
+            if tow.tag not in self.speciality_of_tag:
                 expo = self.expo_of_pos(tow.position)
                 # calc enemies and enemy_power
                 enemies = set() # set of pos
@@ -9004,7 +9047,7 @@ class Chaosbot(sc2.BotAI):
                 if barra.position != self.cheese1_barracks_pos:
                     if self.near(barra.position,self.cheese1_landing_pos,7):
                         self.cheese1_barracks_tag = barra.tag
-                        self.special_tags.add(barra.tag)
+                        self.speciality_of_tag[barra.tag] = 'cheese1'
                         startedbuildings += 1
             for bunk in self.structures(BUNKER):
                 if bunk.position == self.cheese1_bunker_pos:
@@ -9016,7 +9059,7 @@ class Chaosbot(sc2.BotAI):
                     if scvt in self.goal_of_trabu_scvt:
                         if self.goal_of_trabu_scvt[scvt] == self.cheese1_bunker_pos:
                             self.cheese1_scv_tag = anscv.tag
-                            self.special_tags.add(self.cheese1_scv_tag)
+                            self.speciality_of_tag[anscv.tag] = 'cheese1'
                 self.cheese1_phase = 'B'
         elif self.cheese1_phase == 'B':
             # barracks has landed and bunker is started
@@ -9037,7 +9080,7 @@ class Chaosbot(sc2.BotAI):
                             if scv.tag == self.scout1_tag:
                                 if self.near(scv.position,self.cheese1_prison_pos,20):
                                     self.cheese1_scv_tag = scv.tag
-                                    self.special_tags.add(self.cheese1_scv_tag)
+                                    self.speciality_of_tag[scv.tag] = 'cheese1'
                                     self.scout1_tag = self.notag # allow reassign
                                     self.promote(scv,'cheeser')
                                     self.log_command('scv(AbilityId.SMART,bun)')
@@ -9098,7 +9141,7 @@ class Chaosbot(sc2.BotAI):
                                     around = scv.position.towards(self.cheese1_bunker_pos,2)
                                     place = self.place_around(BUNKER,around)
                                     self.cheese1_scv_tag = scv.tag
-                                    self.special_tags.add(self.cheese1_scv_tag)
+                                    self.speciality_of_tag[scv.tag] = 'cheese1'
                                     self.scout1_tag = self.notag # allows reassign
                                     self.promote(scv, 'cheeser')
                                     scv.build(BUNKER,place)
@@ -9139,7 +9182,7 @@ class Chaosbot(sc2.BotAI):
                     if self.cheese3_phase == 'A':
                         for st in self.units(SIEGETANK):
                             self.cheese1_tank_tag = st.tag
-                            self.special_tags.add(self.cheese1_tank_tag)
+                            self.speciality_of_tag[st.tag] = 'cheese1'
                             # toward cheese1_tank_pos
                             self.log_command('st.attack(self.cheese1_tank_pos)')
                             st.attack(self.cheese1_tank_pos)
@@ -9187,7 +9230,7 @@ class Chaosbot(sc2.BotAI):
                 if self.near(wm.position,self.cheese1_landing_pos,7):
                     if wmt not in self.cheese1_mine_tags:
                         self.cheese1_mine_tags.add(wmt)
-                        self.special_tags.add(wmt)
+                        self.speciality_of_tag[wmt] = 'cheese1'
                         self.mine_shot[wmt] = 0
                         found = False
                         while not found:
@@ -9258,9 +9301,9 @@ class Chaosbot(sc2.BotAI):
                 self.cheese1_phase = 'Y cleanup'
         elif self.cheese1_phase == 'Y cleanup':
             # clean up
+            self.clean_speciality_of_tag('cheese1')
             for scv in self.units(SCV):
                 if scv.tag == self.cheese1_scv_tag:
-                    self.special_tags.remove(self.cheese1_scv_tag)
                     self.promote(scv,'idler')
             self.cheese1_scv_tag = self.notag
             for st in self.units(SIEGETANKSIEGED):
@@ -9269,13 +9312,9 @@ class Chaosbot(sc2.BotAI):
                     st(AbilityId.UNSIEGE_UNSIEGE)
                     self.log_command('st.attack(self.loved_pos)')
                     st.attack(self.loved_pos)
-            if self.cheese1_tank_tag in self.special_tags:
-                self.special_tags.remove(self.cheese1_tank_tag)
             self.cheese1_tank_tag = self.notag
             for ba in self.structures(BARRACKS):
                 if ba.tag == self.cheese1_barracks_tag:
-                    if ba.tag in self.special_tags:
-                        self.special_tags.remove(ba.tag)
                     self.log_command('bu(AbilityId.CANCEL)')
                     ba(AbilityId.CANCEL)
                     self.goal_of_flying_struct[ba.tag] = self.wall_barracks_pos
@@ -9284,7 +9323,6 @@ class Chaosbot(sc2.BotAI):
                     self.log_command('ba(AbilityId.LIFT')
                     ba(AbilityId.LIFT)
             self.cheese1_barracks_tag = self.notag
-            self.special_tags -= self.cheese1_mine_tags
             self.cheese1_mine_tags = set()
             self.log_success('ending the bunkercheese')
             self.cheese1_phase = 'Z'
@@ -9304,7 +9342,7 @@ class Chaosbot(sc2.BotAI):
             for bu in self.structures(BUNKER):
                 # give some time to others to make it special
                 if bu.build_progress > 0.25:
-                    if bu.tag not in self.special_tags:
+                    if bu.tag not in self.speciality_of_tag:
                         bunker_if.bunkertags.add(bu.tag)
                         if bu.tag not in bunker_if.door:
                             bunker_if.door[bu.tag] = bu.position.towards(self.loved_pos, 3)
@@ -9421,7 +9459,7 @@ class Chaosbot(sc2.BotAI):
                 for ba in self.structures(BARRACKS):
                     if ba.position == self.cheese3_barracks_pos:
                         # init (barracks is constructing)
-                        self.special_tags.add(ba.tag)
+                        self.speciality_of_tag[ba.tag] = self.opening_name
                         self.cheese3_barracks_tag = ba.tag
                         self.cheese3_phase = 'B'
             elif self.cheese3_phase == 'B':
@@ -9459,7 +9497,7 @@ class Chaosbot(sc2.BotAI):
                 for cc in self.structures(COMMANDCENTER):
                     if cc.position == self.cheese3_cc_pos:
                         # init (cc constructing)
-                        self.special_tags.add(cc.tag)
+                        self.speciality_of_tag[cc.tag] = self.opening_name
                         self.cheese3_cc_tag = cc.tag
                         self.cheese3_phase = 'E'
             elif self.cheese3_phase == 'E':
@@ -9523,6 +9561,7 @@ class Chaosbot(sc2.BotAI):
                 # continue
             elif self.cheese3_phase == 'Y':
                 # clean up the cheese
+                self.clean_speciality_of_tag(self.opening_name)
                 for ba in self.structures(BARRACKS):
                     if ba.tag == self.cheese3_barracks_tag:
                         if ba not in self.structures(BARRACKS).ready:
@@ -9784,7 +9823,7 @@ class Chaosbot(sc2.BotAI):
                         if scvt in self.goal_of_trabu_scvt:
                             if self.goal_of_trabu_scvt[scvt] in [self.reaper_bunker1_pos,self.reaper_bunker2_pos]:
                                 self.promote(anscv,'cheeser')
-                                self.special_tags.add(anscv.tag)
+                                self.speciality_of_tag[anscv.tag] = self.opening_name
                 # reaper_focus
                 old_reaper_focus = self.reaper_focus
                 #
@@ -10133,6 +10172,261 @@ class Chaosbot(sc2.BotAI):
                         ghost(AbilityId.BEHAVIOR_CLOAKOFF_GHOST)
 
 
+    def init_workerrush(self):
+        self.rushopening = True
+        self.production_pause_egg.add((SCV, 15, SUPPLYDEPOT))
+        self.production_pause_egg.add((REFINERY, 0, SUPPLYDEPOT))
+        self.enemyrampdist = self.circledist(self.enemy_pos,self.enemyramp_pos)
+        self.rushrepairs = set() # of (repairer_tag,reparee_tag)
+        self.rushaids = set() # of (aider_tag,aidee_tag)
+        self.rushstarted = False
+
+    def do_workerrush(self):
+        # minerals to move towards
+        hisexpo = self.expo_of_pos(self.enemy_pos)
+        leftsd = 99999
+        rightsd = 99999
+        for mim in self.minerals_of_expo[hisexpo]:
+            if self.near(mim.position,self.enemy_pos,8):
+                sd = self.sdist(mim.position,self.hisleft)
+                if sd < leftsd:
+                    leftsd = sd
+                    self.hisleftmim = mim
+                sd = self.sdist(mim.position, self.hisright)
+                if sd < rightsd:
+                    rightsd = sd
+                    self.hisrightmim = mim
+        if self.sdist(self.hisleftmim.position,self.enemyramp_pos) < self.sdist(self.hisrightmim.position,self.enemyramp_pos):
+            self.hisrampmim = self.hisleftmim
+            self.hisfarmim = self.hisrightmim
+        else:
+            self.hisrampmim = self.hisrightmim
+            self.hisfarmim = self.hisleftmim
+        myexpo = self.expo_of_pos(self.loved_pos)
+        for mim in self.minerals_of_expo[myexpo]:
+            self.homemim = mim
+        #
+        if not self.workerrushstarted:
+            if self.frame > self.workerrushstartframe:
+                self.workerrushstarted = True
+                todo = self.workerrushers
+                for scv in self.units(SCV):
+                    if todo > 0:
+                        todo -= 1
+                        self.promote(scv,'cheeser')
+                        self.speciality_of_tag[scv.tag] = 'workerrush'
+                        scv.gather(self.hisrampmim)
+                        self.emotion_of_unittag[scv.tag] = 'going_in'
+        # end of rush
+        if self.frame < self.endworkerrush + 200:
+            if self.frame >= self.endworkerrush:
+                for scv in self.units(SCV):
+                    if scv.tag in self.speciality_of_tag:
+                        if self.speciality_of_tag[scv.tag] == 'workerrush':
+                            self.promote(scv,'idler')
+                            del self.speciality_of_tag[scv.tag]
+        # stacking while moving forward (rough implementation)
+        back = self.homemim
+        forward = self.hisrampmim
+        mindist = 99999
+        maxdist = -99999
+        for scv in self.units(SCV):
+            if scv.tag in self.speciality_of_tag:
+                if self.speciality_of_tag[scv.tag] == 'workerrush':
+                    dist = self.circledist(scv.position,back.position)
+                    mindist = min(dist,mindist)
+                    maxdist = max(dist,maxdist)
+        if (mindist > 60) and (mindist < 80):
+            if maxdist > mindist + 1.2:
+                if self.frame % 11 == 1:
+                    # go back
+                    self.workerback = set()
+                    for scv in self.units(SCV):
+                        if scv.tag in self.speciality_of_tag:
+                            if self.speciality_of_tag[scv.tag] == 'workerrush':
+                                dist = self.circledist(scv.position, back.position)
+                                if dist > mindist + 1.2:
+                                    scv.gather(back)
+                                    self.workerback.add(scv.tag)
+                else:
+                    # go forward
+                    if len(self.workerback) > 0:
+                        for scv in self.units(SCV):
+                            if scv.tag in self.workerback:
+                                dist = self.circledist(scv.position, back.position)
+                                if dist < mindist + 1.2:
+                                    scv.gather(forward)
+                                    self.workerback.remove(scv.tag)
+        # end of repair
+        todel = set()
+        for (repairer_tag,repairee_tag) in self.rushrepairs:
+            self.log_success(self.name(repairer_tag)+' was repairing '+self.name(repairee_tag))
+            found = False
+            for repairee in self.units(SCV):
+                if repairee.tag == repairee_tag:
+                    found = True
+                    if repairee.health >= self.healthybound:
+                        # cured
+                        for repairer in self.units(SCV):
+                            if repairer.tag == repairer_tag:
+                                repairer.move(repairer.position.towards(self.enemy_pos, 1))
+                        self.emotion_of_unittag[repairer_tag] = 'recovering' # was 'repairing'
+                        todel.add((repairer_tag,repairee_tag))
+            if not found:
+                self.emotion_of_unittag[repairer_tag] = 'recovering'  # was 'repairing'
+                todel.add((repairer_tag, repairee_tag))
+        self.rushrepairs -= todel
+        # end of aid
+        todel = set()
+        for (aider_tag,aidee_tag) in self.rushaids:
+            self.log_success(self.name(aider_tag)+' was aiding '+self.name(aidee_tag))
+            aiderfound = False
+            for may_aider in self.units(SCV):
+                if may_aider.tag == aider_tag:
+                    if self.emotion_of_unittag[aider_tag] == 'aiding':
+                        aiderfound = True
+                        aider = may_aider
+            if aiderfound:
+                aideefound = False
+                for aidee in self.units(SCV):
+                    if aidee.tag == aidee_tag:
+                        if self.emotion_of_unittag[aidee.tag] == 'brave':
+                            aideefound = True
+                            if aidee.health >= self.healthybound:
+                                # cured
+                                aider.gather(self.homemim) # just behind the lines please
+                                self.emotion_of_unittag[aider_tag] = 'firstaid'
+                                todel.add((aider_tag,aidee_tag))
+                if not aideefound:
+                    self.emotion_of_unittag[aider_tag] = 'firstaid'
+                    aider.gather(self.homemim)  # just behind the lines please
+                    todel.add((aider_tag, aidee_tag))
+            else: # aider not found
+                todel.add((aider_tag, aidee_tag))
+        self.rushaids -= todel
+        # aidees
+        aidees = set()
+        for (aider_tag,aidee_tag) in self.rushaids:
+            aidees.add(aidee_tag)
+        # starved repair
+        for (repairer_tag,repairee_tag) in self.rushrepairs | self.rushaids:
+            if self.minerals >= 20:
+                for repairer in self.units(SCV).idle:
+                    if repairer.tag == repairer_tag:
+                        for repairee in self.units(SCV):
+                            if repairee.tag == repairee_tag:
+                                repairer.repair(repairee)
+        # counts
+        bravecount = 0
+        repairingcount = 0
+        firstaidcount = 0
+        for scv in self.units(SCV):
+            if scv.tag in self.speciality_of_tag:
+                if self.speciality_of_tag[scv.tag] == 'workerrush':
+                    if self.emotion_of_unittag[scv.tag] == 'brave':
+                        bravecount += 1
+                    elif self.emotion_of_unittag[scv.tag] in {'fleeing','repairing'}:
+                        repairingcount += 1
+                    elif self.emotion_of_unittag[scv.tag] in {'aiding','firstaid'}:
+                        firstaidcount += 1
+        #
+        for scv in self.units(SCV):
+            if scv.tag in self.speciality_of_tag:
+                if self.speciality_of_tag[scv.tag] == 'workerrush':
+                    self.log_success(self.name(scv.tag)+' '+str(scv.health)+' '+self.emotion_of_unittag[scv.tag])
+                    if self.emotion_of_unittag[scv.tag] == 'brave':
+                        if bravecount < 4:
+                            self.bravery_of_unittag[scv.tag] -= self.chosen_game_step
+                        bravery = self.bravery_of_unittag[scv.tag]
+                        if (scv.health < 12) or (bravery <= 0):
+                            scv.gather(self.homemim)
+                            self.emotion_of_unittag[scv.tag] = 'fleeing'
+                            bravecount -= 1
+                        elif self.near(scv.position, self.hisfarmim.position, 3): # patrol
+                            scv.attack(self.hisrampmim.position)
+                        elif self.near(scv.position, self.hisrampmim.position, 3): # patrol
+                            scv.attack(self.hisfarmim.position)
+                        elif not self.near(scv.position, self.hisrampmim.position,12):
+                            if not self.near(scv.position, self.hisfarmim.position, 12): # astray
+                                scv.gather(self.hisrampmim)
+                                self.emotion_of_unittag[scv.tag] = 'going_in'
+                    elif self.emotion_of_unittag[scv.tag] == 'going_in':
+                        if scv.health < 12:
+                            scv.gather(self.homemim)
+                            self.emotion_of_unittag[scv.tag] = 'fleeing'
+                        elif self.near(scv.position,self.hisrampmim.position,5):
+                            if firstaidcount < (bravecount // 4):
+                                self.emotion_of_unittag[scv.tag] = 'firstaid'
+                                scv.gather(self.homemim) # just behind the lines please
+                                firstaidcount += 1
+                            else:
+                                self.emotion_of_unittag[scv.tag] = 'brave'
+                                scv.attack(self.hisfarmim.position)
+                                self.bravery_of_unittag[scv.tag] = 20
+                                bravecount += 1
+                    elif self.emotion_of_unittag[scv.tag] == 'fleeing':
+                        if not self.near(scv.position, self.hisrampmim.position,self.workerrushrepdist):
+                            scv.move(scv.position.towards(self.enemy_pos,1))
+                            self.emotion_of_unittag[scv.tag] = 'recovering'
+                    elif self.emotion_of_unittag[scv.tag] == 'cured':
+                        if repairingcount == 0:
+                            scv.gather(self.hisrampmim)
+                            self.emotion_of_unittag[scv.tag] = 'going_in'
+                    elif self.emotion_of_unittag[scv.tag] == 'recovering':
+                        if scv.health >= self.healthybound:
+                            self.emotion_of_unittag[scv.tag] = 'cured'
+                    elif self.emotion_of_unittag[scv.tag] == 'aiding':
+                        if (scv.health < 12) or (bravecount < 4):
+                            scv.gather(self.homemim)
+                            self.emotion_of_unittag[scv.tag] = 'fleeing'
+                    elif self.emotion_of_unittag[scv.tag] == 'firstaid':
+                        if (scv.health < 12) or (bravecount < 4):
+                            scv.gather(self.homemim)
+                            self.emotion_of_unittag[scv.tag] = 'fleeing'
+                        elif not self.near(scv.position, self.hisrampmim.position, 8):
+                            scv.gather(self.hisrampmim)  # just behind the lines please
+                        elif self.near(scv.position, self.hisrampmim.position, 5):
+                            scv.gather(self.homemim)  # just behind the lines please
+                        else:
+                            minsd = 99999
+                            for otherscv in self.units(SCV):
+                                if otherscv.tag not in aidees:
+                                    if otherscv.tag in self.speciality_of_tag:
+                                        if self.speciality_of_tag[otherscv.tag] == 'workerrush':
+                                            if self.emotion_of_unittag[otherscv.tag] == 'brave':
+                                                if otherscv.health < self.healthybound:
+                                                    sd = self.sdist(scv.position, otherscv.position)
+                                                    if sd < minsd:
+                                                        minsd = sd
+                                                        bestscv = otherscv
+                            if minsd < 99999:
+                                if self.minerals > 5:
+                                    scv.repair(bestscv)
+                                else:
+                                    scv.move(scv.position.towards(self.enemy_pos, -1))
+                                self.emotion_of_unittag[scv.tag] = 'aiding' # was 'firstaid'
+                                self.rushaids.add((scv.tag, bestscv.tag))
+                                aidees.add(bestscv.tag)
+                    if self.emotion_of_unittag[scv.tag] in {'recovering','cured'}:
+                        minsd = 99999
+                        for otherscv in self.units(SCV):
+                            if otherscv.tag != scv.tag:
+                                if otherscv.tag in self.speciality_of_tag:
+                                    if self.speciality_of_tag[otherscv.tag] == 'workerrush':
+                                        if self.emotion_of_unittag[otherscv.tag] in {'recovering','repairing'}:
+                                            if otherscv.health < self.healthybound:
+                                                sd = self.sdist(scv.position,otherscv.position)
+                                                if sd < minsd:
+                                                    minsd = sd
+                                                    bestscv = otherscv
+                        if minsd < 99999:
+                            if self.minerals > 20:
+                                scv.repair(bestscv)
+                            else:
+                                scv.move(scv.position.towards(self.enemy_pos, -1))
+                            self.emotion_of_unittag[scv.tag] = 'repairing'
+                            self.rushrepairs.add((scv.tag,bestscv.tag))
+
     async def do_cocoon(self):
         if self.opening_name.find('cocoon') >= 0:
             if self.cheese3_phase == 'A':
@@ -10142,12 +10436,12 @@ class Chaosbot(sc2.BotAI):
                     if ba.position == self.cheese3_barracks_pos:
                         # init (barracks is constructing)
                         self.cheese3_barracks_tag = ba.tag
-                        self.special_tags.add(ba.tag)
+                        self.speciality_of_tag[ba.tag] = self.opening_name
                         self.cheese3_phase = 'B'
                     if ba.position == self.cheese3_barracks2_pos:
                         # init (barracks is constructing)
                         self.cheese3_barracks2_tag = ba.tag
-                        self.special_tags.add(ba.tag)
+                        self.speciality_of_tag[ba.tag] = self.opening_name
                         self.cheese3_phase = 'C'
             elif self.cheese3_phase == 'B':
                 # while (nothing)
@@ -10156,7 +10450,7 @@ class Chaosbot(sc2.BotAI):
                     if ba.position == self.cheese3_barracks2_pos:
                         # init (barracks is constructing)
                         self.cheese3_barracks2_tag = ba.tag
-                        self.special_tags.add(ba.tag)
+                        self.speciality_of_tag[ba.tag] = self.opening_name
                         self.cheese3_phase = 'D'
             elif self.cheese3_phase == 'C':
                 # while (nothing)
@@ -10165,7 +10459,7 @@ class Chaosbot(sc2.BotAI):
                     if ba.position == self.cheese3_barracks_pos:
                         # init (barracks is constructing)
                         self.cheese3_barracks_tag = ba.tag
-                        self.special_tags.add(ba.tag)
+                        self.speciality_of_tag[ba.tag] = self.opening_name
                         self.cheese3_phase = 'D'
             elif self.cheese3_phase == 'D':
                 # while (barracks, bunkers constructing)
@@ -10243,7 +10537,7 @@ class Chaosbot(sc2.BotAI):
                 if len(self.units(SIEGETANK)) > 0:
                     # init (siegetank going)
                     for tnk in self.units(SIEGETANK):
-                        self.special_tags.add(tnk.tag)
+                        self.speciality_of_tag[tnk.tag] = self.opening_name
                         goal = self.cheese3_bunker_pos.towards(self.loved_pos,2.2)
                         goal = self.place_around(MISSILETURRET,goal)
                         self.write_layout(MISSILETURRET, goal)
@@ -10259,7 +10553,7 @@ class Chaosbot(sc2.BotAI):
                 if len(self.units(SIEGETANK)) > 0:
                     # init (siegetank going)
                     for tnk in self.units(SIEGETANK):
-                        self.special_tags.add(tnk.tag)
+                        self.speciality_of_tag[tnk.tag] = self.opening_name
                         self.cheese3_tanktags.add(tnk.tag)
                         goal = self.cheese3_bunker_pos.towards(self.loved_pos,2.2)
                         goal = self.place_around(MISSILETURRET,goal)
@@ -10292,6 +10586,7 @@ class Chaosbot(sc2.BotAI):
                     self.cheese3_phase = 'J'
             elif self.cheese3_phase == 'Y':
                 # clean up the cheese
+                self.clean_speciality_of_tag(self.opening_name)
                 for scv in self.units(SCV):
                     scvt = scv.tag
                     if self.job_of_scvt[scvt] == 'cheeser':
@@ -10425,7 +10720,7 @@ class Chaosbot(sc2.BotAI):
                 if bu.tag not in self.goal_of_flying_struct:
                     self.goal_of_flying_struct[bu.tag] = bu.position 
                 if bu.health < 500:
-                    if bu.tag not in self.special_tags:
+                    if bu.tag not in self.speciality_of_tag:
                         if not bu.is_idle:
                             self.log_command('bu(AbilityId.CANCEL)')
                             bu(AbilityId.CANCEL)
@@ -10450,7 +10745,7 @@ class Chaosbot(sc2.BotAI):
                 for struc in self.structures(struc_type) + self.structures(SUPPLYDEPOTLOWERED):
                     if (struc.position == position):
                         seen = True
-                        self.special_tags.add(struc.tag)
+                        self.speciality_of_tag[struc.tag] = 'wall'
                 if not seen:
                     if not self.we_started_at(struc_type, position):
                         if (struc_type, position) not in self.chosenplaces:
@@ -10688,42 +10983,19 @@ class Chaosbot(sc2.BotAI):
 
 
     def do_repair(self):
-        # If something needs repair, promote someone to repairer
-        if len(self.thingtag_of_repairertag) * 2 < len(self.units(SCV)) - 6:
-            low_qual = 1.0
-            wreck = self.notag
-            for strtype in self.all_repairable_shooters:
-                for s in self.structures(strtype).ready + self.units(strtype):
-                    handable = True
-                    if (strtype == BATTLECRUISER):
-                        for order in s.orders:
-                            if order.ability.id == AbilityId.EFFECT_TACTICALJUMP:
-                                handable = False
-                    if handable:
-                        qual = s.health / self.maxhealth[s.type_id]
-                        if qual < low_qual:
-                            expo = self.expo_of_pos(s.position)
-                            hasrepairers = 0
-                            for reptag in self.thingtag_of_repairertag:
-                                thitag = self.thingtag_of_repairertag[reptag]
-                                if thitag == s.tag:
-                                    hasrepairers += 1
-                            couldhaverep = False
-                            for scv in self.scvs_of_expo[expo]:
-                                scvt = scv.tag
-                                job = self.job_of_scvt[scvt]
-                                if (job in (self.bad_jobs + self.no_jobs)) or (job == 'cheeser'):
-                                    if scvt not in self.thingtag_of_repairertag:
-                                        couldhaverep = True
-                            if (hasrepairers < 5) and (couldhaverep):
-                                low_qual = qual
-                                wreck = s
-                                wreckexpo = expo
-            # if no wreck then repair a simple building
-            if low_qual == 1.0:
-                for s in self.structures.ready:
-                    if s.type_id not in self.all_repairable_shooters:
-                        if s.type_id != BARRACKSFLYING:
+        if (self.opening_name != 'workerrush') or (self.frame >= self.endworkerrush):
+            # If something needs repair, promote someone to repairer
+            if len(self.thingtag_of_repairertag) * 2 < len(self.units(SCV)) - 6:
+                low_qual = 1.0
+                wreck = self.notag
+                for strtype in self.all_repairable_shooters:
+                    for s in self.structures(strtype).ready + self.units(strtype):
+                        handable = True
+                        if (strtype == BATTLECRUISER):
+                            for order in s.orders:
+                                if order.ability.id == AbilityId.EFFECT_TACTICALJUMP:
+                                    handable = False
+                        if handable:
                             qual = s.health / self.maxhealth[s.type_id]
                             if qual < low_qual:
                                 expo = self.expo_of_pos(s.position)
@@ -10739,84 +11011,108 @@ class Chaosbot(sc2.BotAI):
                                     if (job in (self.bad_jobs + self.no_jobs)) or (job == 'cheeser'):
                                         if scvt not in self.thingtag_of_repairertag:
                                             couldhaverep = True
-                                if (hasrepairers < 1) and (couldhaverep):
+                                if (hasrepairers < 5) and (couldhaverep):
                                     low_qual = qual
                                     wreck = s
                                     wreckexpo = expo
-            # if no wreck then repair an scv
-            if low_qual == 1.0:
-                for s in self.units(SCV):
-                    if s.tag in self.job_of_scvt:
-                        job = self.job_of_scvt[s.tag]
-                        if (job in self.good_jobs) and (job != 'scout'):
-                            qual = s.health / self.maxhealth[s.type_id]
-                            if qual < low_qual:
-                                expo = self.expo_of_pos(s.position)
-                                hasrepairers = 0
-                                for reptag in self.thingtag_of_repairertag:
-                                    thitag = self.thingtag_of_repairertag[reptag]
-                                    if thitag == s.tag:
-                                        hasrepairers += 1
-                                couldhaverep = False
-                                for scv in self.scvs_of_expo[expo]:
-                                    scvt = scv.tag
-                                    job = self.job_of_scvt[scvt]
-                                    if (job in (self.bad_jobs + self.no_jobs)) or (job == 'cheeser'):
-                                        if scvt not in self.thingtag_of_repairertag:
-                                            if scvt != s.tag:
+                # if no wreck then repair a simple building
+                if low_qual == 1.0:
+                    for s in self.structures.ready:
+                        if s.type_id not in self.all_repairable_shooters:
+                            if s.type_id != BARRACKSFLYING:
+                                qual = s.health / self.maxhealth[s.type_id]
+                                if qual < low_qual:
+                                    expo = self.expo_of_pos(s.position)
+                                    hasrepairers = 0
+                                    for reptag in self.thingtag_of_repairertag:
+                                        thitag = self.thingtag_of_repairertag[reptag]
+                                        if thitag == s.tag:
+                                            hasrepairers += 1
+                                    couldhaverep = False
+                                    for scv in self.scvs_of_expo[expo]:
+                                        scvt = scv.tag
+                                        job = self.job_of_scvt[scvt]
+                                        if (job in (self.bad_jobs + self.no_jobs)) or (job == 'cheeser'):
+                                            if scvt not in self.thingtag_of_repairertag:
                                                 couldhaverep = True
-                                if (hasrepairers < 1) and (couldhaverep):
-                                    low_qual = qual
-                                    wreck = s
-                                    wreckexpo = expo
-            # repair
-            if low_qual < 0.99:
-                # We have a wreck needing repair. Assign one repairer.
-                scvt = self.get_near_scvt_to_goodjob(wreck.position)
-                for scv in self.scvs_of_expo[wreckexpo]:
-                    cheesertag = scv.tag
-                    if self.job_of_scvt[cheesertag] == 'cheeser':
-                        if not scv.is_constructing_scv:
-                            if cheesertag not in self.thingtag_of_repairertag:
-                                if scv.tag != s.tag:
-                                    scvt = cheesertag
-                for scv in self.scvs_of_expo[wreckexpo]:
+                                    if (hasrepairers < 1) and (couldhaverep):
+                                        low_qual = qual
+                                        wreck = s
+                                        wreckexpo = expo
+                # if no wreck then repair an scv
+                if low_qual == 1.0:
+                    for s in self.units(SCV):
+                        if s.tag in self.job_of_scvt:
+                            job = self.job_of_scvt[s.tag]
+                            if (job in self.good_jobs) and (job != 'scout'):
+                                qual = s.health / self.maxhealth[s.type_id]
+                                if qual < low_qual:
+                                    expo = self.expo_of_pos(s.position)
+                                    hasrepairers = 0
+                                    for reptag in self.thingtag_of_repairertag:
+                                        thitag = self.thingtag_of_repairertag[reptag]
+                                        if thitag == s.tag:
+                                            hasrepairers += 1
+                                    couldhaverep = False
+                                    for scv in self.scvs_of_expo[expo]:
+                                        scvt = scv.tag
+                                        job = self.job_of_scvt[scvt]
+                                        if (job in (self.bad_jobs + self.no_jobs)) or (job == 'cheeser'):
+                                            if scvt not in self.thingtag_of_repairertag:
+                                                if scvt != s.tag:
+                                                    couldhaverep = True
+                                    if (hasrepairers < 1) and (couldhaverep):
+                                        low_qual = qual
+                                        wreck = s
+                                        wreckexpo = expo
+                # repair
+                if low_qual < 0.99:
+                    # We have a wreck needing repair. Assign one repairer.
+                    scvt = self.get_near_scvt_to_goodjob(wreck.position)
+                    for scv in self.scvs_of_expo[wreckexpo]:
+                        cheesertag = scv.tag
+                        if self.job_of_scvt[cheesertag] == 'cheeser':
+                            if not scv.is_constructing_scv:
+                                if cheesertag not in self.thingtag_of_repairertag:
+                                    if scv.tag != s.tag:
+                                        scvt = cheesertag
+                    for scv in self.scvs_of_expo[wreckexpo]:
+                        if scv.tag == scvt:
+                            if self.job_of_scvt[scvt] != 'cheeser':
+                                self.promote(scv,'repairer')
+                            self.thingtag_of_repairertag[scv.tag] = wreck.tag
+                            #self.log_command('scv.repair('+wreck.name+')')
+                            #scv.repair(wreck)
+                            scv(AbilityId.EFFECT_REPAIR_SCV,wreck)
+                            self.prevent_doubling(scvt)
+                            # do not have repairers trailing vikings
+                            if wreck in self.units:
+                                if wreck.type_id != SCV:
+                                    wreck.move(scv.position)
+            # sometimes a cheeser forgets he was repairing
+            for scvt in self.thingtag_of_repairertag:
+                for scv in self.units(SCV):
                     if scv.tag == scvt:
-                        if self.job_of_scvt[scvt] != 'cheeser':
-                            self.promote(scv,'repairer')
-                        self.thingtag_of_repairertag[scv.tag] = wreck.tag
-                        #self.log_command('scv.repair('+wreck.name+')')
-                        #scv.repair(wreck)
-                        scv(AbilityId.EFFECT_REPAIR_SCV,wreck)
-                        self.prevent_doubling(scvt)
-                        # do not have repairers trailing vikings
-                        if wreck in self.units:
-                            if wreck.type_id != SCV:
-                                wreck.move(scv.position)
-        # sometimes a cheeser forgets he was repairing
-        for scvt in self.thingtag_of_repairertag:
-            for scv in self.units(SCV):
-                if scv.tag == scvt:
-                    seen = False
-                    for order in scv.orders:
-                        if order.ability.id == AbilityId.EFFECT_REPAIR:
-                            seen = True
-                    if not seen:
-                        if self.no_doubling(scvt):
-                            for s in self.structures.ready + self.units:
-                                if s.tag == self.thingtag_of_repairertag[scvt]:
-                                    scv(AbilityId.EFFECT_REPAIR_SCV,s)
-        # logging
-        count_of_thing = {}
-        for reptag in self.thingtag_of_repairertag:
-            thitag = self.thingtag_of_repairertag[reptag]
-            if thitag in count_of_thing:
-                count_of_thing[thitag] += 1
-            else:
-                count_of_thing[thitag] = 1
-        for s in self.structures.ready + self.units:
-            if s.tag in count_of_thing:
-                self.log_success('repairing a '+s.type_id.name+' with '+str(count_of_thing[s.tag]))
+                        seen = False
+                        for order in scv.orders:
+                            if order.ability.id == AbilityId.EFFECT_REPAIR:
+                                seen = True
+                        if not seen:
+                            if self.no_doubling(scvt):
+                                for s in self.structures.ready + self.units:
+                                    if s.tag == self.thingtag_of_repairertag[scvt]:
+                                        scv(AbilityId.EFFECT_REPAIR_SCV,s)
+            # logging
+            count_of_thing = {}
+            for reptag in self.thingtag_of_repairertag:
+                thitag = self.thingtag_of_repairertag[reptag]
+                if thitag in count_of_thing:
+                    count_of_thing[thitag] += 1
+                else:
+                    count_of_thing[thitag] = 1
+            for s in self.structures.ready + self.units:
+                if s.tag in count_of_thing:
+                    self.log_success('repairing a '+s.type_id.name+' with '+str(count_of_thing[s.tag]))
 
 
     async def manage_workers(self):
@@ -11545,7 +11841,7 @@ class Chaosbot(sc2.BotAI):
         cancelable = {AbilityId.COMMANDCENTERTRAIN_SCV}
         # tomove (cc)
         for cc in self.structures(COMMANDCENTER).ready + self.structures(ORBITALCOMMAND).ready:
-            if cc.tag not in self.special_tags:
+            if cc.tag not in self.speciality_of_tag:
                 movable = True
                 for order in cc.orders:
                     if order.ability.id not in cancelable:
@@ -11730,7 +12026,7 @@ class Chaosbot(sc2.BotAI):
             if random.random() * sum < self.strategy[spec][nr]:
                 radio_nr = nr
         # TO TEST use next line
-        #radio_nr = 29
+        #radio_nr = 33
         for nr in range(0,self.radio_choices):
             self.game_choice.append(nr == radio_nr)
         for nr in range(self.radio_choices,self.game_choices):
