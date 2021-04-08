@@ -1777,7 +1777,7 @@ class Chaosbot(sc2.BotAI):
         self.all_names = pl.read().splitlines()
         pl.close()
         # chat
-        await self._client.chat_send('Chaosbot version 7 apr 2021, made by MerkMore', team_only=False)
+        await self._client.chat_send('Chaosbot version 8 apr 2021, made by MerkMore', team_only=False)
         #
         #layout_if.photo_layout()
 
@@ -3791,17 +3791,18 @@ class Chaosbot(sc2.BotAI):
             stable = True
             extra = set()
             for th in bag:
-                barra = self.cradle_of_thing(th)
-                haveit = (barra in bag)
-                for (marty, bartype, pos, dura) in self.eggs:
-                    haveit = haveit or (marty == barra)
-                if barra in self.all_structures:
-                    haveit = haveit or (len(self.structures(barra)) > 0)
-                else:
-                    haveit = haveit or (len(self.units(barra)) > 0)
-                if not haveit:
-                    extra.add(barra)
-                    stable = False
+                if th not in self.all_structures_tobuildwalk:
+                    barra = self.cradle_of_thing(th)
+                    haveit = (barra in bag)
+                    for (marty, bartype, pos, dura) in self.eggs:
+                        haveit = haveit or (marty == barra)
+                    if barra in self.all_structures:
+                        haveit = haveit or (len(self.structures(barra)) > 0)
+                    else:
+                        haveit = haveit or (len(self.units(barra)) > 0)
+                    if not haveit:
+                        extra.add(barra)
+                        stable = False
             for th in extra:
                 bag.append(th)
         self.bagofcradle = bag
@@ -3950,31 +3951,37 @@ class Chaosbot(sc2.BotAI):
     def buildorder_of_buildseries(self):
         # buildorder = buildseries + place
         # also: change infested to normal
+        # if skipping, some of the rest maybe cannot be built. Hoopy checks this.
+        # Happy is used for bui_min_lab, used in crad_places_for_thing
         self.buildorder = []
+        self.hoopy_get_sit()
         self.happy_get_sit()
         for infathing in self.buildseries:
             thing = self.basekind_of(infathing)
-            goal = self.nowhere
-            if thing in self.all_structures_tobuildwalk:
-                if goal == self.nowhere:
+            if self.hoopy_can_add(thing):
+                goal = self.nowhere
+                if thing in self.all_structures_tobuildwalk:
                     if self.find_tobuildwalk_a_place(infathing):
                         goal = self.function_result_Point2
-                if goal == self.nowhere:
-                    self.log_success('skipping a '+infathing.name+' because I found no position!')
-                else:
-                    self.buildorder.append((thing, goal))
-                    self.write_layout(thing, goal)
-                    self.happy_add(thing,goal)
-            else: # army, labs, upgr, pfoc
-                self.crad_places_for_thing(thing)
-                # get a random cradle place
-                if len(self.crad_places)==0:
-                    self.log_success('Can not place '+thing.name)
-                    place = self.nowhere
-                else: # len==1 is not sure after a random
-                    self.buildorder.append((thing, self.somewhere))
-                    place = random.choice(tuple(self.crad_places))
-                    self.happy_add(thing,place)
+                    if goal == self.nowhere:
+                        self.log_success('skipping a '+infathing.name+' because I found no position!')
+                        # if skipping, some of the rest maybe cannot be built. Hoopy checks this.
+                    else:
+                        self.buildorder.append((thing, goal))
+                        self.write_layout(thing, goal)
+                        self.hoopy_add(thing)
+                        self.happy_add(thing,goal)
+                else: # army, labs, upgr, pfoc
+                    self.crad_places_for_thing(thing)
+                    # get a random cradle place
+                    if len(self.crad_places)==0:
+                        self.log_success('Can not place '+thing.name)
+                        place = self.nowhere
+                    else: # len==1 is not sure after a random
+                        self.buildorder.append((thing, self.somewhere))
+                        place = random.choice(tuple(self.crad_places))
+                        self.hoopy_add(thing)
+                        self.happy_add(thing,place)
 
 
     # *********************************************************************************************************************
@@ -6536,18 +6543,17 @@ class Chaosbot(sc2.BotAI):
                                             throwtodel.add(tps)
                                     for tps in throwtodel:
                                         del self.throwspots[self.throwspots.index(tps)]
+                                    self.prepped_to_egg(building, scv, goal)
                                 else:
                                     # there we go (or go again)
                                     if building == REFINERY:
                                         for gey in self.vespene_geyser:
                                             if gey.position == goal:
                                                 self.log_command('scv.build_gas(gey)')
-                                                if scv.build_gas(gey):
-                                                    self.prepped_to_egg(building,scv,goal)
+                                                dummy = scv.build_gas(gey)
                                     else:
                                         self.log_command('scv.build(' + building.name + ',goal)')
-                                        if scv.build(building, goal):
-                                            self.prepped_to_egg(building, scv, goal)
+                                        dummy = scv.build(building, goal)
             else: # failed to build
                 todel.add(items)
                 for scv in self.units(SCV):
@@ -10182,250 +10188,251 @@ class Chaosbot(sc2.BotAI):
         self.rushstarted = False
 
     def do_workerrush(self):
-        # minerals to move towards
-        hisexpo = self.expo_of_pos(self.enemy_pos)
-        leftsd = 99999
-        rightsd = 99999
-        for mim in self.minerals_of_expo[hisexpo]:
-            if self.near(mim.position,self.enemy_pos,8):
-                sd = self.sdist(mim.position,self.hisleft)
-                if sd < leftsd:
-                    leftsd = sd
-                    self.hisleftmim = mim
-                sd = self.sdist(mim.position, self.hisright)
-                if sd < rightsd:
-                    rightsd = sd
-                    self.hisrightmim = mim
-        if self.sdist(self.hisleftmim.position,self.enemyramp_pos) < self.sdist(self.hisrightmim.position,self.enemyramp_pos):
-            self.hisrampmim = self.hisleftmim
-            self.hisfarmim = self.hisrightmim
-        else:
-            self.hisrampmim = self.hisrightmim
-            self.hisfarmim = self.hisleftmim
-        myexpo = self.expo_of_pos(self.loved_pos)
-        for mim in self.minerals_of_expo[myexpo]:
-            self.homemim = mim
-        #
-        if not self.workerrushstarted:
-            if self.frame > self.workerrushstartframe:
-                self.workerrushstarted = True
-                todo = self.workerrushers
-                for scv in self.units(SCV):
-                    if todo > 0:
-                        todo -= 1
-                        self.promote(scv,'cheeser')
-                        self.speciality_of_tag[scv.tag] = 'workerrush'
-                        scv.gather(self.hisrampmim)
-                        self.emotion_of_unittag[scv.tag] = 'going_in'
-        # end of rush
-        if self.frame < self.endworkerrush + 200:
-            if self.frame >= self.endworkerrush:
-                for scv in self.units(SCV):
-                    if scv.tag in self.speciality_of_tag:
-                        if self.speciality_of_tag[scv.tag] == 'workerrush':
-                            self.promote(scv,'idler')
-                            del self.speciality_of_tag[scv.tag]
-        # stacking while moving forward (rough implementation)
-        back = self.homemim
-        forward = self.hisrampmim
-        mindist = 99999
-        maxdist = -99999
-        for scv in self.units(SCV):
-            if scv.tag in self.speciality_of_tag:
-                if self.speciality_of_tag[scv.tag] == 'workerrush':
-                    dist = self.circledist(scv.position,back.position)
-                    mindist = min(dist,mindist)
-                    maxdist = max(dist,maxdist)
-        if (mindist > 60) and (mindist < 80):
-            if maxdist > mindist + 1.2:
-                if self.frame % 11 == 1:
-                    # go back
-                    self.workerback = set()
+        if self.opening_name == 'workerrush':
+            # minerals to move towards
+            hisexpo = self.expo_of_pos(self.enemy_pos)
+            leftsd = 99999
+            rightsd = 99999
+            for mim in self.minerals_of_expo[hisexpo]:
+                if self.near(mim.position,self.enemy_pos,8):
+                    sd = self.sdist(mim.position,self.hisleft)
+                    if sd < leftsd:
+                        leftsd = sd
+                        self.hisleftmim = mim
+                    sd = self.sdist(mim.position, self.hisright)
+                    if sd < rightsd:
+                        rightsd = sd
+                        self.hisrightmim = mim
+            if self.sdist(self.hisleftmim.position,self.enemyramp_pos) < self.sdist(self.hisrightmim.position,self.enemyramp_pos):
+                self.hisrampmim = self.hisleftmim
+                self.hisfarmim = self.hisrightmim
+            else:
+                self.hisrampmim = self.hisrightmim
+                self.hisfarmim = self.hisleftmim
+            myexpo = self.expo_of_pos(self.loved_pos)
+            for mim in self.minerals_of_expo[myexpo]:
+                self.homemim = mim
+            #
+            if not self.workerrushstarted:
+                if self.frame > self.workerrushstartframe:
+                    self.workerrushstarted = True
+                    todo = self.workerrushers
+                    for scv in self.units(SCV):
+                        if todo > 0:
+                            todo -= 1
+                            self.promote(scv,'cheeser')
+                            self.speciality_of_tag[scv.tag] = 'workerrush'
+                            scv.gather(self.hisrampmim)
+                            self.emotion_of_unittag[scv.tag] = 'going_in'
+            # end of rush
+            if self.frame < self.endworkerrush + 200:
+                if self.frame >= self.endworkerrush:
                     for scv in self.units(SCV):
                         if scv.tag in self.speciality_of_tag:
                             if self.speciality_of_tag[scv.tag] == 'workerrush':
-                                dist = self.circledist(scv.position, back.position)
-                                if dist > mindist + 1.2:
-                                    scv.gather(back)
-                                    self.workerback.add(scv.tag)
-                else:
-                    # go forward
-                    if len(self.workerback) > 0:
+                                self.promote(scv,'idler')
+                                del self.speciality_of_tag[scv.tag]
+            # stacking while moving forward (rough implementation)
+            back = self.homemim
+            forward = self.hisrampmim
+            mindist = 99999
+            maxdist = -99999
+            for scv in self.units(SCV):
+                if scv.tag in self.speciality_of_tag:
+                    if self.speciality_of_tag[scv.tag] == 'workerrush':
+                        dist = self.circledist(scv.position,back.position)
+                        mindist = min(dist,mindist)
+                        maxdist = max(dist,maxdist)
+            if (mindist > 60) and (mindist < 80):
+                if maxdist > mindist + 1.2:
+                    if self.frame % 11 == 1:
+                        # go back
+                        self.workerback = set()
                         for scv in self.units(SCV):
-                            if scv.tag in self.workerback:
-                                dist = self.circledist(scv.position, back.position)
-                                if dist < mindist + 1.2:
-                                    scv.gather(forward)
-                                    self.workerback.remove(scv.tag)
-        # end of repair
-        todel = set()
-        for (repairer_tag,repairee_tag) in self.rushrepairs:
-            self.log_success(self.name(repairer_tag)+' was repairing '+self.name(repairee_tag))
-            found = False
-            for repairee in self.units(SCV):
-                if repairee.tag == repairee_tag:
-                    found = True
-                    if repairee.health >= self.healthybound:
-                        # cured
-                        for repairer in self.units(SCV):
-                            if repairer.tag == repairer_tag:
-                                repairer.move(repairer.position.towards(self.enemy_pos, 1))
-                        self.emotion_of_unittag[repairer_tag] = 'recovering' # was 'repairing'
-                        todel.add((repairer_tag,repairee_tag))
-            if not found:
-                self.emotion_of_unittag[repairer_tag] = 'recovering'  # was 'repairing'
-                todel.add((repairer_tag, repairee_tag))
-        self.rushrepairs -= todel
-        # end of aid
-        todel = set()
-        for (aider_tag,aidee_tag) in self.rushaids:
-            self.log_success(self.name(aider_tag)+' was aiding '+self.name(aidee_tag))
-            aiderfound = False
-            for may_aider in self.units(SCV):
-                if may_aider.tag == aider_tag:
-                    if self.emotion_of_unittag[aider_tag] == 'aiding':
-                        aiderfound = True
-                        aider = may_aider
-            if aiderfound:
-                aideefound = False
-                for aidee in self.units(SCV):
-                    if aidee.tag == aidee_tag:
-                        if self.emotion_of_unittag[aidee.tag] == 'brave':
-                            aideefound = True
-                            if aidee.health >= self.healthybound:
-                                # cured
-                                aider.gather(self.homemim) # just behind the lines please
-                                self.emotion_of_unittag[aider_tag] = 'firstaid'
-                                todel.add((aider_tag,aidee_tag))
-                if not aideefound:
-                    self.emotion_of_unittag[aider_tag] = 'firstaid'
-                    aider.gather(self.homemim)  # just behind the lines please
+                            if scv.tag in self.speciality_of_tag:
+                                if self.speciality_of_tag[scv.tag] == 'workerrush':
+                                    dist = self.circledist(scv.position, back.position)
+                                    if dist > mindist + 1.2:
+                                        scv.gather(back)
+                                        self.workerback.add(scv.tag)
+                    else:
+                        # go forward
+                        if len(self.workerback) > 0:
+                            for scv in self.units(SCV):
+                                if scv.tag in self.workerback:
+                                    dist = self.circledist(scv.position, back.position)
+                                    if dist < mindist + 1.2:
+                                        scv.gather(forward)
+                                        self.workerback.remove(scv.tag)
+            # end of repair
+            todel = set()
+            for (repairer_tag,repairee_tag) in self.rushrepairs:
+                self.log_success(self.name(repairer_tag)+' was repairing '+self.name(repairee_tag))
+                found = False
+                for repairee in self.units(SCV):
+                    if repairee.tag == repairee_tag:
+                        found = True
+                        if repairee.health >= self.healthybound:
+                            # cured
+                            for repairer in self.units(SCV):
+                                if repairer.tag == repairer_tag:
+                                    repairer.move(repairer.position.towards(self.enemy_pos, 1))
+                            self.emotion_of_unittag[repairer_tag] = 'recovering' # was 'repairing'
+                            todel.add((repairer_tag,repairee_tag))
+                if not found:
+                    self.emotion_of_unittag[repairer_tag] = 'recovering'  # was 'repairing'
+                    todel.add((repairer_tag, repairee_tag))
+            self.rushrepairs -= todel
+            # end of aid
+            todel = set()
+            for (aider_tag,aidee_tag) in self.rushaids:
+                self.log_success(self.name(aider_tag)+' was aiding '+self.name(aidee_tag))
+                aiderfound = False
+                for may_aider in self.units(SCV):
+                    if may_aider.tag == aider_tag:
+                        if self.emotion_of_unittag[aider_tag] == 'aiding':
+                            aiderfound = True
+                            aider = may_aider
+                if aiderfound:
+                    aideefound = False
+                    for aidee in self.units(SCV):
+                        if aidee.tag == aidee_tag:
+                            if self.emotion_of_unittag[aidee.tag] == 'brave':
+                                aideefound = True
+                                if aidee.health >= self.healthybound:
+                                    # cured
+                                    aider.gather(self.homemim) # just behind the lines please
+                                    self.emotion_of_unittag[aider_tag] = 'firstaid'
+                                    todel.add((aider_tag,aidee_tag))
+                    if not aideefound:
+                        self.emotion_of_unittag[aider_tag] = 'firstaid'
+                        aider.gather(self.homemim)  # just behind the lines please
+                        todel.add((aider_tag, aidee_tag))
+                else: # aider not found
                     todel.add((aider_tag, aidee_tag))
-            else: # aider not found
-                todel.add((aider_tag, aidee_tag))
-        self.rushaids -= todel
-        # aidees
-        aidees = set()
-        for (aider_tag,aidee_tag) in self.rushaids:
-            aidees.add(aidee_tag)
-        # starved repair
-        for (repairer_tag,repairee_tag) in self.rushrepairs | self.rushaids:
-            if self.minerals >= 20:
-                for repairer in self.units(SCV).idle:
-                    if repairer.tag == repairer_tag:
-                        for repairee in self.units(SCV):
-                            if repairee.tag == repairee_tag:
-                                repairer.repair(repairee)
-        # counts
-        bravecount = 0
-        repairingcount = 0
-        firstaidcount = 0
-        for scv in self.units(SCV):
-            if scv.tag in self.speciality_of_tag:
-                if self.speciality_of_tag[scv.tag] == 'workerrush':
-                    if self.emotion_of_unittag[scv.tag] == 'brave':
-                        bravecount += 1
-                    elif self.emotion_of_unittag[scv.tag] in {'fleeing','repairing'}:
-                        repairingcount += 1
-                    elif self.emotion_of_unittag[scv.tag] in {'aiding','firstaid'}:
-                        firstaidcount += 1
-        #
-        for scv in self.units(SCV):
-            if scv.tag in self.speciality_of_tag:
-                if self.speciality_of_tag[scv.tag] == 'workerrush':
-                    self.log_success(self.name(scv.tag)+' '+str(scv.health)+' '+self.emotion_of_unittag[scv.tag])
-                    if self.emotion_of_unittag[scv.tag] == 'brave':
-                        if bravecount < 4:
-                            self.bravery_of_unittag[scv.tag] -= self.chosen_game_step
-                        bravery = self.bravery_of_unittag[scv.tag]
-                        if (scv.health < 12) or (bravery <= 0):
-                            scv.gather(self.homemim)
-                            self.emotion_of_unittag[scv.tag] = 'fleeing'
-                            bravecount -= 1
-                        elif self.near(scv.position, self.hisfarmim.position, 3): # patrol
-                            scv.attack(self.hisrampmim.position)
-                        elif self.near(scv.position, self.hisrampmim.position, 3): # patrol
-                            scv.attack(self.hisfarmim.position)
-                        elif not self.near(scv.position, self.hisrampmim.position,12):
-                            if not self.near(scv.position, self.hisfarmim.position, 12): # astray
+            self.rushaids -= todel
+            # aidees
+            aidees = set()
+            for (aider_tag,aidee_tag) in self.rushaids:
+                aidees.add(aidee_tag)
+            # starved repair
+            for (repairer_tag,repairee_tag) in self.rushrepairs | self.rushaids:
+                if self.minerals >= 20:
+                    for repairer in self.units(SCV).idle:
+                        if repairer.tag == repairer_tag:
+                            for repairee in self.units(SCV):
+                                if repairee.tag == repairee_tag:
+                                    repairer.repair(repairee)
+            # counts
+            bravecount = 0
+            repairingcount = 0
+            firstaidcount = 0
+            for scv in self.units(SCV):
+                if scv.tag in self.speciality_of_tag:
+                    if self.speciality_of_tag[scv.tag] == 'workerrush':
+                        if self.emotion_of_unittag[scv.tag] == 'brave':
+                            bravecount += 1
+                        elif self.emotion_of_unittag[scv.tag] in {'fleeing','repairing'}:
+                            repairingcount += 1
+                        elif self.emotion_of_unittag[scv.tag] in {'aiding','firstaid'}:
+                            firstaidcount += 1
+            #
+            for scv in self.units(SCV):
+                if scv.tag in self.speciality_of_tag:
+                    if self.speciality_of_tag[scv.tag] == 'workerrush':
+                        self.log_success(self.name(scv.tag)+' '+str(scv.health)+' '+self.emotion_of_unittag[scv.tag])
+                        if self.emotion_of_unittag[scv.tag] == 'brave':
+                            if bravecount < 4:
+                                self.bravery_of_unittag[scv.tag] -= self.chosen_game_step
+                            bravery = self.bravery_of_unittag[scv.tag]
+                            if (scv.health < 12) or (bravery <= 0):
+                                scv.gather(self.homemim)
+                                self.emotion_of_unittag[scv.tag] = 'fleeing'
+                                bravecount -= 1
+                            elif self.near(scv.position, self.hisfarmim.position, 3): # patrol
+                                scv.attack(self.hisrampmim.position)
+                            elif self.near(scv.position, self.hisrampmim.position, 3): # patrol
+                                scv.attack(self.hisfarmim.position)
+                            elif not self.near(scv.position, self.hisrampmim.position,12):
+                                if not self.near(scv.position, self.hisfarmim.position, 12): # astray
+                                    scv.gather(self.hisrampmim)
+                                    self.emotion_of_unittag[scv.tag] = 'going_in'
+                        elif self.emotion_of_unittag[scv.tag] == 'going_in':
+                            if scv.health < 12:
+                                scv.gather(self.homemim)
+                                self.emotion_of_unittag[scv.tag] = 'fleeing'
+                            elif self.near(scv.position,self.hisrampmim.position,5):
+                                if firstaidcount < (bravecount // 4):
+                                    self.emotion_of_unittag[scv.tag] = 'firstaid'
+                                    scv.gather(self.homemim) # just behind the lines please
+                                    firstaidcount += 1
+                                else:
+                                    self.emotion_of_unittag[scv.tag] = 'brave'
+                                    scv.attack(self.hisfarmim.position)
+                                    self.bravery_of_unittag[scv.tag] = 20
+                                    bravecount += 1
+                        elif self.emotion_of_unittag[scv.tag] == 'fleeing':
+                            if not self.near(scv.position, self.hisrampmim.position,self.workerrushrepdist):
+                                scv.move(scv.position.towards(self.enemy_pos,1))
+                                self.emotion_of_unittag[scv.tag] = 'recovering'
+                        elif self.emotion_of_unittag[scv.tag] == 'cured':
+                            if repairingcount == 0:
                                 scv.gather(self.hisrampmim)
                                 self.emotion_of_unittag[scv.tag] = 'going_in'
-                    elif self.emotion_of_unittag[scv.tag] == 'going_in':
-                        if scv.health < 12:
-                            scv.gather(self.homemim)
-                            self.emotion_of_unittag[scv.tag] = 'fleeing'
-                        elif self.near(scv.position,self.hisrampmim.position,5):
-                            if firstaidcount < (bravecount // 4):
-                                self.emotion_of_unittag[scv.tag] = 'firstaid'
-                                scv.gather(self.homemim) # just behind the lines please
-                                firstaidcount += 1
+                        elif self.emotion_of_unittag[scv.tag] == 'recovering':
+                            if scv.health >= self.healthybound:
+                                self.emotion_of_unittag[scv.tag] = 'cured'
+                        elif self.emotion_of_unittag[scv.tag] == 'aiding':
+                            if (scv.health < 12) or (bravecount < 4):
+                                scv.gather(self.homemim)
+                                self.emotion_of_unittag[scv.tag] = 'fleeing'
+                        elif self.emotion_of_unittag[scv.tag] == 'firstaid':
+                            if (scv.health < 12) or (bravecount < 4):
+                                scv.gather(self.homemim)
+                                self.emotion_of_unittag[scv.tag] = 'fleeing'
+                            elif not self.near(scv.position, self.hisrampmim.position, 8):
+                                scv.gather(self.hisrampmim)  # just behind the lines please
+                            elif self.near(scv.position, self.hisrampmim.position, 5):
+                                scv.gather(self.homemim)  # just behind the lines please
                             else:
-                                self.emotion_of_unittag[scv.tag] = 'brave'
-                                scv.attack(self.hisfarmim.position)
-                                self.bravery_of_unittag[scv.tag] = 20
-                                bravecount += 1
-                    elif self.emotion_of_unittag[scv.tag] == 'fleeing':
-                        if not self.near(scv.position, self.hisrampmim.position,self.workerrushrepdist):
-                            scv.move(scv.position.towards(self.enemy_pos,1))
-                            self.emotion_of_unittag[scv.tag] = 'recovering'
-                    elif self.emotion_of_unittag[scv.tag] == 'cured':
-                        if repairingcount == 0:
-                            scv.gather(self.hisrampmim)
-                            self.emotion_of_unittag[scv.tag] = 'going_in'
-                    elif self.emotion_of_unittag[scv.tag] == 'recovering':
-                        if scv.health >= self.healthybound:
-                            self.emotion_of_unittag[scv.tag] = 'cured'
-                    elif self.emotion_of_unittag[scv.tag] == 'aiding':
-                        if (scv.health < 12) or (bravecount < 4):
-                            scv.gather(self.homemim)
-                            self.emotion_of_unittag[scv.tag] = 'fleeing'
-                    elif self.emotion_of_unittag[scv.tag] == 'firstaid':
-                        if (scv.health < 12) or (bravecount < 4):
-                            scv.gather(self.homemim)
-                            self.emotion_of_unittag[scv.tag] = 'fleeing'
-                        elif not self.near(scv.position, self.hisrampmim.position, 8):
-                            scv.gather(self.hisrampmim)  # just behind the lines please
-                        elif self.near(scv.position, self.hisrampmim.position, 5):
-                            scv.gather(self.homemim)  # just behind the lines please
-                        else:
+                                minsd = 99999
+                                for otherscv in self.units(SCV):
+                                    if otherscv.tag not in aidees:
+                                        if otherscv.tag in self.speciality_of_tag:
+                                            if self.speciality_of_tag[otherscv.tag] == 'workerrush':
+                                                if self.emotion_of_unittag[otherscv.tag] == 'brave':
+                                                    if otherscv.health < self.healthybound:
+                                                        sd = self.sdist(scv.position, otherscv.position)
+                                                        if sd < minsd:
+                                                            minsd = sd
+                                                            bestscv = otherscv
+                                if minsd < 99999:
+                                    if self.minerals > 5:
+                                        scv.repair(bestscv)
+                                    else:
+                                        scv.move(scv.position.towards(self.enemy_pos, -1))
+                                    self.emotion_of_unittag[scv.tag] = 'aiding' # was 'firstaid'
+                                    self.rushaids.add((scv.tag, bestscv.tag))
+                                    aidees.add(bestscv.tag)
+                        if self.emotion_of_unittag[scv.tag] in {'recovering','cured'}:
                             minsd = 99999
                             for otherscv in self.units(SCV):
-                                if otherscv.tag not in aidees:
+                                if otherscv.tag != scv.tag:
                                     if otherscv.tag in self.speciality_of_tag:
                                         if self.speciality_of_tag[otherscv.tag] == 'workerrush':
-                                            if self.emotion_of_unittag[otherscv.tag] == 'brave':
+                                            if self.emotion_of_unittag[otherscv.tag] in {'recovering','repairing'}:
                                                 if otherscv.health < self.healthybound:
-                                                    sd = self.sdist(scv.position, otherscv.position)
+                                                    sd = self.sdist(scv.position,otherscv.position)
                                                     if sd < minsd:
                                                         minsd = sd
                                                         bestscv = otherscv
                             if minsd < 99999:
-                                if self.minerals > 5:
+                                if self.minerals > 20:
                                     scv.repair(bestscv)
                                 else:
                                     scv.move(scv.position.towards(self.enemy_pos, -1))
-                                self.emotion_of_unittag[scv.tag] = 'aiding' # was 'firstaid'
-                                self.rushaids.add((scv.tag, bestscv.tag))
-                                aidees.add(bestscv.tag)
-                    if self.emotion_of_unittag[scv.tag] in {'recovering','cured'}:
-                        minsd = 99999
-                        for otherscv in self.units(SCV):
-                            if otherscv.tag != scv.tag:
-                                if otherscv.tag in self.speciality_of_tag:
-                                    if self.speciality_of_tag[otherscv.tag] == 'workerrush':
-                                        if self.emotion_of_unittag[otherscv.tag] in {'recovering','repairing'}:
-                                            if otherscv.health < self.healthybound:
-                                                sd = self.sdist(scv.position,otherscv.position)
-                                                if sd < minsd:
-                                                    minsd = sd
-                                                    bestscv = otherscv
-                        if minsd < 99999:
-                            if self.minerals > 20:
-                                scv.repair(bestscv)
-                            else:
-                                scv.move(scv.position.towards(self.enemy_pos, -1))
-                            self.emotion_of_unittag[scv.tag] = 'repairing'
-                            self.rushrepairs.add((scv.tag,bestscv.tag))
+                                self.emotion_of_unittag[scv.tag] = 'repairing'
+                                self.rushrepairs.add((scv.tag,bestscv.tag))
 
     async def do_cocoon(self):
         if self.opening_name.find('cocoon') >= 0:
