@@ -172,7 +172,7 @@ class Chaosbot(sc2.BotAI):
     #   ############### CHANGE VALUE AD LIB
     do_slowdown = False
     slowdown_ticks = 99999
-    slowness = 0.08
+    slowness = 0.3
     do_log_success = False
     do_log_fail = False
     do_log_command = False
@@ -410,7 +410,7 @@ class Chaosbot(sc2.BotAI):
     cleaning_tank_thinkframe = {} # to wait a second after being surprised
     cleaning_tank_back = {} # move one step back if falling in a fight
     #
-    emotion_of_unittag = {} # jumpy bc emotion "lazy","repair", etc. Also for tanks, and for widowmines.
+    emotion_of_unittag = {} # jumpy bc emotion "lazy","repair", etc. Also for tanks, and for widowmines, rushworkers.
     burrowpos_of_wmt = {}
     eneunitsseen = {} # per vulture a timer
     attack_type = 'jumpy'
@@ -524,21 +524,28 @@ class Chaosbot(sc2.BotAI):
     hisrampmim = None
     hisfarmim = None
     homemim = None
-    workerrushers = 10
-    endworkerrush = 4000
+    startworkerrushers = 11 # 11
+    workerrushstartframe = 250 # 250
+    workerrushstopframe = 4000 # 4000
     healthybound = 41
     rushrepairs = set()  # of (repairer_tag,reparee_tag)
     rushaids = set()  # of (aider_tag,aidee_tag)
     workerrushstate = 'tobe' # tobe/busy/ended
-    workerrushstartframe = 100 # will be detailed by a mineralbound
     workerback = set() # of tag of worker moving back, trying to stack.
-    workerrushrepdist = 9 # will be incresed if pursued by a mightier group
+    workerrushrepdist = 13 # will be increased if pursued by a mightier group
     rushrepairsite = nowhere
     stackphase = 'A'
     stacktag = notag # a reference worker
     turntiming = 1.04 # when to turn while stacking
     bitebound = 1.0 # melee worker attack clash
-    jumpbound= 2.1 # jump on that enemy
+    jumpbound = 2.1 # jump on that enemy
+    followbound = 3.3 # follow that enemy
+    bitingstate = {} # per rushworker, 'normal'/'cooling'/'biting'/'jumping'/'following'
+    personality = {} # per workerrusher 0 or 1
+    rushvictim = None # this iteration, result of subroutine
+    rushdamage = 0
+    last_weapon_cooldown = {} # for rushdamage
+    #
     # to swap starport on techlab:
     toswap = set() # of (buildingtype,position)
     swapped = set() # of (buildingtype,position)
@@ -1702,10 +1709,10 @@ class Chaosbot(sc2.BotAI):
             self.opening_create_kind = BANSHEE
         if self.game_choice[33]:
             self.opening_name = 'workerrush'
+            self.rushopening = True
             # style twobase-bc
             self.buildseries_opening = [SUPPLYDEPOT, REFINERY, BARRACKS, SUPPLYDEPOT, MARINE, REFINERY, FACTORY, MARINE,
                                        STARPORT, COMMANDCENTER, FUSIONCORE, STARPORTTECHLAB, BATTLECRUISER]
-            self.init_workerrush()
         # radio_choices = 34
         self.log_success('OPENING: '+self.opening_name)
         #
@@ -1784,7 +1791,7 @@ class Chaosbot(sc2.BotAI):
         self.all_names = pl.read().splitlines()
         pl.close()
         # chat
-        await self._client.chat_send('Chaosbot version 13 apr 2021, made by MerkMore', team_only=False)
+        await self._client.chat_send('Chaosbot version 18 apr 2021, made by MerkMore', team_only=False)
         #
         #layout_if.photo_layout()
 
@@ -3063,18 +3070,25 @@ class Chaosbot(sc2.BotAI):
             mim = 450 # bc + bit
             gas = 350 # bc + bit
             # protect buildorder_exe
+            # protect later things worse, protect about 3 items
+            future = 1.0
             for (item, goal, status) in self.buildorder_exe:
                 basekind = self.basekind_of(item)
                 cost = self.get_added_cost(basekind)
-                mim += cost.minerals
-                gas += cost.vespene
+                mim += future * cost.minerals
+                gas += future * cost.vespene
+                future *= 0.667
             # protect throwspots:
+            # use future system although there is no order
+            future = 1.0
             for tps in self.throwspots:
                 (th, po, status, ow, pri) = tps
                 cost = self.get_added_cost(th)
-                mim += cost.minerals
-                gas += cost.vespene
+                mim += future * cost.minerals
+                gas += future * cost.vespene
+                future *= 0.667
             # protect opening_create_units
+            # these build quick, use full protection
             if self.opening_create_units > 0:
                 mar_todo = self.opening_create_units
                 for tps in self.throwspots:
@@ -6455,7 +6469,7 @@ class Chaosbot(sc2.BotAI):
     async def build_thing_tobuildwalk(self,scvt,thing,place,owner) -> bool:
         self.log_success('trying to prep '+thing.name+' at '+self.txt(place)+' for '+owner)
         didit = False
-        if (self.opening_name != 'workerrush') or (self.workerrushstate == 'ended') or ((self.minerals >= 200) and (thing == SUPPLYDEPOT)):
+        if (self.opening_name != 'workerrush') or (self.workerrushstate == 'ended') or ((self.minerals >= 250) and (thing == SUPPLYDEPOT)):
             if (thing,place,owner) in self.thoughts:
                 if thing == COMMANDCENTER:
                     didit = await self.build_commandcenter(scvt,place,owner)
@@ -8007,7 +8021,6 @@ class Chaosbot(sc2.BotAI):
                     mid = self.sneakymid(banpos,goal)
                     self.go_move(ban, mid)
                     emo = 'approaching'
-                    self.slowdown_ticks = 200
             elif emo == 'approaching':
                 if self.no_move_or_near(ban, 8, 4):
                     if self.near(banpos,goal,1):
@@ -9844,7 +9857,6 @@ class Chaosbot(sc2.BotAI):
     def do_reaper(self):
         if self.opening_name == 'reapers':
             if len(self.units(REAPER)) > 0:
-                #self.slowed_down()
                 # scvs building bunkers
                 if len(self.structures(BUNKER)) > 0:
                     for anscv in self.units(SCV):
@@ -10213,18 +10225,32 @@ class Chaosbot(sc2.BotAI):
             n -= 1
         return might
 
-    def init_workerrush(self):
-        self.rushopening = True
-        self.rushrepairs = set() # of (repairer_tag,reparee_tag)
-        self.rushaids = set() # of (aider_tag,aidee_tag)
-        self.rushstarted = False
+
+    def get_rushvictims(self,myposition,bound,personality) -> int:
+        reachable = 0
+        for ene in self.enemy_units:  # visible
+            if ene.type_id not in {OVERLORD, LARVA, EGG}:
+                if self.near(ene.position, myposition, bound):
+                    if reachable == 0:
+                        self.rushvictim = ene
+                        reachable += 1
+                    if personality == 0:
+                        if ene.health < self.rushvictim.health:
+                            self.rushvictim = ene
+                    else:
+                        if ene.tag < self.rushvictim.tag:
+                            self.rushvictim = ene
+        return reachable
 
     def do_workerrush(self):
         if (self.opening_name == 'workerrush') and (self.workerrushstate != 'ended'):
-            agressive = {'brave','jumping','biting','bouncing','firstaid','aiding'}
-            defensive = {'fleeing','recovering','repairing'}
-            neutral = {'cured','going-in','abitfurther'}
-            # minerals to move towards:
+            # emotions:
+            agressive = {'brave','bouncing','firstaid','aiding'}
+            defensive = {'fleeing','recovering','repairing','ambush'}
+            neutral = {'cured','ingoing'}
+            #
+            repairsite_emotions = {'recovering','repairing','cured','ambush'}
+            # minerals to move towards: hisrampmim, hisfarmim, homemim
             hisexpo = self.expo_of_pos(self.enemy_pos)
             leftsd = 99999
             rightsd = 99999
@@ -10253,9 +10279,9 @@ class Chaosbot(sc2.BotAI):
                     self.homemim = mim
             #
             if self.workerrushstate == 'tobe':
-                if (self.frame > self.workerrushstartframe) and (self.minerals >= 40):
+                if (self.frame > self.workerrushstartframe):
                     self.workerrushstate = 'busy'
-                    todo = self.workerrushers
+                    todo = self.startworkerrushers
                     for scv in self.units(SCV):
                         job = self.job_of_scvt[scv.tag]
                         if job in self.bad_jobs + self.no_jobs:
@@ -10264,9 +10290,13 @@ class Chaosbot(sc2.BotAI):
                                 self.promote(scv,'cheeser')
                                 self.speciality_of_tag[scv.tag] = 'workerrush'
                                 scv.gather(self.hisrampmim)
-                                self.emotion_of_unittag[scv.tag] = 'going_in'
+                                self.emotion_of_unittag[scv.tag] = 'ingoing'
+                                self.personality[scv.tag] = random.randrange(0,2)
+                                self.bitingstate[scv.tag] = 'normal'
+                                self.shame_of_unittag[scv.tag] = 0
+                    self.rushrepairsite = self.enemyramp_pos
             elif self.workerrushstate == 'busy':
-                if self.frame >= self.endworkerrush:
+                if self.frame >= self.workerrushstopframe:
                     self.workerrushstate = 'ended'
                     self.rushaids = set()
                     self.rushrepairs = set()
@@ -10293,7 +10323,7 @@ class Chaosbot(sc2.BotAI):
                         if dist > 50:
                             self.stackphase = 'C'
             elif self.stackphase == 'C':
-                # choose slowest
+                # slowest is stacktag
                 mindist = 99999
                 maxdist = -99999
                 for scv in self.units(SCV):
@@ -10329,6 +10359,34 @@ class Chaosbot(sc2.BotAI):
                                 self.workerback.remove(scv.tag)
                 if len(self.workerback) == 0:
                     self.stackphase = 'E'
+            # to remember emotion, bitingstate
+            last_emotion = {}
+            last_bitingstate = {}
+            for scv in self.units(SCV):
+                if scv.tag in self.speciality_of_tag:
+                    if self.speciality_of_tag[scv.tag] == 'workerrush':
+                        last_emotion[scv.tag] = self.emotion_of_unittag[scv.tag]
+                        last_bitingstate[scv.tag] = self.bitingstate[scv.tag]
+            # rushscore
+            rushhealth = - self.startworkerrushers * 45
+            for scv in self.units(SCV):
+                if scv.tag in self.speciality_of_tag:
+                    if self.speciality_of_tag[scv.tag] == 'workerrush':
+                        rushhealth += scv.health
+                        if scv.tag in self.last_weapon_cooldown:
+                            if scv.weapon_cooldown > self.last_weapon_cooldown[scv.tag]:
+                                self.rushdamage += 5
+                        self.last_weapon_cooldown[scv.tag] = scv.weapon_cooldown
+            rushscore = rushhealth + self.rushdamage
+            # logging
+            self.log_success('rushscore '+str(rushscore))
+            for scv in self.units(SCV):
+                if scv.tag in self.speciality_of_tag:
+                    if self.speciality_of_tag[scv.tag] == 'workerrush':
+                        emotion = self.emotion_of_unittag[scv.tag]
+                        self.log_success(self.name(scv.tag) + ' ' + str(scv.health) + ' ' + emotion
+                                         + ' ' + str(scv.weapon_cooldown) + ' ' + self.bitingstate[scv.tag])
+            # emotion changes
             # end of repair
             todel = set()
             for (repairer_tag,repairee_tag) in self.rushrepairs:
@@ -10347,8 +10405,7 @@ class Chaosbot(sc2.BotAI):
                                 repaireefound = True
                                 if repairee.health >= self.healthybound:
                                     # cured
-                                    repairer.move(repairer.position.towards(self.enemy_pos, 0.1))
-                                    self.emotion_of_unittag[repairer_tag] = 'recovering' # was 'repairing'
+                                    self.emotion_of_unittag[repairer_tag] = 'cured' # was 'repairing'
                                     todel.add((repairer_tag,repairee_tag))
                     if not repaireefound:
                         self.emotion_of_unittag[repairer_tag] = 'recovering'  # was 'repairing'
@@ -10374,20 +10431,14 @@ class Chaosbot(sc2.BotAI):
                                 aideefound = True
                                 if aidee.health >= self.healthybound:
                                     # cured
-                                    aider.gather(self.homemim) # just behind the lines please
                                     self.emotion_of_unittag[aider_tag] = 'firstaid'
                                     todel.add((aider_tag,aidee_tag))
                     if not aideefound:
                         self.emotion_of_unittag[aider_tag] = 'firstaid'
-                        aider.gather(self.homemim)  # just behind the lines please
                         todel.add((aider_tag, aidee_tag))
                 else: # aider not found
                     todel.add((aider_tag, aidee_tag))
             self.rushaids -= todel
-            # aidees
-            aidees = set()
-            for (aider_tag,aidee_tag) in self.rushaids:
-                aidees.add(aidee_tag)
             # starved repair
             for (repairer_tag,repairee_tag) in self.rushrepairs | self.rushaids:
                 if self.minerals >= 20:
@@ -10426,7 +10477,7 @@ class Chaosbot(sc2.BotAI):
                 if scv.tag in self.speciality_of_tag:
                     if self.speciality_of_tag[scv.tag] == 'workerrush':
                         emotion = self.emotion_of_unittag[scv.tag]
-                        if emotion in {'recovering','repairing'}:
+                        if emotion in repairsite_emotions:
                             n += 1
                             sumx += scv.position.x
                             sumy += scv.position.y
@@ -10436,7 +10487,7 @@ class Chaosbot(sc2.BotAI):
             for ene in self.enemy_units:  # visible
                 if ene.type_id not in {OVERLORD, LARVA, EGG}:
                     if self.near(ene.position, self.rushrepairsite, 6):
-                        opponenthealth.append(ene.health)
+                        opponenthealth.append(ene.health+ene.shield)
             opponentmight = self.groupmight(opponenthealth)
             myhealth = []
             for scv in self.units(SCV):
@@ -10450,119 +10501,109 @@ class Chaosbot(sc2.BotAI):
                 for scv in self.units(SCV):
                     if scv.tag in self.speciality_of_tag:
                         if self.speciality_of_tag[scv.tag] == 'workerrush':
-                            if self.emotion_of_unittag[scv.tag] in {'recovering','repairing'}:
-                                scv.gather(self.homemim)
+                            if self.emotion_of_unittag[scv.tag] in repairsite_emotions:
                                 self.emotion_of_unittag[scv.tag] = 'fleeing'
+                                self.bitingstate[scv.tag] = 'normal'
             #
             for scv in self.units(SCV):
                 if scv.tag in self.speciality_of_tag:
                     if self.speciality_of_tag[scv.tag] == 'workerrush':
                         emotion = self.emotion_of_unittag[scv.tag]
-                        self.log_success(self.name(scv.tag)+' '+str(scv.health)+' '+emotion+' '+str(scv.weapon_cooldown))
                         # flee
-                        if (scv.health < 12) or (agressivecount + neutralcount < 4):
-                            if emotion in agressive:
-                                scv.gather(self.homemim)
+                        minhealthbound = 6
+                        safetycenter = scv.position.towards(self.loved_pos,4)
+                        for ene in self.enemy_units:  # visible
+                            if ene.type_id not in {OVERLORD, LARVA, EGG}:
+                                if self.near(ene.position, safetycenter, 4):
+                                    minhealthbound += 5
+                        minhealthbound = min(21,minhealthbound)
+                        if (scv.health < minhealthbound) or (agressivecount + neutralcount < 4):
+                            if emotion in agressive | neutral:
                                 emotion = 'fleeing'
-                        # depending on emotion
-                        if emotion == 'going_in':
-                            if self.near(scv.position,self.hisrampmim.position,2):
-                                emotion = 'abitfurther'
-                                scv.move(self.enemy_pos.towards(scv.position,8))
-                                self.shame_of_unittag[scv.tag] = 7 # some frames to go into the choke
-                        elif emotion == 'abitfurther': # shame-timer
+                                self.bitingstate[scv.tag] = 'normal'
+                        # bitingstate
+                        if emotion != 'fleeing':
+                            bitingstate = self.bitingstate[scv.tag]
                             self.shame_of_unittag[scv.tag] -= self.chosen_game_step
-                            if self.shame_of_unittag[scv.tag] <= 0:
-                                emotion = 'brave'
-                                scv.attack(self.hisfarmim.position)
-                        elif emotion == 'brave':
-                            if scv.weapon_cooldown >= 18: # max == 24
-                                emotion = 'bouncing'
-                                if self.near(scv.position, self.hisrampmim.position, 2) or (defensivecount >= 4):
-                                    scv.gather(self.homemim)
+                            # bitingstate changes
+                            if (self.shame_of_unittag[scv.tag] <= 0) and (bitingstate != 'normal'):
+                                if (bitingstate == 'cooling'):
+                                    bitingstate = 'normal'
                                 else:
-                                    scv.gather(self.hisrampmim)
-                            elif self.near(scv.position, self.hisfarmim.position, 2):  # patrol
-                                scv.attack(self.hisrampmim.position)
-                            elif self.near(scv.position, self.hisrampmim.position, 2):  # patrol
-                                scv.attack(self.hisfarmim.position)
-                            elif not self.near(scv.position, self.hisrampmim.position,12):
-                                if not self.near(scv.position, self.hisfarmim.position, 12): # astray
-                                    scv.gather(self.hisrampmim)
-                                    emotion = 'going_in'
-                        elif emotion == 'bouncing':
-                            if (scv.weapon_cooldown < 18) and (self.minerals >= 20):
-                                scv.move(scv.position.towards(self.homemim.position, 0.1))
-                                emotion = 'firstaid'
-                            elif (scv.weapon_cooldown < 12):
-                                emotion = 'brave'
-                                scv.attack(self.hisfarmim.position)
-                        elif emotion == 'biting': # shame-timer
-                            self.shame_of_unittag[scv.tag] -= self.chosen_game_step
-                            bitable = False
-                            for ene in self.enemy_units: # visible
-                                if ene.type_id not in {OVERLORD, LARVA, EGG}:
-                                    if self.near(ene.position,scv.position,self.bitebound):
-                                        if not bitable:
-                                            bitevictim = ene
-                                            bitable = True
-                                        if ene.tag < bitevictim.tag:
-                                            bitevictim = ene
-                            if scv.weapon_cooldown >= 18:
-                                emotion = 'bouncing'
-                                if self.near(scv.position, self.hisrampmim.position, 2) or (defensivecount >= 4):
-                                    scv.gather(self.homemim)
-                                else:
-                                    scv.gather(self.hisrampmim)
-                            elif self.shame_of_unittag[scv.tag] <= 0:
-                                emotion = 'brave'
-                                scv.attack(self.hisfarmim.position)
-                            elif bitable:
-                                scv.attack(bitevictim)
-                        elif emotion == 'jumping': # shame-timer
-                            self.shame_of_unittag[scv.tag] -= self.chosen_game_step
-                            if self.shame_of_unittag[scv.tag] <= 0:
-                                emotion = 'brave'
-                                scv.attack(self.hisfarmim.position)
-                        elif emotion == 'aiding':
+                                    bitingstate = 'cooling'
+                            elif scv.weapon_cooldown >= 18: # I bit
+                                bitingstate = 'cooling'
+                            elif (self.get_rushvictims(scv.position,self.bitebound,self.personality[scv.tag]) > 0) and (scv.weapon_cooldown < 6):
+                                bitingstate = 'biting'
+                            elif (self.get_rushvictims(scv.position, self.jumpbound, self.personality[scv.tag]) > 0) and (scv.weapon_cooldown < 12):
+                                bitingstate = 'jumping'
+                            elif (bitingstate != 'cooling'):
+                                ame = self.get_rushvictims(scv.position, self.followbound, self.personality[scv.tag])
+                                if (ame == 1):
+                                    bitingstate = 'following'
+                                elif (ame > 1) and (bitigstate == 'following'):
+                                    bitingstate = 'cooling'
+                            self.bitingstate[scv.tag] = bitingstate
+                            # bitingstate actions
+                            if bitingstate != last_bitingstate[scv.tag]:
+                                self.shame_of_unittag[scv.tag] = 10
+                                if bitingstate == 'biting':
+                                    scv.attack(self.rushvictim)
+                                elif bitingstate == 'jumping':
+                                    maxcool = -99999
+                                    for mim in {self.homemim, self.hisrampmim, self.hisfarmim}:
+                                        cool = self.circledist(scv.position, mim.position) - self.circledist(
+                                            self.rushvictim.position, mim.position)
+                                        if cool > maxcool:
+                                            maxcool = cool
+                                            bestmim = mim
+                                    scv.gather(bestmim)
+                                elif bitingstate == 'following':
+                                    scv.move(self.rushvictim.position)
+                        # emotion state changes
+                        if self.bitingstate[scv.tag] in {'biting','jumping','following'}:
                             pass
-                        elif emotion == 'firstaid':
-                            if not self.near(scv.position, self.hisrampmim.position, 8):
-                                scv.gather(self.hisrampmim)  # just behind the lines please
-                            elif self.near(scv.position, self.hisrampmim.position, 2):
-                                scv.gather(self.homemim)  # just behind the lines please
-                            else:
-                                minsd = 99999
-                                for otherscv in self.units(SCV):
-                                    if otherscv.tag != scv.tag:
-                                        if otherscv.tag not in aidees:
-                                            if otherscv.tag in self.speciality_of_tag:
-                                                if self.speciality_of_tag[otherscv.tag] == 'workerrush':
-                                                    if self.emotion_of_unittag[otherscv.tag] in agressive:
-                                                        if otherscv.health < self.healthybound:
-                                                            sd = self.sdist(scv.position, otherscv.position)
-                                                            if sd < minsd:
-                                                                minsd = sd
-                                                                bestscv = otherscv
-                                if minsd < 99999:
-                                    if self.minerals > 5:
-                                        scv.repair(bestscv)
-                                        emotion = 'aiding'  # was 'firstaid'
-                                        self.rushaids.add((scv.tag, bestscv.tag))
-                                        aidees.add(bestscv.tag)
-                                    else:
-                                        scv.move(bestscv.position)
+                        elif (scv.weapon_cooldown >= 18) and (emotion in agressive):
+                            emotion = 'bouncing'
+                        elif emotion == 'ingoing':
+                            if self.near(scv.position,self.hisrampmim.position,3):
+                                emotion = 'brave'
+                        elif emotion == 'brave':
+                            pass
+                        elif emotion == 'bouncing':
+                            bound = 13 + scv.health/5 # weak worker bounces further back. 13 a 22.
+                            if (scv.weapon_cooldown < bound) and (self.minerals >= 20):
+                                emotion = 'firstaid'
                         elif emotion == 'fleeing':
                             if not self.near(scv.position, self.hisrampmim.position,self.workerrushrepdist):
-                                scv.move(scv.position.towards(self.enemy_pos,0.1))
                                 emotion = 'recovering'
                         elif emotion == 'cured':
-                            if defensivecount == 0:
-                                scv.gather(self.hisrampmim)
-                                emotion = 'going_in'
+                            if scv.health < self.healthybound: # can happen
+                                emotion = 'recovering'
+                            elif defensivecount == 0:
+                                emotion = 'ingoing'
                         elif emotion == 'recovering':
                             if scv.health >= self.healthybound:
                                 emotion = 'cured'
+                        elif emotion == 'aiding':
+                            pass
+                        elif emotion == 'firstaid':
+                            minsd = 99999
+                            for otherscv in self.units(SCV):
+                                if otherscv.tag != scv.tag:
+                                    if otherscv.tag in self.speciality_of_tag:
+                                        if self.speciality_of_tag[otherscv.tag] == 'workerrush':
+                                            if self.emotion_of_unittag[otherscv.tag] in agressive:
+                                                if otherscv.health < self.healthybound:
+                                                    sd = self.sdist(scv.position, otherscv.position)
+                                                    if sd < minsd:
+                                                        minsd = sd
+                                                        bestscv = otherscv
+                            if minsd < 3*3:
+                                if self.minerals > 5:
+                                    scv.repair(bestscv)
+                                    emotion = 'aiding'  # was 'firstaid'
+                                    self.rushaids.add((scv.tag, bestscv.tag))
                         # try to repair
                         if emotion in {'recovering','cured'}:
                             minsd = 99999
@@ -10576,57 +10617,100 @@ class Chaosbot(sc2.BotAI):
                                                     if sd < minsd:
                                                         minsd = sd
                                                         bestscv = otherscv
-                            if minsd < 99999:
+                            if minsd < 6*6:
                                 if self.minerals > 20:
                                     scv.repair(bestscv)
-                                else:
-                                    scv.move(scv.position.towards(self.enemy_pos, -0.1))
-                                emotion = 'repairing'
-                                self.rushrepairs.add((scv.tag,bestscv.tag))
-                        # bite, jump
-                        if (emotion in agressive) and (scv.weapon_cooldown <= 6):
-                            if emotion != 'biting':
-                                bitable = False
-                                for ene in self.enemy_units: # visible
-                                    if ene.type_id not in {OVERLORD, LARVA, EGG}:
-                                        if self.near(ene.position,scv.position,self.bitebound):
-                                            # bite lowesttaged
-                                            if not bitable:
-                                                bitevictim = ene
-                                                bitable = True
-                                            if ene.tag < bitevictim.tag:
-                                                bitevictim = ene
-                                if bitable:
-                                    scv.attack(bitevictim)
-                                    emotion = 'biting'
-                                    self.shame_of_unittag[scv.tag] = 10
-                            if emotion not in {'biting','jumping'}:
-                                jumpable = False
-                                for ene in self.enemy_units: # visible
-                                    if ene.type_id not in {OVERLORD, LARVA, EGG}:
-                                        if self.near(ene.position, scv.position,self.jumpbound):
-                                            if ene.tag in bites:
-                                                if not jumpable:
-                                                    jumpvictim = ene
-                                                    jumpable = True
-                                                if ene.tag < jumpvictim.tag:
-                                                    jumpvictim = ene
-                                if jumpable:
-                                    # jump in that direction
-                                    maxcool = -99999
-                                    for mim in {self.homemim,self.hisrampmim,self.hisfarmim}:
-                                        cool = self.circledist(scv.position,mim.position) - self.circledist(jumpvictim.position,mim.position)
-                                        if cool > maxcool:
-                                            maxcool = cool
-                                            bestmim = mim
-                                    scv.gather(bestmim)
-                                    emotion = 'jumping'
-                                    self.shame_of_unittag[scv.tag] = 10
-                                else: # no enemy near
-                                    emotion = 'brave'
-                                    scv.attack(self.hisfarmim.position)
+                                    emotion = 'repairing'
+                                    self.rushrepairs.add((scv.tag,bestscv.tag))
                         #
+                        if (emotion in agressive) and (scv.weapon_cooldown < 10):
+                            emotion = 'brave'
                         self.emotion_of_unittag[scv.tag] = emotion
+                        #
+            # enemies in the defence
+            enespots = set()
+            for ene in self.enemy_units:  # visible
+                if ene.type_id not in {OVERLORD, LARVA, EGG}:
+                    if self.near(ene.position, self.rushrepairsite, 6):
+                        enespots.add(ene.position)
+            if len(enespots) == 0:
+                for scv in self.units(SCV):
+                    if scv.tag in self.speciality_of_tag:
+                        if self.speciality_of_tag[scv.tag] == 'workerrush':
+                            emotion = self.emotion_of_unittag[scv.tag]
+                            if emotion == 'ambush':
+                                self.emotion_of_unittag[scv.tag] = 'recovering'
+            else: # enemies in the defence
+                # if enemies too mighty, the rushrepairsite is moved, coded elsewhere
+                n = 0
+                sumx = 0
+                sumy = 0
+                for spot in enespots:
+                    n += 1
+                    sumx += spot.x
+                    sumy += spot.y
+                enecenter = Point2((sumx / n, sumy / n))
+                wishdist = (65 - (self.frame % 80)) / 5 # diminishing from 13 to -3
+                wishdist = min(10,max(0,wishdist)) # diminishing from 10 to 0
+                for scv in self.units(SCV):
+                    if scv.tag in self.speciality_of_tag:
+                        if self.speciality_of_tag[scv.tag] == 'workerrush':
+                            emotion = self.emotion_of_unittag[scv.tag]
+                            if emotion in repairsite_emotions:
+                                if self.bitingstate[scv.tag] == 'normal':
+                                    goodpoint = enecenter.towards(scv.position,wishdist)
+                                    if not self.near(goodpoint,self.rushrepairsite, 6):
+                                        goodpoint = self.rushrepairsite.towards(goodpoint,6)
+                                    scv.move(goodpoint)
+                                    self.emotion_of_unittag[scv.tag] = 'ambush'
+            # move commands
+            for scv in self.units(SCV):
+                if scv.tag in self.speciality_of_tag:
+                    if self.speciality_of_tag[scv.tag] == 'workerrush':
+                        emotion = self.emotion_of_unittag[scv.tag]
+                        bitingstate = self.bitingstate[scv.tag]
+                        re_move = False
+                        if emotion != last_emotion[scv.tag]:
+                            re_move = True
+                        elif self.near(scv.position, self.hisfarmim.position, 2):
+                            re_move = True
+                        elif self.near(scv.position, self.hisrampmim.position, 2):
+                            re_move = True
+                        elif bitingstate != last_bitingstate[scv.tag]:
+                            if bitingstate in {'normal','cooling'}:
+                                re_move = True
+                        if re_move:
+                            if emotion == 'brave':
+                                if self.near(scv.position, self.hisfarmim.position, 2):
+                                    scv.gather(self.hisrampmim)
+                                else:
+                                    scv.gather(self.hisfarmim)
+                            elif emotion == 'bouncing':
+                                if self.near(scv.position, self.hisrampmim.position, 2):
+                                    scv.gather(self.homemim)
+                                else:
+                                    scv.gather(self.hisrampmim)
+                            elif emotion == 'firstaid':
+                                # this is a fading emotion
+                                if self.near(scv.position, self.hisrampmim.position, 2):
+                                    scv.gather(self.homemim)
+                                else:
+                                    scv.gather(self.hisrampmim)
+                            elif emotion == 'aiding':
+                                pass # locally managed
+                            elif emotion == 'fleeing':
+                                scv.gather(self.homemim)
+                            elif emotion == 'recovering':
+                                scv.move(self.rushrepairsite)
+                            elif emotion == 'repairing':
+                                pass # locally managed
+                            elif emotion == 'ambush':
+                                pass # locally managed
+                            elif emotion == 'cured':
+                                scv.move(self.rushrepairsite)
+                            elif emotion == 'ingoing':
+                                scv.gather(self.hisrampmim)
+
 
     async def do_cocoon(self):
         if self.opening_name.find('cocoon') >= 0:
@@ -12228,7 +12312,7 @@ class Chaosbot(sc2.BotAI):
             if random.random() * sum < self.strategy[spec][nr]:
                 radio_nr = nr
         # TO TEST use next line
-        #radio_nr = 11
+        #radio_nr = 33
         for nr in range(0,self.radio_choices):
             self.game_choice.append(nr == radio_nr)
         for nr in range(self.radio_choices,self.game_choices):
@@ -12312,7 +12396,7 @@ def main():
     #map = 'IceandChromeLE'
     opponentspecies = random.choice([Race.Terran,Race.Zerg,Race.Protoss])
     # TO TEST use next line
-    #opponentspecies = Race.Protoss
+    #opponentspecies = Race.Terran
     # Easy/Medium/Hard/VeryHard
     run_game(maps.get(map), [
         Bot(Race.Terran, Chaosbot()),
