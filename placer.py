@@ -2,7 +2,7 @@
 # Makes text for building placement
 # appends the output to file "data\placement.txt"
 # author: MerkMore
-# version 04 feb 2021
+# version 19 may 2021
 from layout_if_py import layout_if
 import random
 from math import sqrt, sin, cos, acos, pi
@@ -697,6 +697,27 @@ class prog:
         text.write('position INFESTEDFACTORY ' + str(factoryresult[0] + 1.5) + ' ' + str(factoryresult[1] + 1.5) + '\n')
         self.logg('position INFESTEDFACTORY ' + str(factoryresult[0] + 1.5) + ' ' + str(factoryresult[1] + 1.5))
         #
+        # find some highground pf positions
+        extras = 0
+        while extras < 10:
+            place = (random.randrange(0,200),random.randrange(0,200))
+            if self.can_place_shape(5, place):
+                myheight = layout_if.height[place[0]][place[1]]
+                itishigh = False
+                for dx in [-5, 0, 5]:
+                    for dy in [-5, 0, 5]:
+                        alt = (place[0]+2+dx,place[1]+2+dy)
+                        if (alt[0] >= 0) and (alt[0] < 200) and (alt[1] >= 0) and (alt[1] < 200):
+                            if layout_if.layout[alt[0]][alt[1]] in {0,2}:
+                                itsheight = layout_if.height[alt[0]][alt[1]]
+                                if myheight > itsheight:
+                                    itishigh = True
+                if itishigh:
+                    self.do_place_shape(5, place)
+                    text.write('position EXTRACC ' + str(place[0] + 2.5) + ' ' + str(place[1] + 2.5) + '\n')
+                    self.logg('position EXTRACC ' + str(place[0] + 2.5) + ' ' + str(place[1] + 2.5))
+                    extras += 1
+        #
         #  that is all
         text.write('#####'+'\n')
         text.close()
@@ -775,6 +796,33 @@ class prog:
             layout_if.layout[alt[0]+3][alt[1]+1] = 4
             layout_if.layout[alt[0]+4][alt[1]+0] = 4
             layout_if.layout[alt[0]+4][alt[1]+1] = 4
+        elif shape == 5:
+            # cc
+            layout_if.layout[alt[0]+0][alt[1]+0] = 4
+            layout_if.layout[alt[0]+0][alt[1]+1] = 4
+            layout_if.layout[alt[0]+0][alt[1]+2] = 4
+            layout_if.layout[alt[0]+0][alt[1]+3] = 4
+            layout_if.layout[alt[0]+0][alt[1]+4] = 4
+            layout_if.layout[alt[0]+1][alt[1]+0] = 4
+            layout_if.layout[alt[0]+1][alt[1]+1] = 4
+            layout_if.layout[alt[0]+1][alt[1]+2] = 4
+            layout_if.layout[alt[0]+1][alt[1]+3] = 4
+            layout_if.layout[alt[0]+1][alt[1]+4] = 4
+            layout_if.layout[alt[0]+2][alt[1]+0] = 4
+            layout_if.layout[alt[0]+2][alt[1]+1] = 4
+            layout_if.layout[alt[0]+2][alt[1]+2] = 4
+            layout_if.layout[alt[0]+2][alt[1]+3] = 4
+            layout_if.layout[alt[0]+2][alt[1]+4] = 4
+            layout_if.layout[alt[0]+3][alt[1]+0] = 4
+            layout_if.layout[alt[0]+3][alt[1]+1] = 4
+            layout_if.layout[alt[0]+3][alt[1]+2] = 4
+            layout_if.layout[alt[0]+3][alt[1]+3] = 4
+            layout_if.layout[alt[0]+3][alt[1]+4] = 4
+            layout_if.layout[alt[0]+4][alt[1]+0] = 4
+            layout_if.layout[alt[0]+4][alt[1]+1] = 4
+            layout_if.layout[alt[0]+4][alt[1]+2] = 4
+            layout_if.layout[alt[0]+4][alt[1]+3] = 4
+            layout_if.layout[alt[0]+4][alt[1]+4] = 4
 
 
     def can_place_shape(self,shape,alt) -> bool:
