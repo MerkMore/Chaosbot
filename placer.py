@@ -718,11 +718,38 @@ class prog:
                     self.logg('position EXTRACC ' + str(place[0] + 2.5) + ' ' + str(place[1] + 2.5))
                     extras += 1
         #
+        # find a big circle
+        away = (200 - self.enemystartsquare[0], 200 - self.startsquare[1]) # not his main, not my main
+        found = False
+        while not found:
+            middle = (random.randrange(0, 200), random.randrange(0, 200))
+            if self.sdist(middle,away) < 80*80:
+                radius = 8
+                apoint = (round(middle[0]+radius),round(middle[1]))
+                if self.inmap(apoint):
+                    myheight = layout_if.height[apoint[0]][apoint[1]]
+                    ok = True
+                    for nr in range(0, 15):
+                        beta = nr * 2 * pi / 15
+                        apoint = (round(middle[0] + cos(beta) * radius),round(middle[1] + sin(beta) * radius))
+                        if self.inmap(apoint):
+                            itsheight = layout_if.height[apoint[0]][apoint[1]]
+                            ok = ok and (myheight == itsheight)
+                            ok = ok and (layout_if.layout[apoint[0]][apoint[1]] == 0)
+                        else:
+                            ok = False
+                    if ok:
+                        found = True
+                        text.write('position FOLLOWERS ' + str(middle[0] + 0.5) + ' ' + str(middle[1] + 0.5) + '\n')
+                        self.logg('position FOLLOWERS ' + str(middle[0] + 0.5) + ' ' + str(middle[1] + 0.5))
+        #
         #  that is all
         text.write('#####'+'\n')
         text.close()
 
 
+    def inmap(self, alt) -> bool:
+        return (alt[0] >= 0) and (alt[0] < 200) and (alt[1] >= 0) and (alt[1] < 200)
 
     def twoblock(self, cornersquare) -> bool:
         # try to lock this enemybasearea square in with 2 3x3 blocks

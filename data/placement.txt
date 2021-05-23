@@ -57,16 +57,17 @@ position INFESTEDPRISON 115.5 34.5
 position INFESTEDTANK 110 34
 position INFESTEDBARRACKS 109.5 33.5
 position INFESTEDFACTORY 95.5 32.5
-position EXTRACC 74.5 42.5
-position EXTRACC 80.5 72.5
-position EXTRACC 95.5 88.5
-position EXTRACC 106.5 127.5
-position EXTRACC 99.5 71.5
-position EXTRACC 140.5 44.5
-position EXTRACC 113.5 105.5
-position EXTRACC 90.5 92.5
-position EXTRACC 112.5 72.5
-position EXTRACC 106.5 122.5
+position EXTRACC 141.5 44.5
+position EXTRACC 90.5 93.5
+position EXTRACC 104.5 69.5
+position EXTRACC 58.5 64.5
+position EXTRACC 95.5 123.5
+position EXTRACC 69.5 92.5
+position EXTRACC 95.5 78.5
+position EXTRACC 118.5 60.5
+position EXTRACC 131.5 44.5
+position EXTRACC 112.5 107.5
+position FOLLOWERS 109.5 104.5
 #####
 #####
 map: everdream 139.5 163.5
@@ -123,19 +124,20 @@ position ENEMYNATURALCHOKE 53.0 75.0
 position INFESTEDBUNKER 81.5 45.5
 position INFESTEDLANDING 83.5 48.5
 position INFESTEDPRISON 83.5 46.5
-position INFESTEDTANK 93 46
+position INFESTEDTANK 98 41
 position INFESTEDBARRACKS 95.5 47.5
 position INFESTEDFACTORY 108.5 46.5
-position EXTRACC 110.5 78.5
+position EXTRACC 134.5 97.5
+position EXTRACC 62.5 147.5
+position EXTRACC 70.5 147.5
+position EXTRACC 58.5 110.5
 position EXTRACC 96.5 118.5
-position EXTRACC 142.5 65.5
-position EXTRACC 63.5 135.5
-position EXTRACC 130.5 66.5
-position EXTRACC 101.5 124.5
-position EXTRACC 137.5 147.5
-position EXTRACC 65.5 115.5
-position EXTRACC 140.5 96.5
-position EXTRACC 56.5 146.5
+position EXTRACC 60.5 141.5
+position EXTRACC 102.5 88.5
+position EXTRACC 139.5 96.5
+position EXTRACC 127.5 66.5
+position EXTRACC 133.5 134.5
+position FOLLOWERS 152.5 116.5
 #####
 #####
 map: iceandchrome 182.5 172.5
@@ -194,19 +196,20 @@ position ENEMYNATURALCHOKE 79.0 98.0
 position INFESTEDBUNKER 87.5 61.5
 position INFESTEDLANDING 88.5 58.5
 position INFESTEDPRISON 90.5 59.5
-position INFESTEDTANK 99 54
-position INFESTEDBARRACKS 100.5 63.5
-position INFESTEDFACTORY 114.5 61.5
-position EXTRACC 86.5 137.5
-position EXTRACC 169.5 99.5
-position EXTRACC 98.5 150.5
-position EXTRACC 138.5 60.5
-position EXTRACC 160.5 100.5
-position EXTRACC 104.5 158.5
-position EXTRACC 118.5 179.5
-position EXTRACC 113.5 103.5
-position EXTRACC 105.5 82.5
-position EXTRACC 122.5 99.5
+position INFESTEDTANK 102 51
+position INFESTEDBARRACKS 101.5 55.5
+position INFESTEDFACTORY 112.5 52.5
+position EXTRACC 99.5 154.5
+position EXTRACC 67.5 75.5
+position EXTRACC 126.5 140.5
+position EXTRACC 118.5 175.5
+position EXTRACC 162.5 100.5
+position EXTRACC 107.5 82.5
+position EXTRACC 89.5 137.5
+position EXTRACC 127.5 96.5
+position EXTRACC 187.5 161.5
+position EXTRACC 132.5 138.5
+position FOLLOWERS 74.5 62.5
 #####
 #####
 map: goldenwall 175.5 50.5
@@ -270,18 +273,19 @@ position INFESTEDBUNKER 45.5 58.5
 position INFESTEDLANDING 47.5 55.5
 position INFESTEDPRISON 47.5 57.5
 position INFESTEDTANK 44 62
-position INFESTEDBARRACKS 62.5 58.5
-position INFESTEDFACTORY 75.5 68.5
-position EXTRACC 38.5 42.5
-position EXTRACC 46.5 75.5
-position EXTRACC 84.5 48.5
-position EXTRACC 75.5 77.5
-position EXTRACC 162.5 105.5
-position EXTRACC 169.5 46.5
-position EXTRACC 121.5 132.5
-position EXTRACC 142.5 49.5
-position EXTRACC 132.5 75.5
-position EXTRACC 130.5 51.5
+position INFESTEDBARRACKS 54.5 64.5
+position INFESTEDFACTORY 65.5 71.5
+position EXTRACC 47.5 74.5
+position EXTRACC 118.5 128.5
+position EXTRACC 179.5 63.5
+position EXTRACC 167.5 50.5
+position EXTRACC 140.5 51.5
+position EXTRACC 47.5 103.5
+position EXTRACC 125.5 47.5
+position EXTRACC 37.5 41.5
+position EXTRACC 73.5 119.5
+position EXTRACC 132.5 122.5
+position FOLLOWERS 162.5 110.5
 #####
 #####
 map: deathaura 37.5 139.5
@@ -342,16 +346,17 @@ position INFESTEDPRISON 140.5 57.5
 position INFESTEDTANK 138 60
 position INFESTEDBARRACKS 140.5 65.5
 position INFESTEDFACTORY 130.5 74.5
-position EXTRACC 122.5 112.5
-position EXTRACC 144.5 100.5
-position EXTRACC 70.5 74.5
-position EXTRACC 149.5 122.5
-position EXTRACC 138.5 77.5
-position EXTRACC 123.5 56.5
-position EXTRACC 41.5 147.5
-position EXTRACC 154.5 126.5
-position EXTRACC 54.5 112.5
-position EXTRACC 68.5 135.5
+position EXTRACC 139.5 78.5
+position EXTRACC 120.5 117.5
+position EXTRACC 149.5 47.5
+position EXTRACC 52.5 109.5
+position EXTRACC 70.5 133.5
+position EXTRACC 141.5 103.5
+position EXTRACC 68.5 73.5
+position EXTRACC 152.5 125.5
+position EXTRACC 145.5 97.5
+position EXTRACC 149.5 63.5
+position FOLLOWERS 50.5 78.5
 #####
 #####
 map: pillarsofgold 30.5 38.5
@@ -413,16 +418,17 @@ position INFESTEDPRISON 128.5 117.5
 position INFESTEDTANK 126 113
 position INFESTEDBARRACKS 137.5 105.5
 position INFESTEDFACTORY 136.5 91.5
-position EXTRACC 32.5 130.5
-position EXTRACC 45.5 97.5
-position EXTRACC 62.5 33.5
-position EXTRACC 44.5 45.5
-position EXTRACC 82.5 110.5
-position EXTRACC 60.5 56.5
-position EXTRACC 38.5 129.5
-position EXTRACC 88.5 103.5
-position EXTRACC 88.5 58.5
-position EXTRACC 51.5 141.5
+position EXTRACC 133.5 43.5
+position EXTRACC 113.5 25.5
+position EXTRACC 60.5 55.5
+position EXTRACC 49.5 139.5
+position EXTRACC 90.5 103.5
+position EXTRACC 75.5 116.5
+position EXTRACC 122.5 101.5
+position EXTRACC 122.5 74.5
+position EXTRACC 91.5 58.5
+position EXTRACC 125.5 125.5
+position FOLLOWERS 136.5 130.5
 #####
 #####
 map: iceandchrome 73.5 63.5
@@ -445,13 +451,13 @@ path 77 67  76 66  75 65  74 64  73 63
 position FUSIONCORE * 142.5 50.5
 position FUSIONCORE * 130.5 53.5
 position FUSIONCORE * 143.5 64.5
-position FUSIONCORE * 118.5 52.5
-position FUSIONCORE * 105.5 52.5
+position FUSIONCORE * 115.5 51.5
+position FUSIONCORE * 103.5 52.5
 position FUSIONCORE * 142.5 79.5
 position FUSIONCORE * 64.5 126.5
 position STARPORT * 143.5 56.5
 position STARPORT * 143.5 69.5
-position STARPORT * 112.5 52.5
+position STARPORT * 110.5 52.5
 position STARPORT * 141.5 82.5
 position STARPORT * 120.5 61.5
 position STARPORT * 67.5 129.5
@@ -484,16 +490,17 @@ position INFESTEDPRISON 166.5 176.5
 position INFESTEDTANK 156 173
 position INFESTEDBARRACKS 155.5 172.5
 position INFESTEDFACTORY 141.5 171.5
-position EXTRACC 101.5 152.5
-position EXTRACC 150.5 151.5
-position EXTRACC 163.5 100.5
-position EXTRACC 172.5 156.5
-position EXTRACC 169.5 129.5
-position EXTRACC 153.5 82.5
-position EXTRACC 89.5 136.5
-position EXTRACC 118.5 177.5
-position EXTRACC 126.5 98.5
-position EXTRACC 138.5 129.5
+position EXTRACC 114.5 105.5
+position EXTRACC 143.5 133.5
+position EXTRACC 170.5 131.5
+position EXTRACC 125.5 97.5
+position EXTRACC 168.5 101.5
+position EXTRACC 137.5 60.5
+position EXTRACC 131.5 138.5
+position EXTRACC 99.5 150.5
+position EXTRACC 87.5 69.5
+position EXTRACC 95.5 137.5
+position FOLLOWERS 65.5 91.5
 #####
 #####
 map: eternalempire 142.5 140.5
@@ -552,19 +559,20 @@ position ENEMYNATURALCHOKE 44.0 56.0
 position INFESTEDBUNKER 42.5 20.5
 position INFESTEDLANDING 45.5 22.5
 position INFESTEDPRISON 45.5 20.5
-position INFESTEDTANK 55 29
+position INFESTEDTANK 53 30
 position INFESTEDBARRACKS 55.5 30.5
 position INFESTEDFACTORY 71.5 29.5
-position EXTRACC 58.5 72.5
-position EXTRACC 66.5 77.5
-position EXTRACC 44.5 42.5
-position EXTRACC 101.5 135.5
-position EXTRACC 72.5 138.5
-position EXTRACC 137.5 38.5
-position EXTRACC 39.5 135.5
-position EXTRACC 71.5 39.5
-position EXTRACC 48.5 96.5
-position EXTRACC 134.5 125.5
+position EXTRACC 81.5 137.5
+position EXTRACC 102.5 32.5
+position EXTRACC 74.5 137.5
+position EXTRACC 80.5 98.5
+position EXTRACC 69.5 39.5
+position EXTRACC 43.5 45.5
+position EXTRACC 37.5 131.5
+position EXTRACC 27.5 44.5
+position EXTRACC 61.5 70.5
+position EXTRACC 127.5 73.5
+position FOLLOWERS 117.5 55.5
 #####
 #####
 map: everdream 60.5 48.5
@@ -624,16 +632,17 @@ position INFESTEDPRISON 116.5 165.5
 position INFESTEDTANK 106 165
 position INFESTEDBARRACKS 104.5 165.5
 position INFESTEDFACTORY 90.5 164.5
-position EXTRACC 141.5 97.5
-position EXTRACC 130.5 132.5
-position EXTRACC 105.5 94.5
-position EXTRACC 63.5 138.5
-position EXTRACC 59.5 113.5
-position EXTRACC 100.5 88.5
-position EXTRACC 137.5 63.5
+position EXTRACC 99.5 124.5
+position EXTRACC 138.5 74.5
+position EXTRACC 74.5 143.5
+position EXTRACC 65.5 73.5
+position EXTRACC 140.5 101.5
+position EXTRACC 110.5 94.5
 position EXTRACC 130.5 66.5
-position EXTRACC 107.5 77.5
-position EXTRACC 140.5 72.5
+position EXTRACC 143.5 65.5
+position EXTRACC 132.5 131.5
+position EXTRACC 137.5 66.5
+position FOLLOWERS 118.5 111.5
 #####
 #####
 map: pillarsofgold 137.5 133.5
@@ -695,16 +704,17 @@ position INFESTEDPRISON 39.5 54.5
 position INFESTEDTANK 42 59
 position INFESTEDBARRACKS 34.5 68.5
 position INFESTEDFACTORY 35.5 81.5
-position EXTRACC 48.5 135.5
-position EXTRACC 73.5 117.5
-position EXTRACC 127.5 142.5
-position EXTRACC 61.5 56.5
-position EXTRACC 77.5 68.5
-position EXTRACC 60.5 33.5
-position EXTRACC 37.5 125.5
-position EXTRACC 133.5 81.5
-position EXTRACC 126.5 124.5
-position EXTRACC 105.5 137.5
+position EXTRACC 109.5 108.5
+position EXTRACC 117.5 27.5
+position EXTRACC 35.5 128.5
+position EXTRACC 127.5 123.5
+position EXTRACC 123.5 75.5
+position EXTRACC 122.5 38.5
+position EXTRACC 47.5 92.5
+position EXTRACC 43.5 43.5
+position EXTRACC 51.5 141.5
+position EXTRACC 71.5 115.5
+position FOLLOWERS 136.5 33.5
 #####
 #####
 map: deathaura 154.5 48.5
@@ -765,16 +775,17 @@ position INFESTEDPRISON 36.5 117.5
 position INFESTEDTANK 42 117
 position INFESTEDBARRACKS 43.5 116.5
 position INFESTEDFACTORY 46.5 105.5
-position EXTRACC 45.5 131.5
-position EXTRACC 57.5 113.5
-position EXTRACC 121.5 117.5
-position EXTRACC 141.5 106.5
-position EXTRACC 41.5 140.5
-position EXTRACC 72.5 132.5
-position EXTRACC 150.5 59.5
-position EXTRACC 143.5 56.5
-position EXTRACC 51.5 84.5
-position EXTRACC 73.5 68.5
+position EXTRACC 44.5 139.5
+position EXTRACC 37.5 61.5
+position EXTRACC 151.5 125.5
+position EXTRACC 42.5 146.5
+position EXTRACC 155.5 65.5
+position EXTRACC 67.5 136.5
+position EXTRACC 142.5 54.5
+position EXTRACC 39.5 123.5
+position EXTRACC 43.5 65.5
+position EXTRACC 49.5 85.5
+position FOLLOWERS 145.5 106.5
 #####
 #####
 map: goldenwall 32.5 50.5
@@ -834,22 +845,23 @@ position REAPERBUNKER2 174.5 36.5
 position REAPERPRISON 172.5 36.5
 position REAPERBARRACKS 159.5 33.5
 position ENEMYNATURALCHOKE 156.0 82.0
-position INFESTEDLANDING 178.5 66.5
-position INFESTEDBUNKER 181.5 65.5
-position INFESTEDPRISON 179.5 68.5
-position INFESTEDTANK 178 71
-position INFESTEDBARRACKS 177.5 71.5
-position INFESTEDFACTORY 175.5 84.5
-position EXTRACC 137.5 74.5
-position EXTRACC 57.5 128.5
-position EXTRACC 38.5 47.5
-position EXTRACC 131.5 78.5
-position EXTRACC 151.5 128.5
-position EXTRACC 84.5 48.5
-position EXTRACC 163.5 49.5
-position EXTRACC 140.5 49.5
-position EXTRACC 70.5 75.5
+position INFESTEDLANDING 167.5 62.5
+position INFESTEDBUNKER 170.5 63.5
+position INFESTEDPRISON 168.5 65.5
+position INFESTEDTANK 165 64
+position INFESTEDBARRACKS 166.5 69.5
+position INFESTEDFACTORY 160.5 79.5
+position EXTRACC 130.5 76.5
+position EXTRACC 178.5 63.5
+position EXTRACC 155.5 107.5
 position EXTRACC 32.5 63.5
+position EXTRACC 124.5 56.5
+position EXTRACC 67.5 46.5
+position EXTRACC 167.5 45.5
+position EXTRACC 161.5 50.5
+position EXTRACC 59.5 134.5
+position EXTRACC 130.5 122.5
+position FOLLOWERS 66.5 99.5
 #####
 #####
 map: eternalempire 33.5 31.5
@@ -912,16 +924,17 @@ position INFESTEDPRISON 128.5 133.5
 position INFESTEDTANK 125 128
 position INFESTEDBARRACKS 119.5 134.5
 position INFESTEDFACTORY 106.5 129.5
-position EXTRACC 149.5 127.5
-position EXTRACC 59.5 76.5
-position EXTRACC 39.5 133.5
-position EXTRACC 80.5 95.5
-position EXTRACC 68.5 77.5
-position EXTRACC 103.5 31.5
-position EXTRACC 45.5 39.5
-position EXTRACC 132.5 129.5
-position EXTRACC 107.5 129.5
-position EXTRACC 129.5 116.5
+position EXTRACC 103.5 33.5
+position EXTRACC 139.5 127.5
+position EXTRACC 98.5 78.5
+position EXTRACC 63.5 74.5
+position EXTRACC 77.5 136.5
+position EXTRACC 37.5 134.5
+position EXTRACC 69.5 39.5
+position EXTRACC 115.5 100.5
+position EXTRACC 130.5 75.5
+position EXTRACC 127.5 115.5
+position FOLLOWERS 57.5 119.5
 #####
 #####
 map: submarine 135.5 36.5
@@ -981,14 +994,15 @@ position INFESTEDPRISON 51.5 131.5
 position INFESTEDTANK 58 131
 position INFESTEDBARRACKS 58.5 131.5
 position INFESTEDFACTORY 71.5 131.5
+position EXTRACC 116.5 60.5
+position EXTRACC 114.5 105.5
+position EXTRACC 73.5 40.5
+position EXTRACC 27.5 120.5
+position EXTRACC 143.5 44.5
+position EXTRACC 61.5 33.5
+position EXTRACC 55.5 64.5
+position EXTRACC 40.5 119.5
 position EXTRACC 57.5 56.5
-position EXTRACC 70.5 43.5
-position EXTRACC 66.5 96.5
-position EXTRACC 106.5 124.5
-position EXTRACC 44.5 121.5
-position EXTRACC 116.5 58.5
-position EXTRACC 93.5 92.5
-position EXTRACC 115.5 101.5
-position EXTRACC 52.5 60.5
-position EXTRACC 105.5 68.5
+position EXTRACC 107.5 128.5
+position FOLLOWERS 134.5 117.5
 #####

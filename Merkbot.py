@@ -174,7 +174,7 @@ class Chaosbot(sc2.BotAI):
     do_slowdown = False
     slowdown_frames = 0
     slowness = 0.4 # realtime is around 0.05
-    do_log_success = True
+    do_log_success = False
     do_log_fail = False
     do_log_command = False
     do_log_attacktype = False
@@ -215,6 +215,7 @@ class Chaosbot(sc2.BotAI):
     frame = 0 # will have even numbers if game_step=2
     frames_per_second = 22.4 # a gameclient property
     #
+    errortexts = []
     reaper_speed_official = 5.25
     scv_speed_official = 3.94
     # The circledistance a unit travels per frame.
@@ -520,6 +521,10 @@ class Chaosbot(sc2.BotAI):
     cheese3_bunkersites = set()
     cheese3_tanktags = set()
     # for workerrush:
+    followers = nowhere # for a runaround circle radius 8
+    fleefear = {} # to continue through bushes: per scvtag a number
+    fleepole = {} # for circling scvs: per scvtag a number 0/1/.../15
+    fleepolepos = [] # 16 points of a circle in a corner
     enemymelee = set() # of tag of reachable enemy workers and zerglings
     hisleftmim = None
     hisrightmim = None
@@ -560,6 +565,8 @@ class Chaosbot(sc2.BotAI):
     platoongoals = [] # of Point2
     lastpos_of_unittag = {} # Point2 for enemy and own workers
     nextpos_of_unittag = {} # Point2 for enemy and own workers
+    # after the workerrush:
+    fleecirclers = set()
     #
     # to swap starport on techlab:
     toswap = set() # of (buildingtype,position)
@@ -766,6 +773,7 @@ class Chaosbot(sc2.BotAI):
         bunker_if.init_step(self)
         #
         self.slowed_down()
+        self.act_on_errors()
         self.init_step_expo()
         self.init_enemies_of_tile()
         await self.gamestate()
@@ -818,6 +826,7 @@ class Chaosbot(sc2.BotAI):
             self.bases_adlib()
             self.turrets_adlib()
             self.lift()
+            self.land()
             self.do_rally()
             self.opening_create_cut()
         self.manage_the_wall()
@@ -852,6 +861,7 @@ class Chaosbot(sc2.BotAI):
         self.log_throwspots()
         self.extreme_spender()
         self.blocker()
+        self.continue_fleecircle()
         await self.ghost_fun()
         bunker_if.step()
         self.vulture()
@@ -1425,6 +1435,8 @@ class Chaosbot(sc2.BotAI):
             elif (woord[0] == 'position') and (woord[1] == 'EXTRACC'):
                 ccpos = Point2((float(woord[2]), float(woord[3])))
                 self.add_possible_cc_position(ccpos)
+            elif (woord[0] == 'position') and (woord[1] == 'FOLLOWERS'):
+                self.followers = Point2((float(woord[2]), float(woord[3])))
         # get nobuild_path tips
         self.nobuild_path = set()
         for nr in range(0, len(self.tips)):
@@ -1828,8 +1840,232 @@ class Chaosbot(sc2.BotAI):
         pl = open('data/names.txt','r')
         self.all_names = pl.read().splitlines()
         pl.close()
+        # fleepolepos
+        self.make_circle(16)
+        self.fleepolepos = []
+        for point in self.circle:
+            cpoint = Point2((self.followers.x + 8 * point.x, self.followers.y + 8 * point.y))
+            self.fleepolepos.append(cpoint)
+        #
+        # from s2clientprotocol/error.proto:
+        self.errortexts = ['0', # 0
+        'Success', # 1
+        'NotSupported', # 2;
+        'Error', # 3;
+        'CantQueueThatOrder', # 4;
+        'Retry', # 5;
+        'Cooldown', # 6;
+        'QueueIsFull', # 7;
+        'RallyQueueIsFull', # 8;
+        'NotEnoughMinerals', # 9;
+        'NotEnoughVespene', # 10;
+        'NotEnoughTerrazine', # 11;
+        'NotEnoughCustom', # 12;
+        'NotEnoughFood', # 13;
+        'FoodUsageImpossible', # 14;
+        'NotEnoughLife', # 15;
+        'NotEnoughShields', # 16;
+        'NotEnoughEnergy', # 17;
+        'LifeSuppressed', # 18;
+        'ShieldsSuppressed', # 19;
+        'EnergySuppressed', # 20;
+        'NotEnoughCharges', # 21;
+        'CantAddMoreCharges', # 22;
+        'TooMuchMinerals', # 23;
+        'TooMuchVespene', # 24;
+        'TooMuchTerrazine', # 25;
+        'TooMuchCustom', # 26;
+        'TooMuchFood', # 27;
+        'TooMuchLife', # 28;
+        'TooMuchShields', # 29;
+        'TooMuchEnergy', # 30;
+        'MustTargetUnitWithLife', # 31;
+        'MustTargetUnitWithShields', # 32;
+        'MustTargetUnitWithEnergy', # 33;
+        'CantTrade', # 34;
+        'CantSpend', # 35;
+        'CantTargetThatUnit', # 36;
+        'CouldntAllocateUnit', # 37;
+        'UnitCantMove', # 38;
+        'TransportIsHoldingPosition', # 39;
+        'BuildTechRequirementsNotMet', # 40;
+        'CantFindPlacementLocation', # 41;
+        'CantBuildOnThat', # 42;
+        'CantBuildTooCloseToDropOff', # 43;
+        'CantBuildLocationInvalid', # 44;
+        'CantSeeBuildLocation', # 45;
+        'CantBuildTooCloseToCreepSource', # 46;
+        'CantBuildTooCloseToResources', # 47;
+        'CantBuildTooFarFromWater', # 48;
+        'CantBuildTooFarFromCreepSource', # 49;
+        'CantBuildTooFarFromBuildPowerSource', # 50;
+        'CantBuildOnDenseTerrain', # 51;
+        'CantTrainTooFarFromTrainPowerSource', # 52;
+        'CantLandLocationInvalid', # 53;
+        'CantSeeLandLocation', # 54;
+        'CantLandTooCloseToCreepSource', # 55;
+        'CantLandTooCloseToResources', # 56;
+        'CantLandTooFarFromWater', # 57;
+        'CantLandTooFarFromCreepSource', # 58;
+        'CantLandTooFarFromBuildPowerSource', # 59;
+        'CantLandTooFarFromTrainPowerSource', # 60;
+        'CantLandOnDenseTerrain', # 61;
+        'AddOnTooFarFromBuilding', # 62;
+        'MustBuildRefineryFirst', # 63;
+        'BuildingIsUnderConstruction', # 64;
+        'CantFindDropOff', # 65;
+        'CantLoadOtherPlayersUnits', # 66;
+        'NotEnoughRoomToLoadUnit', # 67;
+        'CantUnloadUnitsThere', # 68;
+        'CantWarpInUnitsThere', # 69;
+        'CantLoadImmobileUnits', # 70;
+        'CantRechargeImmobileUnits', # 71;
+        'CantRechargeUnderConstructionUnits', # 72;
+        'CantLoadThatUnit', # 73;
+        'NoCargoToUnload', # 74;
+        'LoadAllNoTargetsFound', # 75;
+        'NotWhileOccupied', # 76;
+        'CantAttackWithoutAmmo', # 77;
+        'CantHoldAnyMoreAmmo', # 78;
+        'TechRequirementsNotMet', # 79;
+        'MustLockdownUnitFirst', # 80;
+        'MustTargetUnit', # 81;
+        'MustTargetInventory', # 82;
+        'MustTargetVisibleUnit', # 83;
+        'MustTargetVisibleLocation', # 84;
+        'MustTargetWalkableLocation', # 85;
+        'MustTargetPawnableUnit', # 86;
+        'YouCantControlThatUnit', # 87;
+        'YouCantIssueCommandsToThatUnit', # 88;
+        'MustTargetResources', # 89;
+        'RequiresHealTarget', # 90;
+        'RequiresRepairTarget', # 91;
+        'NoItemsToDrop', # 92;
+        'CantHoldAnyMoreItems', # 93;
+        'CantHoldThat', # 94;
+        'TargetHasNoInventory', # 95;
+        'CantDropThisItem', # 96;
+        'CantMoveThisItem', # 97;
+        'CantPawnThisUnit', # 98;
+        'MustTargetCaster', # 99;
+        'CantTargetCaster', # 100;
+        'MustTargetOuter', # 101;
+        'CantTargetOuter', # 102;
+        'MustTargetYourOwnUnits', # 103;
+        'CantTargetYourOwnUnits', # 104;
+        'MustTargetFriendlyUnits', # 105;
+        'CantTargetFriendlyUnits', # 106;
+        'MustTargetNeutralUnits', # 107;
+        'CantTargetNeutralUnits', # 108;
+        'MustTargetEnemyUnits', # 109;
+        'CantTargetEnemyUnits', # 110;
+        'MustTargetAirUnits', # 111;
+        'CantTargetAirUnits', # 112;
+        'MustTargetGroundUnits', # 113;
+        'CantTargetGroundUnits', # 114;
+        'MustTargetStructures', # 115;
+        'CantTargetStructures', # 116;
+        'MustTargetLightUnits', # 117;
+        'CantTargetLightUnits', # 118;
+        'MustTargetArmoredUnits', # 119;
+        'CantTargetArmoredUnits', # 120;
+        'MustTargetBiologicalUnits', # 121;
+        'CantTargetBiologicalUnits', # 122;
+        'MustTargetHeroicUnits', # 123;
+        'CantTargetHeroicUnits', # 124;
+        'MustTargetRoboticUnits', # 125;
+        'CantTargetRoboticUnits', # 126;
+        'MustTargetMechanicalUnits', # 127;
+        'CantTargetMechanicalUnits', # 128;
+        'MustTargetPsionicUnits', # 129;
+        'CantTargetPsionicUnits', # 130;
+        'MustTargetMassiveUnits', # 131;
+        'CantTargetMassiveUnits', # 132;
+        'MustTargetMissile', # 133;
+        'CantTargetMissile', # 134;
+        'MustTargetWorkerUnits', # 135;
+        'CantTargetWorkerUnits', # 136;
+        'MustTargetEnergyCapableUnits', # 137;
+        'CantTargetEnergyCapableUnits', # 138;
+        'MustTargetShieldCapableUnits', # 139;
+        'CantTargetShieldCapableUnits', # 140;
+        'MustTargetFlyers', # 141;
+        'CantTargetFlyers', # 142;
+        'MustTargetBuriedUnits', # 143;
+        'CantTargetBuriedUnits', # 144;
+        'MustTargetCloakedUnits', # 145;
+        'CantTargetCloakedUnits', # 146;
+        'MustTargetUnitsInAStasisField', # 147;
+        'CantTargetUnitsInAStasisField', # 148;
+        'MustTargetUnderConstructionUnits', # 149;
+        'CantTargetUnderConstructionUnits', # 150;
+        'MustTargetDeadUnits', # 151;
+        'CantTargetDeadUnits', # 152;
+        'MustTargetRevivableUnits', # 153;
+        'CantTargetRevivableUnits', # 154;
+        'MustTargetHiddenUnits', # 155;
+        'CantTargetHiddenUnits', # 156;
+        'CantRechargeOtherPlayersUnits', # 157;
+        'MustTargetHallucinations', # 158;
+        'CantTargetHallucinations', # 159;
+        'MustTargetInvulnerableUnits', # 160;
+        'CantTargetInvulnerableUnits', # 161;
+        'MustTargetDetectedUnits', # 162;
+        'CantTargetDetectedUnits', # 163;
+        'CantTargetUnitWithEnergy', # 164;
+        'CantTargetUnitWithShields', # 165;
+        'MustTargetUncommandableUnits', # 166;
+        'CantTargetUncommandableUnits', # 167;
+        'MustTargetPreventDefeatUnits', # 168;
+        'CantTargetPreventDefeatUnits', # 169;
+        'MustTargetPreventRevealUnits', # 170;
+        'CantTargetPreventRevealUnits', # 171;
+        'MustTargetPassiveUnits', # 172;
+        'CantTargetPassiveUnits', # 173;
+        'MustTargetStunnedUnits', # 174;
+        'CantTargetStunnedUnits', # 175;
+        'MustTargetSummonedUnits', # 176;
+        'CantTargetSummonedUnits', # 177;
+        'MustTargetUser1', # 178;
+        'CantTargetUser1', # 179;
+        'MustTargetUnstoppableUnits', # 180;
+        'CantTargetUnstoppableUnits', # 181;
+        'MustTargetResistantUnits', # 182;
+        'CantTargetResistantUnits', # 183;
+        'MustTargetDazedUnits', # 184;
+        'CantTargetDazedUnits', # 185;
+        'CantLockdown', # 186;
+        'CantMindControl', # 187;
+        'MustTargetDestructibles', # 188;
+        'CantTargetDestructibles', # 189;
+        'MustTargetItems', # 190;
+        'CantTargetItems', # 191;
+        'NoCalldownAvailable', # 192;
+        'WaypointListFull', # 193;
+        'MustTargetRace', # 194;
+        'CantTargetRace', # 195;
+        'MustTargetSimilarUnits', # 196;
+        'CantTargetSimilarUnits', # 197;
+        'CantFindEnoughTargets', # 198;
+        'AlreadySpawningLarva', # 199;
+        'CantTargetExhaustedResources', # 200;
+        'CantUseMinimap', # 201;
+        'CantUseInfoPanel', # 202;
+        'OrderQueueIsFull', # 203;
+        'CantHarvestThatResource', # 204;
+        'HarvestersNotRequired', # 205;
+        'AlreadyTargeted', # 206;
+        'CantAttackWeaponsDisabled', # 207;
+        'CouldntReachTarget', # 208;
+        'TargetIsOutOfRange', # 209;
+        'TargetIsTooClose', # 210;
+        'TargetIsOutOfArc', # 211;
+        'CantFindTeleportLocation', # 212;
+        'InvalidItemClass', # 213;
+        'CantFindCancelOrder', # 214;
+        ]
         # chat
-        await self._client.chat_send('Chaosbot version 20 may 2021, made by MerkMore', team_only=False)
+        await self._client.chat_send('Chaosbot version 24 may 2021, made by MerkMore', team_only=False)
         #
         #layout_if.photo_layout()
 
@@ -2149,6 +2385,14 @@ class Chaosbot(sc2.BotAI):
                 self.slowdown_frames -= self.chosen_game_step
                 time.sleep(self.slowness)
 
+
+    def act_on_errors(self):
+        for err in self.state.action_errors:
+            abiid = err.ability_id
+            unittag = err.unit_tag
+            res = err.result
+            abiname = sc2.AbilityId(abiid).name
+            self.log_success('Error trying '+abiname+' '+self.errortexts[res])
 
     def position_of_building(self, bui) -> Point2:
         if bui.type_id in self.all_labs:
@@ -6410,15 +6654,16 @@ class Chaosbot(sc2.BotAI):
 
     def extreme_spender(self):
         if self.rich():
-            if (self.minerals > 1500) and (self.vespene > 750) and (self.supply_used > 170):
+            if (self.minerals > 1500) and (self.supply_used > 170):
                 # try to control open area
                 gotone = False
                 # first try cc to pf
-                for cc in self.structures(COMMANDCENTER):
-                    if not self.we_started_at(PLANETARYFORTRESS, cc.position):
-                        if not gotone:
-                            gotone = True
-                            self.throw_at_spot(PLANETARYFORTRESS, cc.position, 'extreme_spender', 2)
+                if (self.vespene > 750):
+                    for cc in self.structures(COMMANDCENTER):
+                        if not self.we_started_at(PLANETARYFORTRESS, cc.position):
+                            if not gotone:
+                                gotone = True
+                                self.throw_at_spot(PLANETARYFORTRESS, cc.position, 'extreme_spender', 2)
                 # else try new cc
                 for pos in self.expansion_locations_list:
                     if self.check_layout(COMMANDCENTER, pos):
@@ -7120,6 +7365,7 @@ class Chaosbot(sc2.BotAI):
                 bc.move(goal)
 
     def get_goal(self) -> Point2:
+        # for marines
         allloc = []
         for tpa in self.enemy_structureinfo:
             (typ,pos,tag) = tpa
@@ -7146,6 +7392,8 @@ class Chaosbot(sc2.BotAI):
                 self.throw_treepayno(FACTORY, 'marine_fun', 2)
             if self.we_started_a(FACTORY):
                 self.throw_treepayno(STARPORT, 'marine_fun', 2)
+            if self.we_started_a(STARPORT):
+                self.throw_treepayno(FUSIONCORE, 'marine_fun', 2)
             # start the attack
             if (self.opening_create_units <= 0) or (self.supply_used > 180):
                 if not self.marine_attacked:
@@ -7181,6 +7429,16 @@ class Chaosbot(sc2.BotAI):
                 if mar.tag in self.speciality_of_tag:
                     if not self.near(mar.position, self.marine_goal, 5):
                         mar.attack(self.marine_goal)
+            # try not to shoot larva etc.
+            for mar in self.units(MARINE):
+                if self.near(mar.position, self.marine_goal, 10):
+                    for order in mar.orders:
+                        if order.ability.id == AbilityId.ATTACK:
+                            if type(order.target) == int:
+                                for ene in self.enemy_units:
+                                    if ene.tag == order.target:
+                                        if ene.type_id in {LARVA,EGG,OVERLORD}:
+                                            mar.move(self.marine_goal)
             # set a new goal
             if self.frame % 37 == 36:
                 reached = 0
@@ -7396,10 +7654,11 @@ class Chaosbot(sc2.BotAI):
                 torep = (self.emotion_of_unittag[bct] not in ['frozen','vulturing']) and (bc.health <= self.bc_fear)
                 torep = torep or (bc.health < 100)
                 if torep:
-                    self.emotion_of_unittag[bct] = 'bcrecovering'
                     dock = self.get_dock(bc.position)
-                    await self.go_jumpormove(bc,dock)
-                    self.bc_fear = max(150, self.bc_fear - 10)
+                    if dock != self.hisleft:
+                        self.emotion_of_unittag[bct] = 'bcrecovering'
+                        await self.go_jumpormove(bc,dock)
+                        self.bc_fear = max(150, self.bc_fear - 10)
             if self.emotion_of_unittag[bct] == 'bcrecovering':
                 # this emotion is partly a movement
                 dock = self.goal_of_unittag[bct]
@@ -7554,7 +7813,14 @@ class Chaosbot(sc2.BotAI):
                     if self.no_move(bc,64):
                         self.emotion_of_unittag[bct] = 'towander'
         elif self.attack_type == 'chaos':
-            tp = self.random_mappoint()
+            tp = self.random_mappoint() # 3/5
+            if self.random_chance(5): # 1/5
+                if len(self.enemy_structureinfo) > 0:
+                    (type, pos, atag) = random.choice(tuple(self.enemy_structureinfo))
+                    tp = pos
+            elif self.random_chance(4): # 1/5
+                stru = random.choice(tuple(self.structures))
+                tp = stru.position
         elif self.attack_type == 'arc':
             for bc in self.units(BATTLECRUISER).idle:
                 if self.quality_of_bc_position(bc.position) <= 500:
@@ -7691,7 +7957,7 @@ class Chaosbot(sc2.BotAI):
             allloc = []
             for tpa in self.enemy_structureinfo:
                 (typ, pos, tag) = tpa
-                if type in self.hall_types:
+                if typ in self.hall_types:
                     allloc.append(pos)
             if len(allloc) == 0:
                 for tpa in self.enemy_structureinfo:
@@ -10301,6 +10567,20 @@ class Chaosbot(sc2.BotAI):
 
 
     # workerrush ###########################################################################
+
+    def fleecirclemove(self, scv):
+        mypole = self.fleepole[scv.tag]
+        topos = self.fleepolepos[mypole]
+        if not self.near(scv.position, self.followers, 10):
+            scv.move(topos)
+        elif self.near(scv.position, topos, 2):
+            self.fleepole[scv.tag] = (self.fleepole[scv.tag] + 1) % 16
+            mypole = self.fleepole[scv.tag]
+            topos = self.fleepolepos[mypole]
+            scv.move(topos)
+        elif len(scv.orders) == 0:
+            scv.move(topos)
+
     def calculate_nextpos(self):
         # calculate nextpos for all units.
         # This handles the delay of orders, whatever the gamestep.
@@ -10476,7 +10756,7 @@ class Chaosbot(sc2.BotAI):
                 self.slowdown_frames =  self.workerrushstopframe - 1100
             # emotions:
             agressive = {'brave','jumping','biting','bouncing','afraid','looting'}
-            defensive = {'fleeing','firstaid','inrepair'}
+            defensive = {'fleeing','firstaid','inrepair','circling'}
             neutral = {'ingoing'}
             #
             # brave: mineralwalking to hisrampmim or hisfarmim. Cooled (<7). Near enemy minerals.
@@ -10487,6 +10767,7 @@ class Chaosbot(sc2.BotAI):
             # afraid: after bouncing, trying to get distance to the enemy.
             # firstaid: ready to repair.
             # fleeing: mineralwalking to some mineral. Often low health, will not bite.
+            # circling: walking around in a corner of the map
             # inrepair: Going to an own scv or repairing one. May be repaired.
             # ingoing: mineralwalking to hisrampmim or hisfarmim. Ready to bite. Not near enemy minerals.
             #
@@ -10593,8 +10874,14 @@ class Chaosbot(sc2.BotAI):
                     for scv in self.units(SCV):
                         if scv.tag in self.speciality_of_tag:
                             if self.speciality_of_tag[scv.tag] == 'workerrush':
-                                self.promote(scv,'idler')
-                                del self.speciality_of_tag[scv.tag]
+                                if self.emotion_of_unittag[scv.tag] == 'circling':
+                                    # circle forever
+                                    self.promote(scv,'scout')
+                                    self.fleecirclers.add(scv.tag)
+                                    del self.speciality_of_tag[scv.tag]
+                                else:
+                                    self.promote(scv,'idler')
+                                    del self.speciality_of_tag[scv.tag]
             # stacking while moving forward
             back = self.homemim
             forward = self.hisrampmim
@@ -10851,6 +11138,10 @@ class Chaosbot(sc2.BotAI):
                             if scv.tag in platoon:
                                 if plan == 'flee':
                                     self.emotion_of_unittag[scv.tag] = 'fleeing'
+                                    # use next 3 lines to test circling
+                                    #self.emotion_of_unittag[scv.tag] = 'circling'
+                                    #self.fleepole[scv.tag] = 0
+                                    #self.fleefear[scv.tag] = 10 # programruns
                                     if self.near(center,self.hisfarmim.position,5):
                                         self.towardsmineral[scv.tag] = self.hisfarmim
                                     else:
@@ -10929,7 +11220,33 @@ class Chaosbot(sc2.BotAI):
                             # next run self.rushrepairs will be adapted
                         #
                         if emotion == 'fleeing':
-                            if sd_to_enemy > 6*6:
+                            if sd_to_enemy > 5*5:
+                                emotion = 'firstaid'
+                            elif (not self.near(scv.position,self.enemy_pos,20)):
+                                goodcount = 0
+                                for anscv in self.units(SCV):
+                                    if self.near(anscv.position,scv.position,7):
+                                        goodcount += 1
+                                for ene in self.enemy_units:
+                                    if self.near(ene.position, scv.position, 7):
+                                        goodcount -= 1
+                                if goodcount < 0:
+                                    emotion = 'circling'
+                                    self.fleepole[scv.tag] = 0
+                                    self.fleefear[scv.tag] = 10 # programruns
+                        elif emotion == 'circling':
+                            goodcount = 0
+                            for anscv in self.units(SCV):
+                                if self.near(anscv.position, scv.position, 7):
+                                    goodcount += 1
+                            for ene in self.enemy_units:
+                                if self.near(ene.position, scv.position, 7):
+                                    goodcount -= 1
+                            if goodcount > 0:
+                                self.fleefear[scv.tag] -= 1
+                            else:
+                                self.fleefear[scv.tag] = 10
+                            if self.fleefear[scv.tag] < 0:
                                 emotion = 'firstaid'
                         elif scv.weapon_cooldown >= 18: # I bit
                             if emotion != 'looting':
@@ -11031,6 +11348,8 @@ class Chaosbot(sc2.BotAI):
                             re_move = True
                         elif self.near(scv.position, self.turningpoint, 2):
                             re_move = True
+                        elif self.near(scv.position,self.followers,10):
+                            re_move = True
                         elif scv.tag in re_move_set:
                             re_move = True
                         if re_move:
@@ -11072,6 +11391,8 @@ class Chaosbot(sc2.BotAI):
                                     scv.gather(self.towardsmineral[scv.tag])
                             elif emotion == 'firstaid':
                                 scv.move(scv.position.towards(self.loved_pos,0.1)) # is it a bug to go to own position?
+                            elif emotion == 'circling':
+                                self.fleecirclemove(scv)
                             elif emotion == 'afraid':
                                 if self.near(scv.position, self.hisrampmim.position, 2):
                                     scv.gather(self.homemim)
@@ -11383,7 +11704,7 @@ class Chaosbot(sc2.BotAI):
         self.write_layout(ARMORY, place)
         self.airportplaces.add(place)
 
-    def lift(self):
+    def land(self):
         # attacked buildings can fly, survive, be repaired, and land back.
         for srt in self.landable:
             basekind = self.basekind_of(srt)
@@ -11407,17 +11728,29 @@ class Chaosbot(sc2.BotAI):
                     else: # not near goal
                         bu.move(self.goal_of_flying_struct[bu.tag])
                 else: # it is broken
-                    dock = self.get_dock(bu.position)
-                    if self.near(dock,bu.position,7):
-                        if len (self.all_bases) == 0:
-                            if srt in [COMMANDCENTERFLYING,ORBITALCOMMANDFLYING]:
-                                self.log_success('down ' + srt.name)
-                                self.log_command('bu(AbilityId.LAND,self.goal_of_flying_struct[bu.tag])')
-                                bu(AbilityId.LAND, self.goal_of_flying_struct[bu.tag])
-                                self.landings_of_flying_struct[bu.tag] += 1
-                    else: # not at destination
-                        self.log_command('bu(AbilityId.MOVE_MOVE,dock)')
-                        bu(AbilityId.MOVE_MOVE,dock)
+                    if srt == BARRACKSFLYING:
+                        # wander chaotic
+                        if bu.tag not in self.speciality_of_tag:
+                            goal = self.random_mappoint()
+                            self.goal_of_flying_struct[bu.tag] = goal
+                            self.landings_of_flying_struct[bu.tag] = 0
+                            bu(AbilityId.MOVE_MOVE, goal)
+                    else: # not barracksflying
+                        # be repaired at dock
+                        dock = self.get_dock(bu.position)
+                        if self.near(dock,bu.position,7):
+                            if len (self.all_bases) == 0:
+                                if srt in [COMMANDCENTERFLYING,ORBITALCOMMANDFLYING]:
+                                    self.log_success('down ' + srt.name)
+                                    self.log_command('bu(AbilityId.LAND,self.goal_of_flying_struct[bu.tag])')
+                                    bu(AbilityId.LAND, self.goal_of_flying_struct[bu.tag])
+                                    self.landings_of_flying_struct[bu.tag] += 1
+                        else: # not at destination
+                            self.log_command('bu(AbilityId.MOVE_MOVE,dock)')
+                            bu(AbilityId.MOVE_MOVE,dock)
+
+    def lift(self):
+        # attacked buildings can fly, survive, be repaired, and land back.
         for srt in self.liftable:
             for bu in self.structures(srt).ready:
                 # early goal makes goal overwritable before lifting
@@ -11890,6 +12223,7 @@ class Chaosbot(sc2.BotAI):
                         place = self.random_mappoint()
                     self.log_command('scv(AbilityId.MOVE_MOVE,place)')
                     scv(AbilityId.MOVE_MOVE, place)
+                    self.lazyness_of_scvt[scvt] = 0
             # may not idle
             if job not in self.jobs_may_idle:
                 if scvt in self.lazyness_of_scvt:
@@ -11986,6 +12320,21 @@ class Chaosbot(sc2.BotAI):
         for point in self.circle:
             self.blocker_pos.append(Point2((self.enemy_expand_pos.x+4*point.x,self.enemy_expand_pos.y+4*point.y)))
 
+    def continue_fleecircle(self):
+        if len(self.fleecirclers) > 0:
+            seenene = False
+            for ene in self.enemy_units:
+                if self.near(ene.position,self.followers,10):
+                    seenene = True
+            if seenene:
+                for scv in self.units(SCV):
+                    if scv.tag in self.fleecirclers:
+                        self.fleecirclemove(scv)
+            else: # no enemies
+                for scv in self.units(SCV):
+                    if scv.tag in self.fleecirclers:
+                        self.promote(scv,'idler')
+                self.fleecirclers = set()
 
     def search_applicants(self):
         candidates = set()
@@ -12746,7 +13095,7 @@ class Chaosbot(sc2.BotAI):
             if random.random() * sum < self.strategy[spec][nr]:
                 radio_nr = nr
         # TO TEST use next line
-        #radio_nr = 34
+        #radio_nr = 25
         for nr in range(0,self.radio_choices):
             self.game_choice.append(nr == radio_nr)
         for nr in range(self.radio_choices,self.game_choices):
