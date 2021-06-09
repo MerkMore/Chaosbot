@@ -2,15 +2,15 @@
 # Makes text for building placement
 # appends the output to file "data\placement.txt"
 # author: MerkMore
-# version 19 may 2021
+# version 28 may 2021
 from layout_if_py import layout_if
 import random
 from math import sqrt, sin, cos, acos, pi
 
 #
 # 0 = free
-# 1 = minerals,gas
-# 2 = ramp
+# 1 = minerals,gas, rocks
+# 2 = ramp, unbuildable
 # 3 = nogo
 # 4 = building
 # 5 = nobuild
@@ -18,6 +18,7 @@ from math import sqrt, sin, cos, acos, pi
 
 class prog:
     #
+    testing = False
     mapplace = ''
     mapleft = 0
     mapright = 0
@@ -55,6 +56,7 @@ class prog:
         text = open('data\placement.txt', 'r')
         content = text.read().splitlines()
         text.close()
+        didsomething = False
         for self.mapplace in self.maps:
             old = False
             for line in content:
@@ -64,17 +66,30 @@ class prog:
                 print(self.mapplace+' is already in data\placement.txt')
             else:
                 print('analyzing '+self.mapplace)
+                didsomething = True
                 layout_if.load_layout(self.mapplace)
                 #layout_if.photo_layout() # debug
                 #layout_if.photo_height() # debug
                 self.appendthemap()
                 #layout_if.photo_layout() # debug
                 #layout_if.photo_height() # debug
+        if not didsomething:
+            self.testing = True
+            # using the last self.mapplace
+            print('test analyzing ' + self.mapplace)
+            layout_if.load_layout(self.mapplace)
+            self.appendthemap()
+            layout_if.photo_layout() # debug
 
     def appendthemap(self):
-        text = open('data\placement.txt','a')
+        if self.testing:
+            text = open('data\pest.txt','w')
+        else:
+            text = open('data\placement.txt','a')
         text.write('#####'+'\n')
         text.write(self.mapplace+'\n')
+        #
+        # MAPINFO
         #
         # mapleft,mapright,mapbot,maptop
         self.mapleft = 99999
@@ -96,11 +111,13 @@ class prog:
         self.enemystartsquare = (round(layout_if.enemyx - 0.5), round(layout_if.enemyy - 0.5))
         self.logg('enemy start '+str(self.enemystartsquare[0])+','+str(self.enemystartsquare[1]))
         self.expansions = set()
+        toskip = (self.enemystartsquare[0]-2,self.enemystartsquare[1]-2)
         for x in range(0,200):
             for y in range(0,200):
                 lo = (x,y)
                 if self.has_cc(lo):
-                    self.expansions.add(lo)
+                    if lo != toskip:
+                        self.expansions.add(lo)
         self.logg('expansions '+str(len(self.expansions)))
         #
         #       We will work with sets of squares.
@@ -195,6 +212,112 @@ class prog:
         x = 0.001*round(1000*(self.centerresult[0]+0.5))
         y = 0.001*round(1000*(self.centerresult[1]+0.5))
         text.write('position HOMERAMP ' + str(x) + ' ' + str(y) + '\n')
+        #
+        # ENEMY NATURAL CHOKE
+        # centertile
+        around = self.mapcenter
+        bestsd = 99999
+        for x in range(around[0]-20,around[0]+20):
+            for y in range(around[1]-20,around[1]+20):
+                square = (x,y)
+                if self.istile(square): # can place a tank
+                    sd = self.sdist(square,around)
+                    if sd < bestsd:
+                        bestsquare = square
+                        bestsd = sd
+        centertile = bestsquare
+        # estimate a choke as enemynatural in the direction of mapcenter dist 0.5*dist(enemystart,enemynatural)
+        wantsize = 0.5 * self.circledist(self.enemynatural,self.enemystartsquare)
+        hassize = self.circledist(self.enemynatural,self.mapcenter)
+        vec = (self.mapcenter[0] - self.enemynatural[0], self.mapcenter[1] - self.enemynatural[1])
+        vec = (vec[0] * wantsize / hassize, vec[1] * wantsize / hassize)
+        estimate = (round(self.enemynatural[0] + vec[0]),round(self.enemynatural[1] + vec[1]))
+        self.logg('estimate en. nat. choke '+str(estimate[0])+','+str(estimate[1]))
+        enemynaturalchoke = estimate
+        # check that a tankpath can be found without choking
+        ennattile = (round(self.enemynatural[0]),round(self.enemynatural[1]))
+        while not self.istile(ennattile): # can place a tank
+            ennattile = (ennattile[0],ennattile[1]+1)
+        pathstart = {ennattile}
+        pathend = {centertile}
+        self.path_direction = centertile
+        if not self.has_path(pathstart, pathend):
+            self.logg('no path from enemynatural to centertile?!')
+        # now get good chokes around estimate
+        chokes = set()
+        for dx in range(-19,20):
+            for dy in range(-19,20):
+                choke = (estimate[0]+dx,estimate[1]+dy)
+                self.mask_disk(choke,10)
+                if self.istile(ennattile) and self.istile(centertile):
+                    if not self.has_path(pathstart,pathend):
+                        chokes.add(choke)
+                self.mask_disk(choke, 10) # unmask
+            #
+        self.logg('found chokes: '+str(len(chokes)))
+        if len(chokes) > 0:
+            self.get_center(chokes)
+            x = 0.001*round(1000*(self.centerresult[0])) # do not add 0.5 as these are real centers
+            y = 0.001*round(1000*(self.centerresult[1]))
+            text.write('position ENEMYNATURALCHOKE ' + str(x) + ' ' + str(y) + '\n')
+            enemynaturalchoke = (round(x),round(y))
+        #
+        # WALKING dist to enemy
+        # enemy starts being colored 4, temporally erase it
+        cccorner = (self.enemystartsquare[0] - 2, self.enemystartsquare[1] - 2)
+        self.colorplace(5, cccorner, 0)
+        # walking enemy
+        self.walking = []
+        for col in range(0, 200):
+            collist = []
+            for row in range(0, 200):
+                collist.append(-1)
+            self.walking.append(collist)
+        self.walking[self.enemystartsquare[0]][self.enemystartsquare[1]] = 0
+        dist = 0
+        # edge will contain all squares with dist
+        edge = [self.enemystartsquare]
+        while len(edge)>0:
+            dist = dist+1
+            new_edge = []
+            for square in edge:
+                self.get_neighbours(square)
+                for nsquare in self.neighbours:
+                    if self.walking[nsquare[0]][nsquare[1]] == -1:
+                        if layout_if.layout[nsquare[0]][nsquare[1]] in (0,2):
+                            self.walking[nsquare[0]][nsquare[1]] = dist
+                            new_edge.append(nsquare)
+            edge = new_edge.copy()
+        # put back the enemy base
+        self.colorplace(5, cccorner, 4)
+        #
+        # FLEE CIRCLE
+        # find a big circle
+        away = (200 - self.enemystartsquare[0], 200 - self.startsquare[1]) # not his main, not my main
+        found = False
+        while not found:
+            middle = (random.randrange(0, 200), random.randrange(0, 200))
+            if self.sdist(middle,away) < 80*80:
+                radius = 8
+                apoint = (round(middle[0]+radius),round(middle[1]))
+                if self.inmap(apoint):
+                    myheight = layout_if.height[apoint[0]][apoint[1]]
+                    ok = True
+                    for nr in range(0, 15):
+                        beta = nr * 2 * pi / 15
+                        apoint = (round(middle[0] + cos(beta) * radius),round(middle[1] + sin(beta) * radius))
+                        if self.inmap(apoint):
+                            itsheight = layout_if.height[apoint[0]][apoint[1]]
+                            ok = ok and (myheight == itsheight)
+                            ok = ok and (layout_if.layout[apoint[0]][apoint[1]] == 0)
+                        else:
+                            ok = False
+                    if ok:
+                        found = True
+                        text.write('position FOLLOWERS ' + str(middle[0] + 0.5) + ' ' + str(middle[1] + 0.5) + '\n')
+                        self.logg('position FOLLOWERS ' + str(middle[0] + 0.5) + ' ' + str(middle[1] + 0.5))
+        #
+        # RAMP WALL
         self.get_edge(ramptop)
         aroundramptop = self.edgeresult.copy()
         self.filter_color(aroundramptop,0)
@@ -247,6 +370,8 @@ class prog:
             text.write('position SUPPLYDEPOT '+str(asol[0][0]+1)+' '+str(asol[0][1]+1)+'\n')
             text.write('position SUPPLYDEPOT '+str(asol[1][0]+1)+' '+str(asol[1][1]+1)+'\n')
             text.write('position BARRACKS '+str(asol[2][0]+1.5)+' '+str(asol[2][1]+1.5)+'\n')
+        #
+        # NOBUILD PATH
         # against building clutter, color a tankpath from start to center
         starttile = self.startsquare
         # it starts being colored 4
@@ -285,54 +410,97 @@ class prog:
         # draw back the startcc
         self.colorplace(5, cccorner, 4)
         #
-        # enemy starts being colored 4
-        cccorner = (self.enemystartsquare[0] - 2, self.enemystartsquare[1] - 2)
-        self.colorplace(5, cccorner, 0)
-        # walking enemy
-        self.walking = []
-        for col in range(0, 200):
-            collist = []
-            for row in range(0, 200):
-                collist.append(-1)
-            self.walking.append(collist)
-        self.walking[self.enemystartsquare[0]][self.enemystartsquare[1]] = 0
-        dist = 0
-        # edge will contain all squares with dist
-        edge = [self.enemystartsquare]
-        while len(edge)>0:
-            dist = dist+1
-            new_edge = []
-            for square in edge:
-                self.get_neighbours(square)
-                for nsquare in self.neighbours:
-                    if self.walking[nsquare[0]][nsquare[1]] == -1:
-                        if layout_if.layout[nsquare[0]][nsquare[1]] in (0,2):
-                            self.walking[nsquare[0]][nsquare[1]] = dist
-                            new_edge.append(nsquare)
-            edge = new_edge.copy()
+        # COCOON
+        # Find a 8*8 cocoon spot near the enemy choke.
+        # Do not draw/reserve it as this spot can have other uses.
+        anchor = enemynaturalchoke
+        idealsd = 35
+        besttry = 99999
+        found_spot = (0, 0)
+        estimate = self.fromto(anchor, self.mapcenter, sqrt(idealsd))
+        for dx in range(-20, 20):
+            for dy in range(-20, 20):
+                maypos = (estimate[0] + dx, estimate[1] + dy)
+                if self.can_place_shape(8, maypos):
+                    sd = self.sdist(anchor, maypos)
+                    try0 = (sd - idealsd) * (sd - idealsd) + self.circledist(maypos, self.mapcenter)
+                    if try0 < besttry:
+                        found_spot = maypos
+                        besttry = try0
+        if besttry != 99999:
+            place = found_spot
+            text.write('position INFESTEDCOCOON ' + str(place[0] + 4) + ' ' + str(place[1] + 4) + '\n')
+            self.logg('position INFESTEDCOCOON ' + str(place[0] + 4) + ' ' + str(place[1] + 4))
+        #
+        # PF POSITIONS
+        # find a close hallposition for each old hallposition
+        for anchor in self.expansions:
+            idealsd = 115
+            besttry = 99999
+            found_spot = (0,0)
+            estimate = self.fromto(anchor,self.mapcenter,sqrt(idealsd))
+            for dx in range(-20, 20):
+                for dy in range(-20, 20):
+                    maypos = (estimate[0] + dx, estimate[1] + dy)
+                    if self.can_place_shape(5, maypos):
+                        if self.not_near_minerals(maypos):
+                            sd = self.sdist(anchor, maypos)
+                            try0 = (sd - idealsd)*(sd-idealsd) + self.circledist(maypos,self.mapcenter)
+                            if try0 < besttry:
+                                found_spot = maypos
+                                besttry = try0
+            if besttry != 99999:
+                place = found_spot
+                self.do_place_shape(5, place)
+                text.write('position EXTRACC ' + str(place[0] + 2.5) + ' ' + str(place[1] + 2.5) + '\n')
+                self.logg('position EXTRACC ' + str(place[0] + 2.5) + ' ' + str(place[1] + 2.5))
+        #
+        # find some highground pf positions
+        extras = 0
+        while extras < 10:
+            place = (random.randrange(0,200),random.randrange(0,200))
+            if place not in enemybasearea:
+                if self.can_place_shape(5, place):
+                    if self.not_near_minerals(place):
+                        myheight = layout_if.height[place[0]][place[1]]
+                        itishigh = False
+                        for dx in [-5, 0, 5]:
+                            for dy in [-5, 0, 5]:
+                                alt = (place[0]+2+dx,place[1]+2+dy)
+                                if (alt[0] >= 0) and (alt[0] < 200) and (alt[1] >= 0) and (alt[1] < 200):
+                                    if layout_if.layout[alt[0]][alt[1]] in {0,2}:
+                                        itsheight = layout_if.height[alt[0]][alt[1]]
+                                        if myheight > itsheight:
+                                            itishigh = True
+                        if itishigh:
+                            self.do_place_shape(5, place)
+                            text.write('position EXTRACC ' + str(place[0] + 2.5) + ' ' + str(place[1] + 2.5) + '\n')
+                            self.logg('position EXTRACC ' + str(place[0] + 2.5) + ' ' + str(place[1] + 2.5))
+                            extras += 1
+        #
+        # STARPORT POSITIONS
         # now, find some hidden fusioncore positions
         for shape in (3,3.5):
             alters = []
             while len(alters)<10000:
                 alt = (random.randrange(0,200),random.randrange(0,200))
                 dis = self.sdist(alt,self.startsquare)
-                if (dis>20*20) and (dis<70*70):
+                if (dis>17*17) and (dis<90*90):
                     dis = self.sdist(alt,self.ramptopcenter)
-                    if (dis>30*30):
+                    if (dis>25*25):
                         if self.can_place_shape(shape,alt):
                             if self.walking[alt[0]][alt[1]] > 0:
                                 alters.append(alt)
             choices = []
-            middle = (100,100)
             while len(choices)<7:
                 bestdist = 0
                 for alt in alters:
                     allowed = True
                     for have in choices:
                         dis = self.sdist(alt,have)
-                        allowed = allowed and (dis>12*12)
+                        allowed = allowed and (dis>10*10)
                     if allowed:
-                        dis = self.sdist(alt,middle)
+                        dis = self.sdist(alt,self.mapcenter)
                         if dis>bestdist:
                             best = alt
                             bestdist = dis
@@ -346,10 +514,10 @@ class prog:
         #
         # erase all buildings for the rest of the program
         #
-        for x in range(0,200):
-            for y in range(0,200):
-                if layout_if.layout[x][y] == 4:
-                    layout_if.layout[x][y] = 0
+        #for x in range(0,200):
+        #    for y in range(0,200):
+        #        if layout_if.layout[x][y] == 4:
+        #            layout_if.layout[x][y] = 0
         #
         # scout
         # make scout positions just inside the enemy base
@@ -389,6 +557,8 @@ class prog:
             text.write('position SCOUT '+str(bestsquare[0]+0.5)+' '+str(bestsquare[1]+0.5)+'\n')
         # reapers
         # find reaperjumpspots near the enemybasearea
+        reaperbunker1 = (0,0)
+        reaperbunker2 = (0,0)
         square = tuple(enemybasearea)[0]
         dsquare = (square[0]*2,square[1]*2)
         (baselayout, baseheight) = self.get_terrain(dsquare)
@@ -424,6 +594,13 @@ class prog:
                     bestsd = sd
             reaperbasespots.add(bestsquare)
         self.logg('reaperbasespots '+str(len(reaperbasespots)))
+        # reaperjumpspot: get the reaperbasespot away from enemyramp and near mapcenter
+        bestqual = -99999
+        for square in reaperbasespots:
+            qual = 2 * self.octagondist(square, enemyramp) - self.octagondist(square, self.mapcenter)
+            if qual > bestqual:
+                bestqual = qual
+                reaperjumpspot = square
         # restrict to blockable with two bunkers
         goodspots = set()
         for square in reaperbasespots:
@@ -431,18 +608,21 @@ class prog:
                 goodspots.add(square)
         self.logg('goodspots ' + str(len(goodspots)))
         if len(goodspots) > 0:
-            # get the goodspot away from enemyramp and near mapcenter
+            # reaperjumpspot: get the goodspot away from enemyramp and near mapcenter
             bestqual = -99999
             for square in goodspots:
                 qual = 2 * self.octagondist(square,enemyramp) - self.octagondist(square,self.mapcenter)
                 if qual > bestqual:
                     bestqual = qual
                     reaperjumpspot = square
-            self.logg('reaperjumpspot '+str(reaperjumpspot[0])+' '+str(reaperjumpspot[1]))
+        self.logg('reaperjumpspot '+str(reaperjumpspot[0])+' '+str(reaperjumpspot[1]))
+        if len(goodspots) > 0:
             # block reaperbasejump with two bunkers
             if self.twoblock(reaperjumpspot):
                 text.write('position REAPERBUNKER1 '+str(self.asol[0][0]+1.5)+' '+str(self.asol[0][1]+1.5)+'\n')
                 text.write('position REAPERBUNKER2 '+str(self.asol[1][0]+1.5)+' '+str(self.asol[1][1]+1.5)+'\n')
+                reaperbunker1 = self.asol[0]
+                reaperbunker2 = self.asol[1]
                 self.get_center(self.asolprison)
                 # use the middle of the squares
                 avera0 = self.centerresult[0] + 0.5
@@ -454,79 +634,31 @@ class prog:
                 self.logg('position REAPERPRISON ' + str(avera0) + ' ' + str(avera1))
             else:
                 self.logg('no reaperprison')
-            # get the reaperbarracksspot
-            wantsize = 12 # try to get it unscoutable from the top
-            hassize = self.circledist(reaperjumpspot,self.mapcenter)
-            vec = (self.mapcenter[0] - reaperjumpspot[0], self.mapcenter[1] - reaperjumpspot[1])
-            vec = (vec[0] * wantsize / hassize, vec[1] * wantsize / hassize)
-            around = (round(reaperjumpspot[0] + vec[0]),round(reaperjumpspot[1] + vec[1]))
-            self.logg('reaperbarracks around '+str(around[0])+','+str(around[1]))
-            bestsd = 99999
-            for x in range(around[0]-15,around[0]+15):
-                for y in range(around[1]-15,around[1]+15):
-                    square = (x,y)
-                    if self.can_place_shape(3.5,square): # can place barracks
-                        acceptable = True
-                        for ba in enemybasearea:
-                            if self.sdist(square,ba) < wantsize*wantsize:
-                                acceptable = False
-                        if acceptable:
-                            sd = self.sdist(square,reaperjumpspot)
-                            if sd < bestsd:
-                                bestsquare = square
-                                bestsd = sd
-            if bestsd != 99999:
-                x = bestsquare[0] + 1.5
-                y = bestsquare[1] + 1.5
-                text.write('position REAPERBARRACKS ' + str(x) + ' ' + str(y) + '\n')
-                self.logg('position REAPERBARRACKS ' + str(x) + ' ' + str(y))
-            else:
-                self.logg('no reaperbarracks')
-        #
-        # liberators
-        # centertile
-        around = self.mapcenter
+        # get the reaperbarracksspot
+        around = self.fromto(reaperjumpspot,self.mapcenter,12)
+        self.logg('reaperbarracks around '+str(around[0])+','+str(around[1]))
         bestsd = 99999
-        for x in range(around[0]-20,around[0]+20):
-            for y in range(around[1]-20,around[1]+20):
+        for x in range(around[0]-15,around[0]+15):
+            for y in range(around[1]-15,around[1]+15):
                 square = (x,y)
-                if self.istile(square): # can place a tank
-                    sd = self.sdist(square,around)
-                    if sd < bestsd:
-                        bestsquare = square
-                        bestsd = sd
-        centertile = bestsquare
-        # estimate a choke as enemynatural in the direction of mapcenter dist 0.5*dist(enemystart,enemynatural)
-        wantsize = 0.5 * self.circledist(self.enemynatural,self.enemystartsquare)
-        hassize = self.circledist(self.enemynatural,self.mapcenter)
-        vec = (self.mapcenter[0] - self.enemynatural[0], self.mapcenter[1] - self.enemynatural[1])
-        vec = (vec[0] * wantsize / hassize, vec[1] * wantsize / hassize)
-        estimate = (round(self.enemynatural[0] + vec[0]),round(self.enemynatural[1] + vec[1]))
-        self.logg('estimate en. nat. choke '+str(estimate[0])+','+str(estimate[1]))
-        # check that a tankpath can be found without choking
-        ennattile = (round(self.enemynatural[0]),round(self.enemynatural[1]))
-        pathstart = {ennattile}
-        pathend = {centertile}
-        self.path_direction = centertile
-        if not self.has_path(pathstart, pathend):
-            self.logg('no path from enemynatural to centertile?!')
-        # now get good chokes around estimate
-        chokes = set()
-        for dx in range(-19,20):
-            for dy in range(-19,20):
-                choke = (estimate[0]+dx,estimate[1]+dy)
-                self.mask_disk(choke,10)
-                if self.istile(ennattile) and self.istile(centertile):
-                    if not self.has_path(pathstart,pathend):
-                        chokes.add(choke)
-                self.mask_disk(choke, 10) # unmask
-            #
-        self.logg('found chokes: '+str(len(chokes)))
-        if len(chokes) > 0:
-            self.get_center(chokes)
-            x = 0.001*round(1000*(self.centerresult[0])) # do not add 0.5 as these are real centers
-            y = 0.001*round(1000*(self.centerresult[1]))
-            text.write('position ENEMYNATURALCHOKE ' + str(x) + ' ' + str(y) + '\n')
+                if self.can_place_shape(3.5,square): # can place barracks
+                    acceptable = True
+                    for ba in enemybasearea:
+                        if self.sdist(square,ba) < wantsize*wantsize:
+                            acceptable = False
+                    if acceptable:
+                        sd = self.sdist(square,reaperjumpspot)
+                        if sd < bestsd:
+                            bestsquare = square
+                            bestsd = sd
+        if bestsd != 99999:
+            x = bestsquare[0] + 1.5
+            y = bestsquare[1] + 1.5
+            text.write('position REAPERBARRACKS ' + str(x) + ' ' + str(y) + '\n')
+            self.logg('position REAPERBARRACKS ' + str(x) + ' ' + str(y))
+            self.do_place_shape(3.5, bestsquare)
+        else:
+            self.logg('no reaperbarracks')
         #
         #
         #       now we will estimate a high value of walking-flying
@@ -696,52 +828,13 @@ class prog:
         # Usually this result is a good cheese building place
         text.write('position INFESTEDFACTORY ' + str(factoryresult[0] + 1.5) + ' ' + str(factoryresult[1] + 1.5) + '\n')
         self.logg('position INFESTEDFACTORY ' + str(factoryresult[0] + 1.5) + ' ' + str(factoryresult[1] + 1.5))
+        self.do_place_shape(3.5, factoryresult)
         #
-        # find some highground pf positions
-        extras = 0
-        while extras < 10:
-            place = (random.randrange(0,200),random.randrange(0,200))
-            if self.can_place_shape(5, place):
-                myheight = layout_if.height[place[0]][place[1]]
-                itishigh = False
-                for dx in [-5, 0, 5]:
-                    for dy in [-5, 0, 5]:
-                        alt = (place[0]+2+dx,place[1]+2+dy)
-                        if (alt[0] >= 0) and (alt[0] < 200) and (alt[1] >= 0) and (alt[1] < 200):
-                            if layout_if.layout[alt[0]][alt[1]] in {0,2}:
-                                itsheight = layout_if.height[alt[0]][alt[1]]
-                                if myheight > itsheight:
-                                    itishigh = True
-                if itishigh:
-                    self.do_place_shape(5, place)
-                    text.write('position EXTRACC ' + str(place[0] + 2.5) + ' ' + str(place[1] + 2.5) + '\n')
-                    self.logg('position EXTRACC ' + str(place[0] + 2.5) + ' ' + str(place[1] + 2.5))
-                    extras += 1
-        #
-        # find a big circle
-        away = (200 - self.enemystartsquare[0], 200 - self.startsquare[1]) # not his main, not my main
-        found = False
-        while not found:
-            middle = (random.randrange(0, 200), random.randrange(0, 200))
-            if self.sdist(middle,away) < 80*80:
-                radius = 8
-                apoint = (round(middle[0]+radius),round(middle[1]))
-                if self.inmap(apoint):
-                    myheight = layout_if.height[apoint[0]][apoint[1]]
-                    ok = True
-                    for nr in range(0, 15):
-                        beta = nr * 2 * pi / 15
-                        apoint = (round(middle[0] + cos(beta) * radius),round(middle[1] + sin(beta) * radius))
-                        if self.inmap(apoint):
-                            itsheight = layout_if.height[apoint[0]][apoint[1]]
-                            ok = ok and (myheight == itsheight)
-                            ok = ok and (layout_if.layout[apoint[0]][apoint[1]] == 0)
-                        else:
-                            ok = False
-                    if ok:
-                        found = True
-                        text.write('position FOLLOWERS ' + str(middle[0] + 0.5) + ' ' + str(middle[1] + 0.5) + '\n')
-                        self.logg('position FOLLOWERS ' + str(middle[0] + 0.5) + ' ' + str(middle[1] + 0.5))
+        # delayed show
+        if reaperbunker1 != (0,0):
+            self.do_place_shape(3, reaperbunker1)
+        if reaperbunker2 != (0, 0):
+            self.do_place_shape(3, reaperbunker2)
         #
         #  that is all
         text.write('#####'+'\n')
@@ -756,8 +849,11 @@ class prog:
         # return self.asol ([0] and [1] leftunderpoints of 3x3 blocks)
         # return self.asolprison (the enclosed squares)
         cornersquares = set([cornersquare])
-        aroundcc = set([self.enemystartsquare])
-        self.path_direction = self.enemystartsquare
+        opensquare = self.enemystartsquare
+        while self.get_color(opensquare) != 0:
+            opensquare = (opensquare[0],opensquare[1]+1)
+        aroundcc = set([opensquare])
+        self.path_direction = opensquare
         totry = set()
         for dx in range(-6, 6):
             for dy in range(-6, 6):
@@ -774,8 +870,10 @@ class prog:
                         if self.tryplace(3, b1):
                             if self.get_color(cornersquare) == 0:
                                 if not self.has_zeropath(cornersquares, aroundcc):
-                                    solutions.append((b0, b1))
-                                    self.logg('      a solution')
+                                    # next check is needed as the ramp is accessible
+                                    if not self.has_path(cornersquares, aroundcc):
+                                        solutions.append((b0, b1))
+                                        self.logg('      a solution')
                             self.colorplace(3, b1, 0)
                 self.colorplace(3, b0, 0)
         self.logg('found ' + str(len(solutions)) + ' 2-block corner  solutions')
@@ -797,18 +895,7 @@ class prog:
 
     def do_place_shape(self,shape,alt):
         # leftunder definition
-        if shape == 3:
-            # fusioncore
-            layout_if.layout[alt[0]+0][alt[1]+0] = 4
-            layout_if.layout[alt[0]+0][alt[1]+1] = 4
-            layout_if.layout[alt[0]+0][alt[1]+2] = 4
-            layout_if.layout[alt[0]+1][alt[1]+0] = 4
-            layout_if.layout[alt[0]+1][alt[1]+1] = 4
-            layout_if.layout[alt[0]+1][alt[1]+2] = 4
-            layout_if.layout[alt[0]+2][alt[1]+0] = 4
-            layout_if.layout[alt[0]+2][alt[1]+1] = 4
-            layout_if.layout[alt[0]+2][alt[1]+2] = 4
-        elif shape == 3.5:
+        if shape == 3.5:
             # starport
             layout_if.layout[alt[0]+0][alt[1]+0] = 4
             layout_if.layout[alt[0]+0][alt[1]+1] = 4
@@ -823,51 +910,17 @@ class prog:
             layout_if.layout[alt[0]+3][alt[1]+1] = 4
             layout_if.layout[alt[0]+4][alt[1]+0] = 4
             layout_if.layout[alt[0]+4][alt[1]+1] = 4
-        elif shape == 5:
-            # cc
-            layout_if.layout[alt[0]+0][alt[1]+0] = 4
-            layout_if.layout[alt[0]+0][alt[1]+1] = 4
-            layout_if.layout[alt[0]+0][alt[1]+2] = 4
-            layout_if.layout[alt[0]+0][alt[1]+3] = 4
-            layout_if.layout[alt[0]+0][alt[1]+4] = 4
-            layout_if.layout[alt[0]+1][alt[1]+0] = 4
-            layout_if.layout[alt[0]+1][alt[1]+1] = 4
-            layout_if.layout[alt[0]+1][alt[1]+2] = 4
-            layout_if.layout[alt[0]+1][alt[1]+3] = 4
-            layout_if.layout[alt[0]+1][alt[1]+4] = 4
-            layout_if.layout[alt[0]+2][alt[1]+0] = 4
-            layout_if.layout[alt[0]+2][alt[1]+1] = 4
-            layout_if.layout[alt[0]+2][alt[1]+2] = 4
-            layout_if.layout[alt[0]+2][alt[1]+3] = 4
-            layout_if.layout[alt[0]+2][alt[1]+4] = 4
-            layout_if.layout[alt[0]+3][alt[1]+0] = 4
-            layout_if.layout[alt[0]+3][alt[1]+1] = 4
-            layout_if.layout[alt[0]+3][alt[1]+2] = 4
-            layout_if.layout[alt[0]+3][alt[1]+3] = 4
-            layout_if.layout[alt[0]+3][alt[1]+4] = 4
-            layout_if.layout[alt[0]+4][alt[1]+0] = 4
-            layout_if.layout[alt[0]+4][alt[1]+1] = 4
-            layout_if.layout[alt[0]+4][alt[1]+2] = 4
-            layout_if.layout[alt[0]+4][alt[1]+3] = 4
-            layout_if.layout[alt[0]+4][alt[1]+4] = 4
+        else:
+            for dx in range(0, shape):
+                for dy in range(0, shape):
+                    layout_if.layout[alt[0] + dx][alt[1] + dy] = 4
 
 
     def can_place_shape(self,shape,alt) -> bool:
         # leftunder definition
-        can = (alt[0] >= 0) and (alt[0]+4 < 200) and (alt[1] >= 0) and (alt[1]+4 < 200)
+        can = (alt[0] >= 0) and (alt[0]+shape < 200) and (alt[1] >= 0) and (alt[1]+shape < 200)
         if can:
-            if shape == 3:
-                # fusioncore
-                can = can and (layout_if.layout[alt[0]+0][alt[1]+0] == 0)
-                can = can and (layout_if.layout[alt[0]+0][alt[1]+1] == 0)
-                can = can and (layout_if.layout[alt[0]+0][alt[1]+2] == 0)
-                can = can and (layout_if.layout[alt[0]+1][alt[1]+0] == 0)
-                can = can and (layout_if.layout[alt[0]+1][alt[1]+1] == 0)
-                can = can and (layout_if.layout[alt[0]+1][alt[1]+2] == 0)
-                can = can and (layout_if.layout[alt[0]+2][alt[1]+0] == 0)
-                can = can and (layout_if.layout[alt[0]+2][alt[1]+1] == 0)
-                can = can and (layout_if.layout[alt[0]+2][alt[1]+2] == 0)
-            elif shape == 3.5:
+            if shape == 3.5:
                 # starport
                 can = can and (layout_if.layout[alt[0]+0][alt[1]+0] == 0)
                 can = can and (layout_if.layout[alt[0]+0][alt[1]+1] == 0)
@@ -882,35 +935,21 @@ class prog:
                 can = can and (layout_if.layout[alt[0]+3][alt[1]+1] == 0)
                 can = can and (layout_if.layout[alt[0]+4][alt[1]+0] == 0)
                 can = can and (layout_if.layout[alt[0]+4][alt[1]+1] == 0)
-            elif shape == 5:
-                # 5x5 space
-                can = can and (layout_if.layout[alt[0] + 0][alt[1] + 0] == 0)
-                can = can and (layout_if.layout[alt[0] + 0][alt[1] + 1] == 0)
-                can = can and (layout_if.layout[alt[0] + 0][alt[1] + 2] == 0)
-                can = can and (layout_if.layout[alt[0] + 0][alt[1] + 3] == 0)
-                can = can and (layout_if.layout[alt[0] + 0][alt[1] + 4] == 0)
-                can = can and (layout_if.layout[alt[0] + 1][alt[1] + 0] == 0)
-                can = can and (layout_if.layout[alt[0] + 1][alt[1] + 1] == 0)
-                can = can and (layout_if.layout[alt[0] + 1][alt[1] + 2] == 0)
-                can = can and (layout_if.layout[alt[0] + 1][alt[1] + 3] == 0)
-                can = can and (layout_if.layout[alt[0] + 1][alt[1] + 4] == 0)
-                can = can and (layout_if.layout[alt[0] + 2][alt[1] + 0] == 0)
-                can = can and (layout_if.layout[alt[0] + 2][alt[1] + 1] == 0)
-                can = can and (layout_if.layout[alt[0] + 2][alt[1] + 2] == 0)
-                can = can and (layout_if.layout[alt[0] + 2][alt[1] + 3] == 0)
-                can = can and (layout_if.layout[alt[0] + 2][alt[1] + 4] == 0)
-                can = can and (layout_if.layout[alt[0] + 3][alt[1] + 0] == 0)
-                can = can and (layout_if.layout[alt[0] + 3][alt[1] + 1] == 0)
-                can = can and (layout_if.layout[alt[0] + 3][alt[1] + 2] == 0)
-                can = can and (layout_if.layout[alt[0] + 3][alt[1] + 3] == 0)
-                can = can and (layout_if.layout[alt[0] + 3][alt[1] + 4] == 0)
-                can = can and (layout_if.layout[alt[0] + 4][alt[1] + 0] == 0)
-                can = can and (layout_if.layout[alt[0] + 4][alt[1] + 1] == 0)
-                can = can and (layout_if.layout[alt[0] + 4][alt[1] + 2] == 0)
-                can = can and (layout_if.layout[alt[0] + 4][alt[1] + 3] == 0)
-                can = can and (layout_if.layout[alt[0] + 4][alt[1] + 4] == 0)
+            else:
+                for dx in range(0, shape):
+                    for dy in range(0, shape):
+                        can = can and (layout_if.layout[alt[0] + dx][alt[1] + dy] == 0)
         return can
 
+    def not_near_minerals(self, place) -> bool:
+        # hall placement
+        # a bit too restrictive, the standard expansions would fail.
+        can = (place[0] >= 3) and (place[0] + 7 < 200) and (place[1] >= 3) and (place[1] + 7 < 200)
+        if can:
+            for dx in range(-3,8):
+                for dy in range(-3,8):
+                    can = can and (layout_if.layout[place[0] + dx][place[1] + dy] != 1)
+        return can
 
     def has_cc(self, alt) -> bool:
         # Is alt the leftunder point of a cc?
@@ -918,30 +957,9 @@ class prog:
         if has:
             has = has and (layout_if.layout[alt[0] + 0][alt[1] + 0] == 4)
             if has:
-                has = has and (layout_if.layout[alt[0] + 0][alt[1] + 1] == 4)
-                has = has and (layout_if.layout[alt[0] + 0][alt[1] + 2] == 4)
-                has = has and (layout_if.layout[alt[0] + 0][alt[1] + 3] == 4)
-                has = has and (layout_if.layout[alt[0] + 0][alt[1] + 4] == 4)
-                has = has and (layout_if.layout[alt[0] + 1][alt[1] + 0] == 4)
-                has = has and (layout_if.layout[alt[0] + 1][alt[1] + 1] == 4)
-                has = has and (layout_if.layout[alt[0] + 1][alt[1] + 2] == 4)
-                has = has and (layout_if.layout[alt[0] + 1][alt[1] + 3] == 4)
-                has = has and (layout_if.layout[alt[0] + 1][alt[1] + 4] == 4)
-                has = has and (layout_if.layout[alt[0] + 2][alt[1] + 0] == 4)
-                has = has and (layout_if.layout[alt[0] + 2][alt[1] + 1] == 4)
-                has = has and (layout_if.layout[alt[0] + 2][alt[1] + 2] == 4)
-                has = has and (layout_if.layout[alt[0] + 2][alt[1] + 3] == 4)
-                has = has and (layout_if.layout[alt[0] + 2][alt[1] + 4] == 4)
-                has = has and (layout_if.layout[alt[0] + 3][alt[1] + 0] == 4)
-                has = has and (layout_if.layout[alt[0] + 3][alt[1] + 1] == 4)
-                has = has and (layout_if.layout[alt[0] + 3][alt[1] + 2] == 4)
-                has = has and (layout_if.layout[alt[0] + 3][alt[1] + 3] == 4)
-                has = has and (layout_if.layout[alt[0] + 3][alt[1] + 4] == 4)
-                has = has and (layout_if.layout[alt[0] + 4][alt[1] + 0] == 4)
-                has = has and (layout_if.layout[alt[0] + 4][alt[1] + 1] == 4)
-                has = has and (layout_if.layout[alt[0] + 4][alt[1] + 2] == 4)
-                has = has and (layout_if.layout[alt[0] + 4][alt[1] + 3] == 4)
-                has = has and (layout_if.layout[alt[0] + 4][alt[1] + 4] == 4)
+                for dx in range(0,5):
+                    for dy in range(0,5):
+                        has = has and (layout_if.layout[alt[0] + dx][alt[1] + dy] == 4)
         return has
 
     def logg(self,stri):
@@ -1277,6 +1295,14 @@ class prog:
     def circledist(self, p,q) -> float:
         return sqrt(self.sdist(p,q))
 
+    def fromto(self, fra, ta, dist): # -> point
+        direction = (ta[0] - fra[0], ta[1] - fra[1])
+        norm = sqrt(direction[0]*direction[0] + direction[1]*direction[1])
+        factor = dist / norm
+        vector = (round(direction[0]*factor), round(direction[1]*factor))
+        res = (fra[0] + vector[0], fra[1] + vector[1])
+        return res
+    
     ############## terrain routines ###################################
 
     def get_terrain(self, dpoint):
