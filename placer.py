@@ -2,7 +2,7 @@
 # Makes text for building placement
 # appends the output to file "data\placement.txt"
 # author: MerkMore
-# version 28 may 2021
+# version 16 jun 2021
 from layout_if_py import layout_if
 import random
 from math import sqrt, sin, cos, acos, pi
@@ -26,6 +26,7 @@ class prog:
     maptop = 0
     mapcenter = (0,0)
     filterresult = set()
+    enemybasearea = set()
     startsquare = (0,0)
     enemystartsquare = (0,0)
     enemynatural = (0,0)
@@ -127,10 +128,10 @@ class prog:
         self.get_edge(startcc) # empty boundery around the cc
         aroundcc = self.edgeresult.copy()
         self.logg('aroundcc '+str(len(aroundcc)))
-        enemybasearea = aroundcc.copy()
-        self.extend(enemybasearea) # the whole enemy top area
-        self.logg('enemybasearea '+str(len(enemybasearea)))
-        self.get_edge(enemybasearea)
+        self.enemybasearea = aroundcc.copy()
+        self.extend(self.enemybasearea) # the whole enemy top area
+        self.logg('self.enemybasearea '+str(len(self.enemybasearea)))
+        self.get_edge(self.enemybasearea)
         ramptop = self.edgeresult.copy()
         self.filter_color(ramptop,2)
         ramptop = self.filterresult.copy() # the parts of ramp touching the top area
@@ -459,7 +460,7 @@ class prog:
         extras = 0
         while extras < 10:
             place = (random.randrange(0,200),random.randrange(0,200))
-            if place not in enemybasearea:
+            if place not in self.enemybasearea:
                 if self.can_place_shape(5, place):
                     if self.not_near_minerals(place):
                         myheight = layout_if.height[place[0]][place[1]]
@@ -488,9 +489,11 @@ class prog:
                 if (dis>17*17) and (dis<90*90):
                     dis = self.sdist(alt,self.ramptopcenter)
                     if (dis>25*25):
-                        if self.can_place_shape(shape,alt):
-                            if self.walking[alt[0]][alt[1]] > 0:
-                                alters.append(alt)
+                        dis = self.sdist(alt,self.enemystartsquare)
+                        if (dis>25*25):
+                            if self.can_place_shape(shape,alt):
+                                if self.walking[alt[0]][alt[1]] > 0:
+                                    alters.append(alt)
             choices = []
             while len(choices)<7:
                 bestdist = 0
@@ -512,17 +515,10 @@ class prog:
                 else:
                     text.write('position STARPORT * '+str(alt[0]+1.5)+' '+str(alt[1]+1.5)+'\n')
         #
-        # erase all buildings for the rest of the program
-        #
-        #for x in range(0,200):
-        #    for y in range(0,200):
-        #        if layout_if.layout[x][y] == 4:
-        #            layout_if.layout[x][y] = 0
-        #
         # scout
         # make scout positions just inside the enemy base
-        self.logg('enemybasearea '+str(len(enemybasearea)))
-        self.get_edge(enemybasearea)
+        self.logg('enemybasearea '+str(len(self.enemybasearea)))
+        self.get_edge(self.enemybasearea)
         outside = self.edgeresult.copy()
         self.logg('outside '+str(len(outside)))
         green = set()
@@ -533,7 +529,7 @@ class prog:
         self.logg('outeroutside '+str(len(outeroutside)))
         self.get_edge(outeroutside)
         inside = self.edgeresult.copy()
-        inside = inside & enemybasearea
+        inside = inside & self.enemybasearea
         self.logg('inside '+str(len(inside)))
         ramptopsquare = enemyramptop_tobeusedlater
         radius = self.circledist(ramptopsquare,self.enemystartsquare)
@@ -556,10 +552,10 @@ class prog:
                     bestsdist = sd
             text.write('position SCOUT '+str(bestsquare[0]+0.5)+' '+str(bestsquare[1]+0.5)+'\n')
         # reapers
-        # find reaperjumpspots near the enemybasearea
+        # find reaperjumpspots near the self.enemybasearea
         reaperbunker1 = (0,0)
         reaperbunker2 = (0,0)
-        square = tuple(enemybasearea)[0]
+        square = tuple(self.enemybasearea)[0]
         dsquare = (square[0]*2,square[1]*2)
         (baselayout, baseheight) = self.get_terrain(dsquare)
         darea = {dsquare}
@@ -587,7 +583,7 @@ class prog:
         for dsquare in reaperall:
             jumpsquare = (dsquare[0] / 2,dsquare[1] / 2) # can have halves
             bestsd = 99999
-            for square in enemybasearea:
+            for square in self.enemybasearea:
                 sd = self.sdist(square, jumpsquare)
                 if sd < bestsd:
                     bestsquare = square
@@ -615,7 +611,7 @@ class prog:
                 if qual > bestqual:
                     bestqual = qual
                     reaperjumpspot = square
-        self.logg('reaperjumpspot '+str(reaperjumpspot[0])+' '+str(reaperjumpspot[1]))
+            self.logg('reaperjumpspot '+str(reaperjumpspot[0])+' '+str(reaperjumpspot[1]))
         if len(goodspots) > 0:
             # block reaperbasejump with two bunkers
             if self.twoblock(reaperjumpspot):
@@ -635,30 +631,34 @@ class prog:
             else:
                 self.logg('no reaperprison')
         # get the reaperbarracksspot
-        around = self.fromto(reaperjumpspot,self.mapcenter,12)
-        self.logg('reaperbarracks around '+str(around[0])+','+str(around[1]))
-        bestsd = 99999
-        for x in range(around[0]-15,around[0]+15):
-            for y in range(around[1]-15,around[1]+15):
-                square = (x,y)
-                if self.can_place_shape(3.5,square): # can place barracks
-                    acceptable = True
-                    for ba in enemybasearea:
-                        if self.sdist(square,ba) < wantsize*wantsize:
-                            acceptable = False
-                    if acceptable:
-                        sd = self.sdist(square,reaperjumpspot)
-                        if sd < bestsd:
-                            bestsquare = square
-                            bestsd = sd
-        if bestsd != 99999:
-            x = bestsquare[0] + 1.5
-            y = bestsquare[1] + 1.5
-            text.write('position REAPERBARRACKS ' + str(x) + ' ' + str(y) + '\n')
-            self.logg('position REAPERBARRACKS ' + str(x) + ' ' + str(y))
-            self.do_place_shape(3.5, bestsquare)
+        if len(reaperbasespots) > 0:
+            around = self.fromto(reaperjumpspot,self.mapcenter,12)
+            self.logg('reaperbarracks around '+str(around[0])+','+str(around[1]))
+            bestsd = 99999
+            for x in range(around[0]-15,around[0]+15):
+                for y in range(around[1]-15,around[1]+15):
+                    square = (x,y)
+                    if self.can_place_shape(3.5,square): # can place barracks
+                        acceptable = True
+                        for ba in self.enemybasearea:
+                            if self.sdist(square,ba) < wantsize*wantsize:
+                                acceptable = False
+                        if acceptable:
+                            sd = self.sdist(square,reaperjumpspot)
+                            if sd < bestsd:
+                                bestsquare = square
+                                bestsd = sd
+            if bestsd != 99999:
+                x = bestsquare[0] + 1.5
+                y = bestsquare[1] + 1.5
+                text.write('position REAPERBARRACKS ' + str(x) + ' ' + str(y) + '\n')
+                self.logg('position REAPERBARRACKS ' + str(x) + ' ' + str(y))
+                # do not place, it interferes with next code
+                # self.do_place_shape(3.5, bestsquare)
+            else:
+                self.logg('no reaperbarracks')
         else:
-            self.logg('no reaperbarracks')
+            self.logg('no reaperbasespots')
         #
         #
         #       now we will estimate a high value of walking-flying
@@ -688,14 +688,14 @@ class prog:
             for dx in range(-dist,dist):
                 for dy in range(-dist,dist):
                     maybe = (leftunder[0]+dx,leftunder[1]+dy)
-                    if maybe not in enemybasearea:
+                    if maybe not in self.enemybasearea:
                         if self.can_place_shape(3,maybe):
                             barracksproposal = maybe
                             placed = True
         # if not unlucky, this result is a good cheese barracks building place
         # go find a corner in the enemy base
         corners = set()
-        for square in enemybasearea:
+        for square in self.enemybasearea:
             ownneighs = 0
             self.get_neighbours(square)
             for nsquare in self.neighbours:
@@ -735,10 +735,14 @@ class prog:
         sd1 = self.sdist(self.asol[1],self.enemystartsquare)
         if sd0 < sd1:
             text.write('position INFESTEDBUNKER '+str(self.asol[0][0]+1.5)+' '+str(self.asol[0][1]+1.5)+'\n')
+            self.logg('position INFESTEDBUNKER '+str(self.asol[0][0]+1.5)+' '+str(self.asol[0][1]+1.5))
             text.write('position INFESTEDLANDING '+str(self.asol[1][0]+1.5)+' '+str(self.asol[1][1]+1.5)+'\n')
+            self.logg('position INFESTEDLANDING '+str(self.asol[1][0]+1.5)+' '+str(self.asol[1][1]+1.5))
         else:
             text.write('position INFESTEDLANDING ' + str(self.asol[0][0] + 1.5) + ' ' + str(self.asol[0][1] + 1.5) + '\n')
+            self.logg('position INFESTEDLANDING ' + str(self.asol[0][0] + 1.5) + ' ' + str(self.asol[0][1] + 1.5))
             text.write('position INFESTEDBUNKER ' + str(self.asol[1][0] + 1.5) + ' ' + str(self.asol[1][1] + 1.5) + '\n')
+            self.logg('position INFESTEDBUNKER ' + str(self.asol[1][0] + 1.5) + ' ' + str(self.asol[1][1] + 1.5))
         self.do_place_shape(3,self.asol[0])
         self.do_place_shape(3,self.asol[1])
         # write average asolprison
@@ -751,34 +755,40 @@ class prog:
         avera1 = 0.001*round(1000*avera1)
         text.write('position INFESTEDPRISON '+str(avera0)+' '+str(avera1)+'\n')
         self.logg('position INFESTEDPRISON '+str(avera0)+' '+str(avera1))
-        # get a 5x5 freespace outside enemybasearea, as a tankmove point
-        rough = (round(2*avera0 - self.enemystartsquare[0]), round(2*avera1 - self.enemystartsquare[1]))
-        if (rough[0]<0) or (rough[0]>=200) or (rough[1]<0) or (rough[1]>=200):
-            rough = (random.randrange(0, 200), random.randrange(0, 200))
-        sd = self.sdist(rough,self.enemystartsquare)
-        while (sd<10*10) or (sd>50*50):
+        # get a 5x5 freespace outside self.enemybasearea, as a tankmove point
+        # this freespace must have a tankpath to enemybasearea.
+        enemytile = self.enemystartsquare
+        while not self.istile(enemytile):
+            enemytile = (enemytile[0],enemytile[1]+1)
+        haspath = False
+        while not haspath:
+            self.logg('searching freespace')
             rough = (random.randrange(0, 200), random.randrange(0, 200))
             sd = self.sdist(rough,self.enemystartsquare)
-        self.logg('rough '+str(rough[0])+','+str(rough[1]))
-        placed = False
-        dist = 0
-        while not placed:
-            dist = dist + 1
-            for dx in range(-dist, dist):
-                for dy in range(-dist, dist):
-                    square = (rough[0] + dx, rough[1] + dy)
-                    if self.can_place_shape(5,square):
-                        freespace = (square[0]+2,square[1]+2)
-                        placed = True
+            while (sd<10*10) or (sd>50*50):
+                rough = (random.randrange(0, 200), random.randrange(0, 200))
+                sd = self.sdist(rough,self.enemystartsquare)
+            self.logg('rough '+str(rough[0])+','+str(rough[1]))
+            placed = False
+            dist = 0
+            while not placed:
+                dist = dist + 1
+                for dx in range(-dist, dist):
+                    for dy in range(-dist, dist):
+                        square = (rough[0] + dx, rough[1] + dy)
+                        if self.can_place_shape(5,square):
+                            freespace = (square[0]+2,square[1]+2)
+                            placed = True
+            haspath = self.has_tankpath(enemytile, freespace)
         self.logg('freespace '+str(freespace[0])+','+str(freespace[1]))
-        # get a 2x2 place for a tank near cheeseprison but outside enemybasearea
+        # get a 2x2 place for a tank near cheeseprison but outside self.enemybasearea
         self.logg('B')
         around = (round(avera0),round(avera1))
         bestsd = 9999
         for x in range(around[0]-10,around[0]+10):
             for y in range(around[1]-10,around[1]+10):
                 square = (x,y)
-                if square not in enemybasearea:
+                if square not in self.enemybasearea:
                     if self.istile(square): # can place a tank
                         sd = self.sdist(square,self.centerresult)
                         if sd < bestsd:
@@ -795,7 +805,7 @@ class prog:
         for x in range(around[0]-10,around[0]+10):
             for y in range(around[1]-10,around[1]+10):
                 square = (x,y)
-                if square not in enemybasearea:
+                if square not in self.enemybasearea:
                     if self.can_place_shape(3, square):
                         sd = self.sdist(square,self.centerresult)
                         if sd < bestsd:
@@ -845,7 +855,7 @@ class prog:
         return (alt[0] >= 0) and (alt[0] < 200) and (alt[1] >= 0) and (alt[1] < 200)
 
     def twoblock(self, cornersquare) -> bool:
-        # try to lock this enemybasearea square in with 2 3x3 blocks
+        # try to lock this self.enemybasearea square in with 2 3x3 blocks
         # return self.asol ([0] and [1] leftunderpoints of 3x3 blocks)
         # return self.asolprison (the enclosed squares)
         cornersquares = set([cornersquare])
@@ -859,7 +869,8 @@ class prog:
             for dy in range(-6, 6):
                 square = (cornersquare[0] + dx, cornersquare[1] + dy)
                 if self.get_color(square) == 0:
-                    totry.add(square)
+                    if square in self.enemybasearea:
+                        totry.add(square)
         self.logg('per block ' + str(len(totry)) + ' positions')
         solutions = []
         for b0 in totry:
