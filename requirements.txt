@@ -14,10 +14,10 @@ loguru==0.5.3
 mpyq==0.2.5
 multidict==5.1.0
 numpy==1.19.3
-Pillow==8.1.2
+Pillow==8.2.0
 pipenv==2020.8.13
 portpicker==1.4.0
-protobuf==3.17.2
+protobuf==3.17.3
 pyglet==1.5.17
 s2clientprotocol==5.0.7.84643.0
 scipy==1.6.3

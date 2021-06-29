@@ -338,6 +338,7 @@ class Chaosbot(sc2.BotAI):
     good_armybuildings = 0
     good_upgradebuildings = 0
     good_plan = 'UNKNOWN'
+    last_good_plan = 'UNKNOWN'
     #   ############### REST
     purpose = {} # for bases: 'scv'/'wishtofly' etc
     circle = []
@@ -439,7 +440,9 @@ class Chaosbot(sc2.BotAI):
     mine_burried = {} # the frame a mine burried
     #
     trail = {} # per unittag, of the last 10 movements, the position. Not workers.
-    trailpo = {} # per unittag, the index of the newest trail value 
+    trailpo = {} # per unittag, the index of the newest trail value
+    trailtarget = {} # per unittag, its goalposition (if it has one). Also used to init trail.
+    trailtargetframe = {} # per unittag, the frame it got this goal.
     preferred_trailnr = {} # to move back along the trail if attacked
     #
     waitframe_of_tag = {} # a future framenumber to continue action
@@ -604,7 +607,7 @@ class Chaosbot(sc2.BotAI):
     all_mimt = []
     #   job_of_scvt dictionary
     good_jobs = ('builder','settler','fencer','traveller','repairer','escorter','scout','cheeser','pilot')
-    bad_jobs = ('gasminer','mimminer','applicant','defender','gasper')
+    bad_jobs = ('gasminer','mimminer','applicant','defender','gasper','reporter')
     no_jobs = ('idler','suicider','volunteer','inshock','fleeer')
     #
     jobs_may_idle = ('mimminer','fencer','settler','scout','cheeser','applicant','idler','gasper','pilot')
@@ -640,6 +643,9 @@ class Chaosbot(sc2.BotAI):
     basepos_of_minert = {}
     speedbases = 0
     minclick_of_mimt = {}
+    #
+    # a reporter for an attacked builder
+    reporter_of_scvt = {}
     #
     lazyness_of_scvt = {} # per tag idling scv, the amount of frames it idles
     #   defenders attack somewhere
@@ -768,6 +774,8 @@ class Chaosbot(sc2.BotAI):
     earn_builders = set()
     earn_show = False
     #
+    tag_sent = False
+    #
     # *********************************************************************************************************************
     async def on_start(self):
         self._client.game_step = self.chosen_game_step
@@ -814,6 +822,7 @@ class Chaosbot(sc2.BotAI):
             self.implementing_buildorder_exe()
             self.make_planning_exe()
             self.follow_planning_exe()
+            self.protection()
         await self.build_worker(100-self.minerals//100)
         await self.throw_advance()
         await self.start_construction()
@@ -863,6 +872,7 @@ class Chaosbot(sc2.BotAI):
             self.cluster_the_mines()
             self.manage_production_pause()
             self.lefttarget_righttarget()
+            await self.send_tag()
         await self.mules()
         if (self.frame % 3 == 2):
             await self.do_buildandretry()
@@ -916,6 +926,7 @@ class Chaosbot(sc2.BotAI):
         self.init_expected_order('settler', AbilityId.MOVE)
         self.init_expected_order('fencer', AbilityId.MOVE)
         self.init_expected_order('escorter', AbilityId.ATTACK)
+        self.init_expected_order('reporter', AbilityId.ATTACK)
         self.init_expected_order('applicant', AbilityId.MOVE)
         self.init_expected_order('scout', AbilityId.MOVE)
         self.init_expected_order('cheeser', AbilityId.MOVE)
@@ -1683,17 +1694,17 @@ class Chaosbot(sc2.BotAI):
             self.opening_name = 'marine-6'
             self.init_marine_opening(6)
         elif self.game_choice[26]:
-            self.opening_name = 'cocoon-marine-2'
-            self.rushopening = True
-            self.buildseries_opening = cocoon_series
-            self.init_cocoon()
-            self.init_marine_opening(2)
-        elif self.game_choice[27]:
             self.opening_name = 'cocoon-marine-3'
             self.rushopening = True
             self.buildseries_opening = cocoon_series
             self.init_cocoon()
             self.init_marine_opening(3)
+        elif self.game_choice[27]:
+            self.opening_name = 'cocoon-marine-4'
+            self.rushopening = True
+            self.buildseries_opening = cocoon_series
+            self.init_cocoon()
+            self.init_marine_opening(4)
         elif self.game_choice[28]:
             self.opening_name = 'cocoon-marine-5'
             self.rushopening = True
@@ -1865,7 +1876,8 @@ class Chaosbot(sc2.BotAI):
         self.make_circle(16)
         self.fleepolepos = []
         for point in self.circle:
-            cpoint = Point2((self.followers.x + 8 * point.x, self.followers.y + 8 * point.y))
+            # use 8.5 instead of 8, as the towards-points are outside of the walked circle.
+            cpoint = Point2((self.followers.x + 8.5 * point.x, self.followers.y + 8.5 * point.y))
             self.fleepolepos.append(cpoint)
         #
         # from s2clientprotocol/error.proto:
@@ -2086,9 +2098,16 @@ class Chaosbot(sc2.BotAI):
         'CantFindCancelOrder', # 214;
         ]
         # chat
-        await self._client.chat_send('Chaosbot version 18 jun 2021, made by MerkMore', team_only=False)
+        await self._client.chat_send('Chaosbot version 29 jun 2021, made by MerkMore', team_only=False)
         #
         #layout_if.photo_layout()
+
+    async def send_tag(self):
+        if self.frame > 1000:
+            if not self.tag_sent:
+                await self._client.chat_send('Tag:'+self.opening_name, team_only=True)
+                self.tag_sent = True
+
 
     def loadcc(self):
         # flee when unhealthy
@@ -2210,10 +2229,11 @@ class Chaosbot(sc2.BotAI):
             self.write_layout(BARRACKS, barpos)
             bars += 1
         # bunker placing
-        self.buildseries_opening.append(BUNKER)
-        goal = self.enemynatural_pos
-        pos = self.init_cheese_position(goal, 79, BUNKER)
-        self.chosenplaces.append((BUNKER, pos))
+        # code deleted because of interaction with cocoon
+        #self.buildseries_opening.append(BUNKER)
+        #goal = self.enemynatural_pos
+        #pos = self.init_cheese_position(goal, 79, BUNKER)
+        #self.chosenplaces.append((BUNKER, pos))
         #
         self.production_pause_finish.add((SUPPLYDEPOT, 1, ORBITALCOMMAND, 1))
         self.production_pause_finish.add((SCV, 16 + nbases, ORBITALCOMMAND, 1))
@@ -2944,6 +2964,8 @@ class Chaosbot(sc2.BotAI):
                 maxam = 2
             if thing == FACTORY:
                 maxam = 4
+            if thing == STARPORT:
+                maxam = 9
             if thing == MISSILETURRET:
                 maxam = len(self.all_bases)*6
         elif thing in self.all_structures:
@@ -2968,6 +2990,8 @@ class Chaosbot(sc2.BotAI):
                 maxam = 2
             if thing == FACTORY:
                 maxam = 4
+            if thing == STARPORT:
+                maxam = 9
             if thing == MISSILETURRET:
                 maxam = len(self.all_future_basepos)*6
         elif thing in self.all_structures:
@@ -5619,7 +5643,9 @@ class Chaosbot(sc2.BotAI):
             if satisfaction > best_satisfaction:
                 best_satisfaction = satisfaction
                 self.good_plan = 'upgradebuildings'
-        self.log_success('I want '+self.good_plan)
+        if self.last_good_plan != self.good_plan:
+            self.last_good_plan = self.good_plan
+            self.log_success('I want '+self.good_plan)
         #
         # thingtag_of_repairertag: thing exists and is not full health, repairer is scv certain job
         new_thingtag_of_repairertag = {}
@@ -6212,8 +6238,14 @@ class Chaosbot(sc2.BotAI):
                         self.log_success('In thoughts ' + ow + ' already put a ' + thing.name + ' ' + self.txt(place))
                 # delay walking to a buildingsite during workerrush
                 if self.opening_name.find('workerrush') >= 0:
-                    if self.minerals < 250:
-                        donow = False
+                    if (self.workerrushstate != 'ended'):
+                        if self.minerals < 250:
+                            donow = False
+                            self.log_success('buildorder delay because of workerrush')
+                # delay on low miners
+                if self.count_of_job['mimminer'] < 5:
+                    donow = False
+                    self.log_success('buildorder delay because of too few mimminers')
                 if donow:
                     if self.add_thought(thing, place, 'follow_planning_exe'):
                         self.buildorder_exe[nr] = (thing,place,'thought')
@@ -6357,7 +6389,8 @@ class Chaosbot(sc2.BotAI):
 
     def add_thought(self, thing,pos,owner) -> bool:
         ok = True
-        bad = False
+        badpos = False
+        badthing = False
         todel = set()
         if self.we_thoughtetc_at(thing,pos):
             ok = False
@@ -6385,7 +6418,7 @@ class Chaosbot(sc2.BotAI):
                                 del self.throwspots[self.throwspots.index(tps)]
         if self.we_thoughtetc_amount(thing) >= self.future_maxam_of_thing(thing):
             ok = False
-            bad = True
+            badthing = True
             self.log_success('Add_thought halted by future maximum a ' + thing.name + ' by ' + owner)
         # no restrictions on e.g. minerals, free cradle, as those can become ok later
         if not self.check_future_techtree(thing):
@@ -6402,14 +6435,14 @@ class Chaosbot(sc2.BotAI):
                 self.log_success('Add_thought halted a hallless refinery by '+owner)
         if (thing,pos) in self.unthinkable:
             ok = False
-            bad = True
+            badpos = True
             self.log_success('Add_thought halted unthinkable ' + thing.name +' at ' + self.txt(pos) + ' by ' + owner)
         if ok:
             self.thoughts.append((thing,pos,owner))
             for tpo in todel:
                 del self.thoughts[self.thoughts.index(tpo)]
-        if bad:
-            # remove this from new throwspots and chosenplaces
+        if badpos:
+            # remove this from new throwspots, dreams and chosenplaces
             todel = []
             for tps in self.throwspots:
                 (th, po, status, ow, pri) = tps
@@ -6423,6 +6456,29 @@ class Chaosbot(sc2.BotAI):
             for tps in self.chosenplaces:
                 (th, po) = tps
                 if (th == thing) and (po == pos) and ('follow_planning_exe' == owner):
+                    todel.append(tps)
+            for tps in todel:
+                del self.chosenplaces[self.chosenplaces.index(tps)]
+        if badthing:
+            # remove this from new throwspots, dreams and chosenplaces
+            todel = []
+            for tps in self.throwspots:
+                (th, po, status, ow, pri) = tps
+                if (th == thing) and (status == 'dream'):
+                    todel.append(tps)
+            for tps in todel:
+                del self.throwspots[self.throwspots.index(tps)]
+            todel = []
+            for tps in self.dreams:
+                (th, po, ow) = tps
+                if (th == thing):
+                    todel.append(tps)
+            for tps in todel:
+                del self.dreams[self.dreams.index(tps)]
+            todel = []
+            for tps in self.chosenplaces:
+                (th, po) = tps
+                if (th == thing):
                     todel.append(tps)
             for tps in todel:
                 del self.chosenplaces[self.chosenplaces.index(tps)]
@@ -6687,11 +6743,11 @@ class Chaosbot(sc2.BotAI):
                                         self.throw_somewhere(bui_type, 'armybuildings_adlib', 2)
                                         todo = 0
                 if todo == 1:
-                    if self.we_finished_a(FACTORY):
+                    if self.we_finished_a(FACTORY) and (self.we_started_amount(STARPORT) < self.maxam_of_thing(STARPORT)):
                         self.throw_somewhere(STARPORT, 'armybuildings_adlib', 2)
-                    elif self.we_finished_a(BARRACKS):
+                    elif self.we_finished_a(BARRACKS) and (self.we_started_amount(FACTORY) < self.maxam_of_thing(FACTORY)):
                         self.throw_somewhere(FACTORY, 'armybuildings_adlib', 2)
-                    elif self.we_finished_a(SUPPLYDEPOT):
+                    elif self.we_finished_a(SUPPLYDEPOT) and (self.we_started_amount(BARRACKS) < self.maxam_of_thing(BARRACKS)):
                         self.throw_somewhere(BARRACKS, 'armybuildings_adlib', 2)
 
     def upgradebuildings_adlib(self):
@@ -7769,23 +7825,30 @@ class Chaosbot(sc2.BotAI):
             
     def make_trail(self):
         # per unit the trail of its last 10 movements positions 
-        if self.frame % 24 == 12:
+        if self.frame % 13 == 12: # mark trail per half second
             for unt in self.units:
                 if unt.type_id != SCV:
                     if len(unt.orders) == 1:
                         order = unt.orders[0]
                         if order.ability.id in {AbilityId.MOVE,AbilityId.ATTACK}:
                             if type(order.target) != int:
-                                if not self.near(unt.position,order.target,3):
-                                    if unt.tag in self.trailpo:
-                                        trailpo = self.trailpo[unt.tag]
-                                        trailpo = (trailpo + 1) % 10
-                                        self.trail[unt.tag][trailpo] = unt.position
-                                        self.trailpo[unt.tag] = trailpo
+                                if unt.tag in self.trailtarget:
+                                    if self.trailtarget[unt.tag] == order.target:
+                                        if self.trailtargetframe[unt.tag] + 60 < self.frame: # skip first 3 seconds
+                                            trailpo = self.trailpo[unt.tag]
+                                            trailpo = (trailpo + 1) % 10
+                                            self.trail[unt.tag][trailpo] = unt.position
+                                            self.trailpo[unt.tag] = trailpo
                                     else:
-                                        pos = unt.position
-                                        self.trailpo[unt.tag] = 0
-                                        self.trail[unt.tag] = [pos,pos,pos,pos,pos,pos,pos,pos,pos,pos]
+                                        self.trailtarget[unt.tag] = order.target
+                                        self.trailtargetframe[unt.tag] = self.frame
+                                else:
+                                    # init
+                                    self.trailtarget[unt.tag] = order.target
+                                    self.trailtargetframe[unt.tag] = self.frame
+                                    pos = unt.position
+                                    self.trailpo[unt.tag] = 0
+                                    self.trail[unt.tag] = [pos,pos,pos,pos,pos,pos,pos,pos,pos,pos]
 
     def close_to_a_my_base(self,pos) -> bool:
         clos = False
@@ -10793,7 +10856,7 @@ class Chaosbot(sc2.BotAI):
         topos = self.fleepolepos[mypole]
         if not self.near(scv.position, self.followers, 10):
             scv.move(topos)
-        elif self.near(scv.position, topos, 2):
+        elif self.near(scv.position, topos, 3):
             self.fleepole[scv.tag] = (self.fleepole[scv.tag] + 1) % 16
             mypole = self.fleepole[scv.tag]
             topos = self.fleepolepos[mypole]
@@ -11091,14 +11154,13 @@ class Chaosbot(sc2.BotAI):
                     for scv in self.units(SCV):
                         if scv.tag in self.speciality_of_tag:
                             if self.speciality_of_tag[scv.tag] == 'workerrush':
+                                del self.speciality_of_tag[scv.tag]
                                 if self.emotion_of_unittag[scv.tag] == 'circling':
                                     # circle forever
                                     self.promote(scv,'scout')
                                     self.fleecirclers.add(scv.tag)
-                                    del self.speciality_of_tag[scv.tag]
                                 else:
                                     self.promote(scv,'idler')
-                                    del self.speciality_of_tag[scv.tag]
             # stacking while moving forward
             back = self.homemim
             forward = self.hisrampmim
@@ -11355,10 +11417,11 @@ class Chaosbot(sc2.BotAI):
                             if scv.tag in platoon:
                                 if plan == 'flee':
                                     self.emotion_of_unittag[scv.tag] = 'fleeing'
-                                    # use next 3 lines to test circling
-                                    #self.emotion_of_unittag[scv.tag] = 'circling'
-                                    #self.fleepole[scv.tag] = 0
-                                    #self.fleefear[scv.tag] = 10 # programruns
+                                    # use next 4 lines to test circling
+                                    #if self.emotion_of_unittag[scv.tag] != 'circling':
+                                    #    self.emotion_of_unittag[scv.tag] = 'circling'
+                                    #    self.fleepole[scv.tag] = 0
+                                    #    self.fleefear[scv.tag] = 99999 # programruns
                                     if self.near(center,self.hisfarmim.position,5):
                                         self.towardsmineral[scv.tag] = self.hisfarmim
                                     else:
@@ -11416,13 +11479,12 @@ class Chaosbot(sc2.BotAI):
                                 self.towardsmineral[scv.tag] = awaymim
                                 self.last_sd_of_scv[scv.tag] = 99999
                                 re_move_set.add(scv.tag)
-                        if emotion in defensive:
+                        if emotion in {'firstaid','inrepair'}:
                             if sd_to_enemy < 2*2:
-                                if emotion != 'fleeing':
-                                    emotion = 'fleeing'
-                                    self.towardsmineral[scv.tag] = awaymim
-                                    self.last_sd_of_scv[scv.tag] = 99999
-                                    re_move_set.add(scv.tag)
+                                emotion = 'fleeing'
+                                self.towardsmineral[scv.tag] = awaymim
+                                self.last_sd_of_scv[scv.tag] = 99999
+                                re_move_set.add(scv.tag)
                         #
                         if (emotion in {'firstaid', 'inrepair'}) and (scv.weapon_cooldown < 7):
                             # and close and a bit healed
@@ -11462,7 +11524,7 @@ class Chaosbot(sc2.BotAI):
                             if goodcount > 0:
                                 self.fleefear[scv.tag] -= 1
                             else:
-                                self.fleefear[scv.tag] = 10
+                                self.fleefear[scv.tag] = 10 # programruns
                             if self.fleefear[scv.tag] < 0:
                                 emotion = 'firstaid'
                         elif scv.weapon_cooldown >= 18: # I bit
@@ -12536,6 +12598,26 @@ class Chaosbot(sc2.BotAI):
                             scv.move(self.blocker_pos[0])
 
 
+    def protection(self):
+        # reporter for an attacked builder
+        if len(self.units(SCV)) > 7:
+            for bui in self.units(SCV):
+                if self.job_of_scvt[bui.tag] == 'builder':
+                    if bui.health < self.last_health[bui.tag]:
+                        if bui.tag not in self.reporter_of_scvt:
+                            repo_tag = self.get_near_scvt_to_goodjob(bui.position)
+                            for repo in self.units(SCV):
+                                if repo.tag == repo_tag:
+                                    self.reporter_of_scvt[bui.tag] = repo.tag
+                                    self.promote(repo,'reporter')
+                                    repo.attack(bui.position)
+        todel = set()
+        for bui_tag in self.reporter_of_scvt:
+            if self.job_of_scvt[bui.tag] != 'builder':
+                todel.add(bui_tag)
+        for bui_tag in todel:
+            del self.reporter_of_scvt[bui_tag]
+
     def blocker(self):
         if self.game_choice[51]:
             for scv in self.units(SCV):
@@ -13344,7 +13426,7 @@ class Chaosbot(sc2.BotAI):
             if random.random() * sum < self.strategy[spec][nr]:
                 radio_nr = nr
         # TO TEST use next line
-        #radio_nr = 32
+        #radio_nr = 26
         for nr in range(0,self.radio_choices):
             self.game_choice.append(nr == radio_nr)
         for nr in range(self.radio_choices,self.game_choices):
@@ -13382,7 +13464,7 @@ def main():
     all_maps = ['LightshadeAIE','OxideAIE','BlackburnAIE','JagannathaAIE','2000AtmospheresAIE','RomanticideAIE']
     map = random.choice(all_maps)
     # TO TEST use next line
-    #map = 'BlackburnAIE'
+    #map = '2000AtmospheresAIE'
     opponentspecies = random.choice([Race.Terran,Race.Zerg,Race.Protoss])
     # TO TEST use next line
     #opponentspecies = Race.Zerg
