@@ -2219,7 +2219,7 @@ class Chaosbot(sc2.BotAI):
         'CantFindCancelOrder', # 214;
         ]
         # chat
-        await self._client.chat_send('Chaosbot version 8 sep 2021, made by MerkMore', team_only=False)
+        await self._client.chat_send('Chaosbot version 11 sep 2021, made by MerkMore', team_only=False)
         #
         #layout_if.photo_layout()
 
