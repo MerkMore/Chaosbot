@@ -380,6 +380,7 @@ class Chaosbot(sc2.BotAI):
     neighbours = set()
     chosenplaces = []
     #   ############### ARMY AND STRUCTURE MANAGEMENT
+    throw_history_set = set()
     # medivacs:
     victim_of_medivac = {} # per medivac the marine it follows
     thechosen = None # a unit. Only valid this frame, functionresult.
@@ -551,9 +552,9 @@ class Chaosbot(sc2.BotAI):
     cheese1_bunker_tag = notag
     cheese1_scv_tag = notag
     cheese1_marine_tags = set()
-    cheese1_marine_count = 0
-    cheese1_tank_count = 0
-    cheese1_mine_count = 0
+    cheese1_marine_buildcount = 0
+    cheese1_tank_buildcount = 0
+    cheese1_mine_buildcount = 0
     cheese1_tank_tag = notag
     cheese1_mine_tags = set()
     cheese1_frames = 0
@@ -665,7 +666,7 @@ class Chaosbot(sc2.BotAI):
     bad_jobs = ('gasminer','mimminer','candidate','carrier','applicant','defender','gasper','reporter')
     no_jobs = ('idler','suicider','volunteer','inshock','fleeer')
     #
-    jobs_may_idle = ('mimminer','fencer','settler','scout','cheeser','candidate','applicant','carrier','idler','gasper','pilot')
+    jobs_may_idle = ('mimminer','fencer','settler','scout','cheeser','applicant','idler','gasper','pilot')
     #
     expected_orders = set()
     #
@@ -862,7 +863,7 @@ class Chaosbot(sc2.BotAI):
         await self.manage_rest()
         self.speedmining()
         await self.bunker_handling()
-        await self.bunkercheese()
+        await self.bunkercheese1()
         await self.bunkercheese2()
         if (self.frame % 5 == 4):
             self.implementing_buildorder_exe()
@@ -2219,7 +2220,7 @@ class Chaosbot(sc2.BotAI):
         'CantFindCancelOrder', # 214;
         ]
         # chat
-        await self._client.chat_send('Chaosbot version 11 sep 2021, made by MerkMore', team_only=False)
+        await self._client.chat_send('Chaosbot version 13 sep 2021, made by MerkMore', team_only=False)
         #
         #layout_if.photo_layout()
 
@@ -6578,6 +6579,19 @@ class Chaosbot(sc2.BotAI):
                                     if self.build_thing(thing, place, owner):
                                         del self.thoughts[self.thoughts.index((thing, pl, owner))]
                                         self.buildorder_exe[nr] = (th, place, 'prep')
+    def throw_history(self,th,po):
+        # make unthinkable to throw a building more than 3 times
+        if th in self.all_structures:
+            nr = 0
+            for (hth,hpo,hnr) in self.throw_history_set:
+                if (hth == th) and (hpo == po):
+                    nr = hnr
+            if nr > 0:
+                self.throw_history_set.remove((th,po,nr))
+            nr += 1
+            self.throw_history_set.add((th,po,nr))
+            if nr == 3:
+                self.make_unthinkable(th,po)
 
     def throw_at_spot(self, th, po, ow):
         # append to throwspots
@@ -6605,6 +6619,7 @@ class Chaosbot(sc2.BotAI):
                 self.log_success('Thrown but in buildorder_exe: '+th.name + ' by ' + ow)
         if approve:
             self.throwspots.append((th, po, sta, ow))
+            self.throw_history(th,po)
             if th in self.all_structures_tobuildwalk:
                 self.write_layout(th, po)
             if th in self.all_army:
@@ -6906,7 +6921,7 @@ class Chaosbot(sc2.BotAI):
                 # some buildorder_exe parts that are thrown:
                 if (thing == self.opening_create_kind) and (self.game_phase == 'opening'):
                     doitnow = True
-                if (ow in {'marine_fun','do_cocoon','do_banshees','urgent_ocs'}):
+                if (ow in {'marine_fun','do_cocoon','do_banshees','urgent_ocs','bunkercheese1'}):
                     doitnow = True
                 if doitnow:
                     if thing in self.all_structures_tobuildwalk:
@@ -9011,7 +9026,9 @@ class Chaosbot(sc2.BotAI):
     async def attack_with_rest(self):
         # ravens should follow(attack) a battlecruiser
         for rv in self.units(RAVEN).idle:
-            if rv.tag not in self.victim_of_raven:
+            if rv.tag in self.thingtag_of_repairertag.values():
+                pass
+            elif rv.tag not in self.victim_of_raven:
                 if self.support_a_bc(rv.position):
                     self.victim_of_raven[rv.tag] = self.thechosen.tag
                     rv.attack(self.thechosen)
@@ -9037,7 +9054,9 @@ class Chaosbot(sc2.BotAI):
                         self.lostframe_of_raven[rv.tag] = self.frame
         # medivacs should follow(attack) a marine
         for med in self.units(MEDIVAC).idle:
-            if med.tag not in self.victim_of_medivac:
+            if med.tag in self.thingtag_of_repairertag.values():
+                pass
+            elif med.tag not in self.victim_of_medivac:
                 if self.heal_a_marine(med.position):
                     self.victim_of_medivac[med.tag] = self.thechosen.tag
                     med.attack(self.thechosen)
@@ -10447,54 +10466,91 @@ class Chaosbot(sc2.BotAI):
 
 
     async def cheese1_army(self):
-        if self.cheese1_marine_count < 4:
+        if self.cheese1_marine_buildcount < 4:
             thing = MARINE
             if (self.cheese1_phase >= 'B') and (self.cheese1_phase < 'Z'):
                 for ba in self.structures(BARRACKS).ready.idle:
                     if self.cheese1_barracks_tag == ba.tag:
                         if self.can_pay(thing):
                             if self.supply_check(thing):
-                                self.log_command('ba.train(thing)')
-                                ba.train(thing)
-                                self.cheese1_marine_count += 1
-        if self.cheese1_tank_count < 1:
+                                if self.no_doubling(ba.tag):
+                                    self.log_command('ba.train(thing)')
+                                    ba.train(thing)
+                                    self.cheese1_marine_buildcount += 1
+                                    self.prevent_doubling(ba.tag)
+        if self.cheese1_tank_buildcount < 1:
             thing = SIEGETANK
             if (self.cheese1_phase >= 'K') and (self.cheese1_phase < 'Z'):
                 for fac in self.structures(FACTORY).ready.idle:
                     if self.cheese1_factory_tag == fac.tag:
                         if self.can_pay(thing):
                             if self.supply_check(thing):
-                                self.log_command('fac.train(thing)')
-                                fac.train(thing)
-                                self.cheese1_tank_count += 1
-        if self.cheese1_mine_count < 2:
+                                if self.no_doubling(fac.tag):
+                                    self.log_command('fac.train(thing)')
+                                    fac.train(thing)
+                                    self.cheese1_tank_buildcount += 1
+                                    self.prevent_doubling(fac.tag)
+        if self.cheese1_mine_buildcount < 2:
             thing = WIDOWMINE
             if (self.cheese1_phase >= 'N') and (self.cheese1_phase < 'Z'):
                 for fac in self.structures(FACTORY).ready.idle:
                     if self.cheese1_factory_tag == fac.tag:
                         if self.can_pay(thing):
                             if self.supply_check(thing):
-                                self.log_command('fac.train(thing)')
-                                fac.train(thing)
-                                self.cheese1_mine_count += 1
+                                if self.no_doubling(fac.tag):
+                                    self.log_command('fac.train(thing)')
+                                    fac.train(thing)
+                                    self.cheese1_mine_buildcount += 1
+                                    self.prevent_doubling(fac.tag)
 
+    def cheese1_scv_is_in_prison(self) -> bool:
+        inprison = False
+        for scv in self.units(SCV):
+            if scv.tag == self.cheese1_scv_tag:
+                bound = self.circledist(self.cheese1_prison_pos, self.cheese1_bunker_pos)
+                if self.near(scv.position, self.cheese1_prison_pos, bound):
+                    inprison = True
+        return inprison
 
     def marines_into_cheesebunker(self):
-        self.cheese1_marine_tags = set()
+        # explicit repair
+        for bu in self.structures(BUNKER):
+            if bu.tag == self.cheese1_bunker_tag:
+                if bu.health < self.maxhealth[BUNKER]:
+                    if self.cheese1_scv_is_in_prison():
+                        for scv in self.units(SCV):
+                            if scv.tag == self.cheese1_scv_tag:
+                                if scv.tag not in self.thingtag_of_repairertag:
+                                    self.thingtag_of_repairertag[scv.tag] = bu.tag
+                                    scv.repair(bu)
+        # marines into bunker
+        for bu in self.structures(BUNKER):
+            if bu.tag == self.cheese1_bunker_tag:
+                for mar in bu.passengers:
+                    if mar.type_id == MARINE:
+                        self.cheese1_marine_tags.add(mar.tag)
         for mari in self.units(MARINE):
             if self.near(mari.position, self.cheese1_landing_pos, 7):
-                self.cheese1_marine_tags.add(mari.tag)
-        for mari in self.units(MARINE):
-            if mari.tag in self.cheese1_marine_tags:
-                for bun in self.structures(BUNKER):
-                    if bun.tag == self.cheese1_bunker_tag:
-                        if len(bun.passengers) < 4:
-                            self.log_command('bun(AbilityId.LOAD_BUNKER,mari)')
-                            bun(AbilityId.LOAD_BUNKER, mari)
+                if len(self.cheese1_marine_tags) < 4:
+                    self.cheese1_marine_tags.add(mari.tag)
+        for bun in self.structures(BUNKER):
+            if bun.tag == self.cheese1_bunker_tag:
+                if self.cheese1_scv_is_in_prison():
+                    freeplaces = 4 - len(bun.passengers)
+                else:
+                    freeplaces = 3 - len(bun.passengers)
+                if (freeplaces > 0):
+                    for mari in self.units(MARINE):
+                        if mari.tag in self.cheese1_marine_tags:
+                            if freeplaces > 0:
+                                if self.no_doubling(bun.tag):
+                                    self.prevent_doubling(bun.tag)
+                                    self.log_command('bun(AbilityId.LOAD_BUNKER,mari)')
+                                    bun(AbilityId.LOAD_BUNKER, mari)
+                                    freeplaces -= 1
 
 
-
-    async def bunkercheese(self):
+    async def bunkercheese1(self):
         # break off the cheese?
         if (self.cheese1_phase >= 'B') and (self.cheese1_phase < 'Z'):
             startedbuildings = 0
@@ -10522,7 +10578,12 @@ class Chaosbot(sc2.BotAI):
         # follow a large series of phases
         if self.cheese1_phase == 'Anobunker':
             if not self.we_started_at(BUNKER, self.cheese1_bunker_pos):
-                self.throw_at_spot(BUNKER, self.cheese1_bunker_pos, 'bunkercheese')
+                self.erase_layout(BUNKER,self.cheese1_bunker_pos)
+                self.throw_at_spot(BUNKER, self.cheese1_bunker_pos, 'bunkercheese1')
+                for scv in self.units(SCV):
+                    if scv.tag == self.cheese1_scv_tag:
+                        self.promote(scv,'idler')
+                        self.cheese1_scv_tag = self.notag
                 self.cheese1_phase = 'A'
         elif self.cheese1_phase == 'A':
             # wait for landed barracks and building bunker
@@ -10548,7 +10609,6 @@ class Chaosbot(sc2.BotAI):
         elif self.cheese1_phase == 'B':
             # barracks has landed and bunker is started
             # wait for bunker ready
-            # check for a lost cause
             for bun in self.structures(BUNKER):
                 if bun.tag == self.cheese1_bunker_tag:
                     if bun.tag in self.last_health:
@@ -10570,7 +10630,7 @@ class Chaosbot(sc2.BotAI):
                                     self.log_command('scv(AbilityId.SMART,bun)')
                                     scv(AbilityId.SMART,bun)
                     if bun in self.structures(BUNKER).ready:
-                        # rally and load and promotion
+                        # rally and load-or-repair and promotion
                         for ba in self.structures(BARRACKS):
                             if ba.tag == self.cheese1_barracks_tag:
                                 self.set_rally.add((ba.position, self.cheese1_bunker_pos))
@@ -10578,18 +10638,47 @@ class Chaosbot(sc2.BotAI):
                                     if scv.tag == self.cheese1_scv_tag:
                                         self.promote(scv, 'cheeser')
                                         # warning: scv inside the bunker is not in self.units(SCV)
-                                        self.log_command('bun(AbilityId.LOAD_BUNKER,scv)')
-                                        bun(AbilityId.LOAD_BUNKER,scv)
-                                        self.cheese1_phase = 'D'
+                                        if self.cheese1_scv_is_in_prison():
+                                            self.cheese1_phase = 'G'
+                                        elif (scv.health > self.maxhealth[SCV] / 2) and (bun.health < self.maxhealth[BUNKER] / 2):
+                                            self.cheese1_phase = 'C'
+                                            if scv.tag not in self.thingtag_of_repairertag:
+                                                self.thingtag_of_repairertag[scv.tag] = bun.tag
+                                                scv.repair(bun)
+                                        else:
+                                            self.log_command('bun(AbilityId.LOAD_BUNKER,scv)')
+                                            bun(AbilityId.LOAD_BUNKER,scv)
+                                            self.cheese1_phase = 'D'
             if self.cheese1_bunker_tag not in self.all_bunkertags:
                 if self.cheese1_scv_tag in self.all_scvt:
                     self.cheese1_phase = 'Anobunker'
-        elif self.cheese1_phase == 'D':
-            # temporarily load some marines to make place for the scv
+        elif self.cheese1_phase == 'C':
+            # outerrepair
             self.marines_into_cheesebunker()
-            self.cheese1_phase = 'E'
+            for bun in self.structures(BUNKER):
+                if bun.tag == self.cheese1_bunker_tag:
+                    if bun.tag in self.last_health:
+                        if bun.health < 0.67 * self.last_health[bun.tag]:
+                            # execute bunkercheese before destroyed
+                            # cancel the build
+                            bun(AbilityId.CANCEL_BUILDINPROGRESS)
+                            self.cheese1_phase = 'Anobunker'
+                    for scv in self.units(SCV):
+                        if scv.tag == self.cheese1_scv_tag:
+                            if (scv.health < self.maxhealth[SCV] / 2) or (bun.health > self.maxhealth[BUNKER] / 2):
+                                self.log_command('bun(AbilityId.LOAD_BUNKER,scv)')
+                                bun(AbilityId.LOAD_BUNKER, scv)
+                                del self.thingtag_of_repairertag[scv.tag]
+                                self.cheese1_phase = 'D'
+        elif self.cheese1_phase == 'D':
+            # wait until the scv is in the bunker
+            for bu in self.structures(BUNKER):
+                if bu.tag == self.cheese1_bunker_tag:
+                    for mar in bu.passengers:
+                        if mar.type_id == SCV:
+                            self.cheese1_phase = 'E'
         elif self.cheese1_phase == 'E':
-            # we want to unload the cheese1_scv, but it is said only unloadall works
+            # we want to unload the cheese1_scv, but only unloadall works
             for bun in self.structures(BUNKER):
                 if bun.tag == self.cheese1_bunker_tag:
                     self.log_command('bun(AbilityId.UNLOADALL_BUNKER)')
@@ -10597,17 +10686,20 @@ class Chaosbot(sc2.BotAI):
                     self.cheese1_frames = 0
                     self.cheese1_phase = 'F'
         elif self.cheese1_phase == 'F':
-            # The scv sometimes does not come out. Maybe if a marine goes out and starts shooting?
-            self.cheese1_frames += self.chosen_game_step
-            if self.cheese1_frames >= 24:
-                self.cheese1_phase = 'G'
+            # wait until the scv is out of the bunker
+            for scv in self.units(SCV):
+                if scv.tag == self.cheese1_scv_tag:
+                    self.cheese1_phase = 'G'
         elif self.cheese1_phase == 'G':
             self.marines_into_cheesebunker()
-            self.cheese1_phase = 'H'
-            if self.cheese1_scv_tag not in self.all_scvt: # cheese1_scv is still inside the bunker
-                self.cheese1_phase = 'E'
+            # wait until the marines are inside
+            allin = True
+            for mar in self.units(MARINE):
+                if mar.tag in self.cheese1_marine_tags:
+                    allin = False
+            if allin:
+                self.cheese1_phase = 'H'
         elif self.cheese1_phase == 'H':
-            # repeat the load command as it is seen to be disobeyed
             self.marines_into_cheesebunker()
             # if the bunker is killed, try again
             if self.cheese1_bunker_tag not in self.all_bunkertags:
@@ -10655,7 +10747,7 @@ class Chaosbot(sc2.BotAI):
         elif self.cheese1_phase == 'K':
             self.marines_into_cheesebunker()
             # wait for tank to be made
-            if self.cheese1_tank_count == 1:
+            if self.cheese1_tank_buildcount == 1:
                 if len(self.units(SIEGETANK)) + len(self.units(SIEGETANKSIEGED)) == 1:
                     # fly the factory in
                     for fac in self.structures(FACTORY).ready:
@@ -13272,7 +13364,7 @@ class Chaosbot(sc2.BotAI):
                         if self.job_of_scvt[cheesertag] == 'cheeser':
                             if not scv.is_constructing_scv:
                                 if cheesertag not in self.thingtag_of_repairertag:
-                                    if scv.tag != s.tag:
+                                    if scv.tag != wreck.tag:
                                         scvt = cheesertag
                     for scv in self.scvs_of_expo[wreckexpo]:
                         if scv.tag == scvt:
@@ -14337,7 +14429,7 @@ class Chaosbot(sc2.BotAI):
             if random.random() * sum < self.strategy[spec][nr]:
                 radio_nr = nr
         # TO TEST use next line
-        #radio_nr = 13
+        #radio_nr = 2
         for nr in range(0,self.radio_choices):
             self.game_choice.append(nr == radio_nr)
         for nr in range(self.radio_choices,self.game_choices):
