@@ -2,11 +2,7 @@
 # Makes text for building placement
 # appends the output to file "data\placement.txt"
 # author: MerkMore
-<<<<<<< HEAD
 # version 19 aug 2021
-=======
-# version 16 jun 2021
->>>>>>> 0d76541aa6fae3dbd45d5125803bea0d9445efb0
 from layout_if_py import layout_if
 import random
 from math import sqrt, sin, cos, acos, pi
@@ -419,7 +415,6 @@ class prog:
         # Find a 8*8 cocoon spot near the enemy choke.
         # Do not draw/reserve it as this spot can have other uses.
         anchor = enemynaturalchoke
-<<<<<<< HEAD
         idealsd = 15
         besttry = 99999
         found_spot = (0, 0)
@@ -430,18 +425,6 @@ class prog:
                 if self.can_place_shape(8, maypos):
                     sd = self.sdist(anchor, maypos)
                     try0 = (sd - idealsd) * (sd - idealsd) + 4 * self.circledist(maypos, self.mapcenter)
-=======
-        idealsd = 35
-        besttry = 99999
-        found_spot = (0, 0)
-        estimate = self.fromto(anchor, self.mapcenter, sqrt(idealsd))
-        for dx in range(-20, 20):
-            for dy in range(-20, 20):
-                maypos = (estimate[0] + dx, estimate[1] + dy)
-                if self.can_place_shape(8, maypos):
-                    sd = self.sdist(anchor, maypos)
-                    try0 = (sd - idealsd) * (sd - idealsd) + self.circledist(maypos, self.mapcenter)
->>>>>>> 0d76541aa6fae3dbd45d5125803bea0d9445efb0
                     if try0 < besttry:
                         found_spot = maypos
                         besttry = try0
