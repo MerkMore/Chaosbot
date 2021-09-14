@@ -5,7 +5,11 @@
 #
 # use:   from bunker_if_py import bunker_if
 #
+<<<<<<< HEAD
 #from typing import List,Set,Dict
+=======
+from typing import List,Set,Dict
+>>>>>>> 0d76541aa6fae3dbd45d5125803bea0d9445efb0
 #
 import sc2
 from sc2.ids.ability_id import AbilityId
@@ -16,8 +20,11 @@ from sc2.position import Point2
 from sc2.ids.unit_typeid import SCV
 from sc2.ids.unit_typeid import MARINE
 from sc2.ids.unit_typeid import BUNKER
+<<<<<<< HEAD
 from sc2.ids.unit_typeid import DRONE
 from sc2.ids.unit_typeid import PROBE
+=======
+>>>>>>> 0d76541aa6fae3dbd45d5125803bea0d9445efb0
 
 
 class bunker_if:
@@ -26,7 +33,10 @@ class bunker_if:
     #   do in the begin of on_step:
     #   bunker_if.init_step(self)
     units = None
+<<<<<<< HEAD
     enemy_units = None
+=======
+>>>>>>> 0d76541aa6fae3dbd45d5125803bea0d9445efb0
     structures = None
     get_available_abilities = None
     #
@@ -58,7 +68,10 @@ class bunker_if:
 
     def init_step(self):
         bunker_if.units = self.units
+<<<<<<< HEAD
         bunker_if.enemy_units = self.enemy_units
+=======
+>>>>>>> 0d76541aa6fae3dbd45d5125803bea0d9445efb0
         bunker_if.structures = self.structures
         bunker_if.get_available_abilities = self.get_available_abilities
 
@@ -89,7 +102,10 @@ class bunker_if:
         #                  astate 'walking'       has goalbunkertag, is moving or waiting until bunker ready
         #                  astate 'returning'     no goalbunkertag, is moving to hiding_spot
         #                  astate 'resting'       no goalbunkertag.
+<<<<<<< HEAD
         #                  astate 'disturbed'     no goalbunkertag, is attacking a worker
+=======
+>>>>>>> 0d76541aa6fae3dbd45d5125803bea0d9445efb0
         #
         load_frames = 20
         load_dist = 6
@@ -221,9 +237,15 @@ class bunker_if:
                 else: # bunker gone
                     del bunker_if.goalbunkertag[mant]
                     bunker_if.astate[mant] = 'returning'
+<<<<<<< HEAD
             if bunker_if.astate[mant] in ['resting','returning','disturbed']:
                 for bunt in bunker_if.bunkertags:
                     if bunker_if.astate[mant] in ['resting','returning','disturbed']:
+=======
+            if bunker_if.astate[mant] in ['resting','returning']:
+                for bunt in bunker_if.bunkertags:
+                    if bunker_if.astate[mant] in ['resting','returning']:
+>>>>>>> 0d76541aa6fae3dbd45d5125803bea0d9445efb0
                         for bun in bunker_if.structures(BUNKER):
                             if bun.tag == bunt:
                                 if bun.health < bun.health_max:
@@ -241,6 +263,7 @@ class bunker_if:
                     if man.tag == mant:
                         man.move(bunker_if.hiding_spot)
                         bunker_if.astate[mant] = 'resting'
+<<<<<<< HEAD
             if bunker_if.astate[mant] == 'resting':
                 for man in bunker_if.units(SCV):
                     if man.tag == mant:
@@ -258,6 +281,8 @@ class bunker_if:
                             bunker_if.astate[mant] = 'returning'
                         if man in bunker_if.units(SCV).idle:
                             bunker_if.astate[mant] = 'returning'
+=======
+>>>>>>> 0d76541aa6fae3dbd45d5125803bea0d9445efb0
         # unload
         for bunt in bunker_if.bunkertags:
             for bun in bunker_if.structures(BUNKER):
