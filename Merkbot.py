@@ -404,6 +404,8 @@ class Chaosbot(sc2.BotAI):
     # emotion_of_unittag[vik.tag] 'patrolling'/'attacking'/'moving'
     forgotten_vikings = {} # per vik.tag the frame it was seen idle in repair
     #
+    idiot_plan = []
+    idiot_busy = set()  # of (thing,finishframe) being built
     rushopening = False
     opening_create_units = 0
     opening_create_kind = None
@@ -581,7 +583,7 @@ class Chaosbot(sc2.BotAI):
     cheese3_bunkersites = set()
     cheese3_tanktags = set()
     # for workerrush:
-    followers = nowhere # for a runaround circle radius 8
+    followers = nowhere # for a large runaround circle
     fleefear = {} # to continue through bushes: per scvtag a number
     fleepole = {} # for circling scvs: per scvtag a number 0/1/.../15
     fleepolepos = [] # 16 points of a circle in a corner
@@ -866,6 +868,7 @@ class Chaosbot(sc2.BotAI):
         await self.bunkercheese1()
         await self.bunkercheese2()
         if (self.frame % 5 == 4):
+            self.idiot()
             self.implementing_buildorder_exe()
             self.make_planning_exe()
             self.follow_planning_exe()
@@ -1630,6 +1633,18 @@ class Chaosbot(sc2.BotAI):
                 viewpos = Point2((43,45))
             self.chosenplaces.append((SUPPLYDEPOT, viewpos))
         #
+        # idiot_plan to be used when floating minerals
+        block = [COMMANDCENTER, SCV,SCV,SCV,SCV,SCV,SCV,SCV,SCV, REFINERY, SCV,SCV,SCV, SCV, REFINERY,
+                 SUPPLYDEPOT, STARPORT, SCV, SCV, SCV, SCV, STARPORTTECHLAB, BATTLECRUISER]
+        self.idiot_plan = [COMMANDCENTER, SCV, SCV, SCV, SCV, SCV, SCV, SCV, SCV, SUPPLYDEPOT, BARRACKS, MARINE, MARINE,
+                            SCV, SCV, SCV, SCV, ORBITALCOMMAND, COMMANDCENTER, BARRACKS, REFINERY,
+                            MARINE, MARINE, FACTORY, REFINERY, ENGINEERINGBAY, PLANETARYFORTRESS,
+                            STARPORT, BANSHEE, SCV, SCV, SCV, SCV, MARINE, MARINE, SUPPLYDEPOT, REFINERY,
+                            FACTORYTECHLAB, STARPORTTECHLAB, SIEGETANK, FUSIONCORE, BATTLECRUISER,
+                            ARMORY, TERRANSHIPWEAPONSLEVEL1]
+        self.idiot_plan += block + block + block + [RAVEN, BATTLECRUISER, BATTLECRUISER]
+
+        #
         self.init_liberator_spots()
         # opening
         cocoon_series = [SUPPLYDEPOT, BARRACKS, BARRACKS, SUPPLYDEPOT, MARINE, BUNKER, MARINE, BUNKER, MARINE, MARINE, MARINE]
@@ -2220,7 +2235,7 @@ class Chaosbot(sc2.BotAI):
         'CantFindCancelOrder', # 214;
         ]
         # chat
-        await self._client.chat_send('Chaosbot version 13 sep 2021, made by MerkMore', team_only=False)
+        await self._client.chat_send('Chaosbot version 15 sep 2021, made by MerkMore', team_only=False)
         #
         #layout_if.photo_layout()
 
@@ -3567,6 +3582,19 @@ class Chaosbot(sc2.BotAI):
                 have += 1
         for (thing,pos,owner) in self.thoughts:
             if (thing == barra):
+                have += 1
+        return have
+
+    def we_preppedetc_amount(self,barra) -> int:
+        have = 0
+        for (thing,pos) in self.birds:
+            if (thing == barra):
+                have += 1
+        for (marty,bartype,pos,dura) in self.eggs:
+            if (marty == barra):
+                have += 1
+        for (marty,bartype,pos,dura,owner) in self.preps:
+            if (marty == barra):
                 have += 1
         return have
 
@@ -6429,6 +6457,89 @@ class Chaosbot(sc2.BotAI):
 
     # *********************************************************************************************************************
 
+    def idiot(self):
+        # build something when minerals explode
+        if self.minerals >= 1000:
+            wanted = {}
+            todo = 1
+            minimum_minerals = 1000
+            todel = set()
+            for (thing,finishframe) in self.idiot_busy:
+                if self.frame < finishframe:
+                    cost = self.get_added_cost(thing)
+                    minimum_minerals += cost.minerals
+                    if thing in wanted:
+                        wanted[thing] -= 1
+                    else:
+                        wanted[thing] = -1
+                else:
+                    todel.add((thing,finishframe))
+            self.idiot_busy -= todel
+            if self.minerals >= minimum_minerals:
+                for thing in self.idiot_plan:
+                    if todo > 0:
+                        if thing in wanted:
+                            wanted[thing] += 1
+                        else:
+                            wanted[thing] = 1
+                        amount = wanted[thing]
+                        if self.we_preppedetc_amount(thing) < amount:
+                            if self.can_pay(thing):
+                                if self.check_techtree(thing):
+                                    if self.check_supply(thing):
+                                        if self.check_cradleidle(thing):
+                                            if thing == SCV:
+                                                for cradle_type in {COMMANDCENTER, ORBITALCOMMAND, PLANETARYFORTRESS}:
+                                                    for dock in self.structures(cradle_type).ready.idle:
+                                                        if todo > 0:
+                                                            todo -= 1
+                                                            self.idiot_busy.add((thing, self.frame + 100))
+                                                            dock.train(SCV)
+                                            elif thing == COMMANDCENTER:
+                                                todo -= 1
+                                                self.idiot_busy.add((thing, self.frame + 500))
+                                                place = random.choice(self.expansion_locations)
+                                                scvt = self.get_near_scvt_to_goodjob(place)
+                                                self.thoughts.append((thing, place, 'idiot'))
+                                                self.build_thing_tobuildwalk(scvt,thing,place,'idiot')
+                                            elif thing == REFINERY:
+                                                todo -= 1
+                                                self.idiot_busy.add((thing, self.frame + 500))
+                                                # closest empty geyser, and close geysers
+                                                geysers = set()
+                                                minsd = 99999
+                                                closest = self.nowhere
+                                                for cradle_type in {COMMANDCENTER, ORBITALCOMMAND, PLANETARYFORTRESS}:
+                                                    for dock in self.structures(cradle_type):
+                                                        for gey in self.vespene_geyser:
+                                                            if self.near(dock.position,gey.position,10):
+                                                                geysers.add(gey.position)
+                                                            sd = self.sdist(dock.position,gey.position)
+                                                            if sd < minsd:
+                                                                closest = gey.position
+                                                                minsd = sd
+                                                geysers.add(closest)
+                                                place = random.choice(tuple(geysers))
+                                                scvt = self.get_near_scvt_to_goodjob(place)
+                                                self.thoughts.append((thing, place, 'idiot'))
+                                                self.build_thing_tobuildwalk(scvt, thing, place, 'idiot')
+                                            elif thing in self.all_structures_tobuildwalk:
+                                                todo -= 1
+                                                self.idiot_busy.add((thing, self.frame + 500))
+                                                place = self.random_mappoint()
+                                                while self.proxy(place):
+                                                    place = self.random_mappoint()
+                                                place = self.place_around(thing,place)
+                                                scvt = self.get_near_scvt_to_goodjob(place)
+                                                self.thoughts.append((thing, place, 'idiot'))
+                                                self.build_thing_tobuildwalk(scvt,thing,place,'idiot')
+                                            else:
+                                                todo -= 1
+                                                self.idiot_busy.add((thing, self.frame + 100))
+                                                self.thoughts.append((thing, self.somewhere, 'idiot'))
+                                                self.build_thing(thing,self.somewhere,'idiot')
+                        
+    
     def remove_from_planning_etc(self, thing, place):
         # from planning_exe the first one
         todel = set()
@@ -7479,11 +7590,28 @@ class Chaosbot(sc2.BotAI):
             self.preps.add((thing, scvt, place, dura, owner))
         return didit
 
-    def supply_check(self,ship) -> bool:
+    def check_supply(self,ship) -> bool:
         ok = True
-        if ship in self.all_army:
+        if ship == SCV:
+            ok = (self.supply_left >= 1)
+        elif ship in self.all_army:
             ok = (self.supply_left >= self.supply_of_army[ship])
         return ok
+
+    def check_cradleidle(self,ship) -> bool:
+        if (ship in self.all_structures_tobuildwalk):
+            ok = True
+        elif ship == SCV:
+            ok = False
+            for cradle_type in {COMMANDCENTER,ORBITALCOMMAND,PLANETARYFORTRESS}:
+                for dock in self.structures(cradle_type).ready.idle:
+                    ok = True
+        else:    
+            ok = False
+            cradle_type = self.cradle_of_thing(ship)
+            for dock in self.structures(cradle_type).ready.idle:
+                ok = True
+        return ok      
 
     def prepped_to_egg(self,  martype, bartype, pos):
         self.log_success('succeeded prep to egg ' + martype.name + ' at ' + self.txt(pos))
@@ -7691,7 +7819,7 @@ class Chaosbot(sc2.BotAI):
                         self.log_success('trying to egg ' + trainee.name)
                         if self.check_techtree(trainee):
                             if self.can_pay(trainee):
-                                if self.supply_check(trainee):
+                                if self.check_supply(trainee):
                                     del self.gym_of_strt[building.tag]
                                     if trainee in self.all_upgrades:
                                         await self.do_upgrade(trainee,pos)
@@ -7891,7 +8019,7 @@ class Chaosbot(sc2.BotAI):
                                     if self.nearly_free(cc, cradle_type, 10):
                                         if cc.tag not in self.ambition_of_strt:
                                             if cc.tag not in self.gym_of_strt:
-                                                if self.supply_check(ambition):
+                                                if self.check_supply(ambition):
                                                     if (ambition in self.all_labs):
                                                         if not cc.has_add_on:
                                                             self.ambition_of_strt[cc.tag] = ambition
@@ -7924,7 +8052,7 @@ class Chaosbot(sc2.BotAI):
                                     if self.nearly_free(cc, cradle_type, 8):
                                         if cc.tag not in self.ambition_of_strt:
                                             if cc.tag not in self.gym_of_strt:
-                                                if self.supply_check(trainee):
+                                                if self.check_supply(trainee):
                                                     self.gym_of_strt[cc.tag] = trainee
                                                     self.owner_of_ambigymstrt[cc.tag] = owner
                                                     didit = True
@@ -10472,7 +10600,7 @@ class Chaosbot(sc2.BotAI):
                 for ba in self.structures(BARRACKS).ready.idle:
                     if self.cheese1_barracks_tag == ba.tag:
                         if self.can_pay(thing):
-                            if self.supply_check(thing):
+                            if self.check_supply(thing):
                                 if self.no_doubling(ba.tag):
                                     self.log_command('ba.train(thing)')
                                     ba.train(thing)
@@ -10484,7 +10612,7 @@ class Chaosbot(sc2.BotAI):
                 for fac in self.structures(FACTORY).ready.idle:
                     if self.cheese1_factory_tag == fac.tag:
                         if self.can_pay(thing):
-                            if self.supply_check(thing):
+                            if self.check_supply(thing):
                                 if self.no_doubling(fac.tag):
                                     self.log_command('fac.train(thing)')
                                     fac.train(thing)
@@ -10496,7 +10624,7 @@ class Chaosbot(sc2.BotAI):
                 for fac in self.structures(FACTORY).ready.idle:
                     if self.cheese1_factory_tag == fac.tag:
                         if self.can_pay(thing):
-                            if self.supply_check(thing):
+                            if self.check_supply(thing):
                                 if self.no_doubling(fac.tag):
                                     self.log_command('fac.train(thing)')
                                     fac.train(thing)
@@ -11997,7 +12125,7 @@ class Chaosbot(sc2.BotAI):
                 self.slowdown_frames =  self.workerrushstopframe - 1100
             # emotions:
             agressive = {'brave','jumping','biting','bouncing','afraid','looting'}
-            defensive = {'fleeing','firstaid','inrepair','circling'}
+            defensive = {'fleeing','firstaid','inrepair','circling','teasing'}
             neutral = {'ingoing'}
             #
             # brave: mineralwalking to hisrampmim or hisfarmim. Cooled (<7). Near enemy minerals.
@@ -12011,6 +12139,7 @@ class Chaosbot(sc2.BotAI):
             # circling: walking around in a corner of the map
             # inrepair: Going to an own scv or repairing one. May be repaired.
             # ingoing: mineralwalking to hisrampmim or hisfarmim. Ready to bite. Not near enemy minerals.
+            # teasing: being followed by many opponents
             #
             #
             self.calculate_nextpos()
@@ -12312,11 +12441,6 @@ class Chaosbot(sc2.BotAI):
                             if scv.tag in platoon:
                                 if plan == 'flee':
                                     self.emotion_of_unittag[scv.tag] = 'fleeing'
-                                    # use next 4 lines to test circling
-                                    #if self.emotion_of_unittag[scv.tag] != 'circling':
-                                    #    self.emotion_of_unittag[scv.tag] = 'circling'
-                                    #    self.fleepole[scv.tag] = 0
-                                    #    self.fleefear[scv.tag] = 99999 # programruns
                                     (mimpos,mimt) = self.hisfarmim
                                     if self.near(center,mimpos,5):
                                         self.towardsmineral[scv.tag] = self.hisfarmim
@@ -12360,6 +12484,18 @@ class Chaosbot(sc2.BotAI):
                                 sd = self.sdist(self.nextpos_of_unittag[scv.tag],self.nextpos_of_unittag[ene.tag])
                                 sd_to_enemy = min(sd,sd_to_enemy)
                         #
+                        # minority means running away when followed by many enemies
+                        minority = 0 # enemies - 1.5 * ours
+                        for anscv in self.units(SCV):
+                            if self.near(anscv.position, scv.position, 5):
+                                minority -= 1.5
+                        for (tag, pos) in self.last_enemies:
+                            for ene in self.enemy_units:  # actual visible
+                                if self.near(ene.position, scv.position, 10):
+                                    # if approaches
+                                    if self.sdist(ene.position, scv.position) < self.sdist(pos, scv.position):
+                                        minority += 1
+                        #
                         self.wait_of_scv[scv.tag] -= self.chosen_game_step
                         # timed: bouncing, jumping, biting
                         #
@@ -12400,26 +12536,26 @@ class Chaosbot(sc2.BotAI):
                             if sd_to_enemy > 5*5:
                                 emotion = 'firstaid'
                             elif (not self.near(scv.position,self.enemy_pos,20)):
-                                goodcount = 0
+                                groupcount = 0
                                 for anscv in self.units(SCV):
                                     if self.near(anscv.position,scv.position,7):
-                                        goodcount += 1
+                                        groupcount += 1
                                 for ene in self.enemy_units: # actual visible
                                     if self.near(ene.position, scv.position, 7):
-                                        goodcount -= 1
-                                if goodcount < 0:
+                                        groupcount -= 1
+                                if groupcount < 0:
                                     emotion = 'circling'
                                     self.fleepole[scv.tag] = 0
                                     self.fleefear[scv.tag] = 10 # programruns
                         elif emotion == 'circling':
-                            goodcount = 0
+                            groupcount = 0
                             for anscv in self.units(SCV):
                                 if self.near(anscv.position, scv.position, 7):
-                                    goodcount += 1
+                                    groupcount += 1
                             for ene in self.enemy_units: # actual visible
                                 if self.near(ene.position, scv.position, 7):
-                                    goodcount -= 1
-                            if goodcount > 0:
+                                    groupcount -= 1
+                            if groupcount > 0:
                                 self.fleefear[scv.tag] -= 1
                             else:
                                 self.fleefear[scv.tag] = 10 # programruns
@@ -12444,10 +12580,19 @@ class Chaosbot(sc2.BotAI):
                             elif scv in self.units(SCV).idle:
                                 re_move_set.add(scv.tag)
                         elif emotion == 'ingoing':
-                            if self.near(scv.position, self.hisfarmim[0], 8):
+                            if minority >= 0:
+                                emotion = 'teasing'
+                            elif self.near(scv.position, self.hisfarmim[0], 8):
                                 emotion = 'brave'
                             elif self.near(scv.position, self.hisrampmim[0], 8):
                                 emotion = 'brave'
+                        elif emotion == 'teasing':
+                            if minority < 0:
+                                emotion = 'ingoing'
+                            elif (not self.near(scv.position, self.enemy_pos, 20)):
+                                emotion = 'circling'
+                                self.fleepole[scv.tag] = 0
+                                self.fleefear[scv.tag] = 10  # programruns
                         elif emotion == 'afraid':
                             if sd_to_enemy >= 1.5*1.5:
                                 emotion = 'firstaid'
@@ -12555,7 +12700,7 @@ class Chaosbot(sc2.BotAI):
                                 self.go_gather(scv,self.towardsmineral[scv.tag])
                             elif emotion == 'bouncing':
                                 self.go_gather(scv,awaymim)
-                            elif emotion == 'fleeing':
+                            elif emotion in {'fleeing','teasing'}:
                                 if self.near(scv.position, self.hisfarmim[0], 2):
                                     self.towardsmineral[scv.tag] = self.homemim
                                     scv.move(self.turningpoint)
@@ -13057,7 +13202,7 @@ class Chaosbot(sc2.BotAI):
                         if ba.position == self.wall_barracks_pos:
                             if ba.tag in self.idle_structure_tags:
                                 if self.can_pay(MARINE):
-                                    if self.supply_check(MARINE):
+                                    if self.check_supply(MARINE):
                                         self.log_command('ba.train(MARINE)')
                                         ba.train(MARINE)
                                         self.idle_structure_tags.remove(ba.tag)
@@ -14429,7 +14574,7 @@ class Chaosbot(sc2.BotAI):
             if random.random() * sum < self.strategy[spec][nr]:
                 radio_nr = nr
         # TO TEST use next line
-        #radio_nr = 2
+        #radio_nr = 38
         for nr in range(0,self.radio_choices):
             self.game_choice.append(nr == radio_nr)
         for nr in range(self.radio_choices,self.game_choices):
