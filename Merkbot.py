@@ -435,7 +435,7 @@ class Chaosbot(sc2.BotAI):
     enemy_structureinfo_plus = set() # of (type,pos,atag,finishframe) having last seen info
     # neglects structures flying directly above another structure
     #
-    last_enemies = set() # of (tag,position)
+    last_enemies = set() # of (type,position,tag)
     #
     yamatoed = {} # per enemytag the shootframe. To prevent a group of bcs overkilling the same target.
     #
@@ -656,6 +656,7 @@ class Chaosbot(sc2.BotAI):
     goal_of_trabu_scvt = {}
     structure_of_trabu_scvt = {}
     owner_of_trabu_scvt = {}
+    arrivals = set() # of (scvtag, goal, building, maxarrivalframe) for travellers
     #   scv management:
     #   The tag of existing own scvs, in this frame. scvs in limbo included.
     all_scvt = []
@@ -881,7 +882,7 @@ class Chaosbot(sc2.BotAI):
         self.use_widowmine()
         await self.bc_micro()
         await self.raven_micro()
-        await self.battle_dodge_bile()
+        await self.dodge_bile()
         self.liberator()
         self.destroyed()
         self.deserted()
@@ -1477,7 +1478,7 @@ class Chaosbot(sc2.BotAI):
         #
         self.write_layout(COMMANDCENTER,self.loved_pos)
         self.write_layout(COMMANDCENTER,self.enemy_pos)
-        self.last_enemies.add((self.notag,self.enemy_pos))
+        self.last_enemies.add((COMMANDCENTER,self.enemy_pos,self.notag)) # or other townhall
         self.init_airports()
         #
         # use stored placement tips
@@ -2235,7 +2236,7 @@ class Chaosbot(sc2.BotAI):
         'CantFindCancelOrder', # 214;
         ]
         # chat
-        await self._client.chat_send('Chaosbot version 15 sep 2021, made by MerkMore', team_only=False)
+        await self._client.chat_send('Chaosbot version 16 sep 2021, made by MerkMore', team_only=False)
         #
         #layout_if.photo_layout()
 
@@ -3968,18 +3969,20 @@ class Chaosbot(sc2.BotAI):
             for scv in self.units(SCV):
                 scvt = scv.tag
                 if (scvt in self.all_scvt) and (scvt not in stuck):
-                    if self.job_of_scvt[scvt] in (self.bad_jobs + self.no_jobs):
-                        hope = True
-                        sd = self.sdist(scv.position,point)
-                        #  accept idler if 1.7 times as far
-                        if self.job_of_scvt[scvt] in self.no_jobs:
-                            sd /= 3
-                        #   accept mimminer if 1.4 times as far
-                        if self.job_of_scvt[scvt] in ['applicant','candidate','carrier','mimminer']:
-                            sd /= 2
-                        if (sd < best_sdist) and (sd > 0.5*0.5): # dont select an scv to repair itself
-                            best_sdist = sd
-                            best_scvt = scvt
+                    job = self.job_of_scvt[scvt]
+                    if job in (self.bad_jobs + self.no_jobs):
+                        if (job != 'suicider'):
+                            hope = True
+                            sd = self.sdist(scv.position,point)
+                            #  accept idler if 1.7 times as far
+                            if job in self.no_jobs:
+                                sd /= 3
+                            #   accept mimminer if 1.4 times as far
+                            if job in ['applicant','candidate','carrier','mimminer']:
+                                sd /= 2
+                            if (sd < best_sdist) and (sd > 0.5*0.5): # dont select an scv to repair itself
+                                best_sdist = sd
+                                best_scvt = scvt
             scvt = best_scvt
             for scv in self.units(SCV):
                 if scv.tag == scvt:
@@ -4007,7 +4010,8 @@ class Chaosbot(sc2.BotAI):
         for scv in self.units(SCV):
             scvt = scv.tag
             if scvt in self.all_scvt:
-                if self.job_of_scvt[scvt] in self.no_jobs:
+                job = self.job_of_scvt[scvt]
+                if (job in self.no_jobs) and (job != 'suicider'):
                     sd = self.sdist(scv.position,point)
                     if sd < best_sdist:
                         best_sdist = sd
@@ -5805,7 +5809,7 @@ class Chaosbot(sc2.BotAI):
                 job = self.job_of_scvt[scv.tag]
                 name = self.name(scv.tag)
                 if scv.is_collecting:
-                    if (job not in ['mimminer','gasminer','builder','volunteer','cheeser','traveller']):
+                    if (job not in ['mimminer','carrier','gasminer','builder','volunteer','cheeser','traveller']):
                         self.log_success('collecting but wrong job ' + job + ' ' + name)
                 else: # not collecting
                     if (job in ['gasminer','volunteer']):
@@ -5830,6 +5834,14 @@ class Chaosbot(sc2.BotAI):
             if self.job_of_scvt[scvt] in ['traveller','settler','fencer','builder']:
                 new_structure_of_trabu_scvt[scvt] = self.structure_of_trabu_scvt[scvt]
         self.structure_of_trabu_scvt = new_structure_of_trabu_scvt
+        #   arrivals are only for travellers
+        new_arrivals = set()
+        for sgbf in self.arrivals:
+            (scvt, agoal, abuilding, aframe) = sgbf
+            if scvt in self.job_of_scvt:
+                if self.job_of_scvt[scvt] == 'traveller':
+                    new_arrivals.add(sgbf)
+        self.arrivals = new_arrivals
         # goal_of_flying_struct, structure exists
         new_goal_of_flying_struct = {}
         for structag in self.goal_of_flying_struct:
@@ -6691,8 +6703,8 @@ class Chaosbot(sc2.BotAI):
                                         del self.thoughts[self.thoughts.index((thing, pl, owner))]
                                         self.buildorder_exe[nr] = (th, place, 'prep')
     def throw_history(self,th,po):
-        # make unthinkable to throw a building more than 3 times
-        if th in self.all_structures:
+        # make unthinkable to throw a building more than 3 times at the same spot
+        if th in self.all_structures_tobuildwalk:
             nr = 0
             for (hth,hpo,hnr) in self.throw_history_set:
                 if (hth == th) and (hpo == po):
@@ -6702,6 +6714,7 @@ class Chaosbot(sc2.BotAI):
             nr += 1
             self.throw_history_set.add((th,po,nr))
             if nr == 3:
+                self.log_success('This is the third and the last time I build a '+th.name+' here!')
                 self.make_unthinkable(th,po)
 
     def throw_at_spot(self, th, po, ow):
@@ -7732,6 +7745,15 @@ class Chaosbot(sc2.BotAI):
                     if scv.tag == scvt:
                         # check the traveller
                         ok = True
+                        for (atag, agoal, abuilding, aframe) in self.arrivals:
+                            if (atag == scvt) and (agoal == goal) and (abuilding == building):
+                                if self.frame > aframe:
+                                    self.log_success('Traveller is over time!')
+                                    ok = False
+                                    self.promote(scv, 'idler')
+                                    # expect the absense of traveller to delete the rest
+                                    # accept few of these timeouts
+                                    self.throw_history(building, goal)
                         if (len(scv.orders) == 0):
                             ok = False
                             self.log_success('Traveller idle')
@@ -7872,6 +7894,8 @@ class Chaosbot(sc2.BotAI):
                     # add to preps for restcode in this step
                     restdura = self.walk_duration(scv.position,goal)
                     self.preps.add((building, scv, goal, restdura, owner))
+                    maxdura = 2 * restdura + 2
+                    self.arrivals.add((scv.tag,goal,building,self.frame+22.4*maxdura))
         return didit
 
     def build_commandcenter(self,trabu_scvt,goal,owner):
@@ -7903,6 +7927,8 @@ class Chaosbot(sc2.BotAI):
                 # add to preps for restcode in this step
                 restdura = self.walk_duration(scv.position, goal)
                 self.preps.add((building, scv, goal, restdura, owner))
+                maxdura = 2 * restdura + 2
+                self.arrivals.add((scv.tag,goal,building,self.frame + 22.4 * maxdura))
         # give the cc a cc_destiny
         if goal in self.expansion_locations:
             if self.cc_destiny_rush:
@@ -8394,13 +8420,16 @@ class Chaosbot(sc2.BotAI):
     def get_last_enemies(self):
         # collect positions for next step
         # also write layout
-        self.last_enemies = set()
-        for ene in self.enemy_units: # actual visible
-            self.last_enemies.add((ene.tag,ene.position))
         for tpa in self.enemy_structureinfo:
             (typ,pos,tag) = tpa
-            self.last_enemies.add((tag,pos))
-            self.write_layout(typ,pos) # CHECK THIS FOR OVERDOING
+            if tpa not in self.last_enemies:
+                self.write_layout(typ,pos)
+        # collect positions for next step
+        self.last_enemies = set()
+        for ene in self.enemy_units: # actual visible
+            self.last_enemies.add((ene.type_id,ene.position,ene.tag))
+        for tpa in self.enemy_structureinfo:
+            self.last_enemies.add(tpa)
 
     def get_last_health(self):
         # collect health for next step
@@ -10188,7 +10217,7 @@ class Chaosbot(sc2.BotAI):
                 #    ra(AbilityId.EFFECT_ANTIARMORMISSILE, target)
 
 
-    async def battle_dodge_bile(self):
+    async def dodge_bile(self):
         for effect in self.state.effects:
             if effect.id == EffectId.RAVAGERCORROSIVEBILECP:
                 for kind in self.all_army:
@@ -11442,7 +11471,7 @@ class Chaosbot(sc2.BotAI):
             if ene.can_attack_ground:
                 if self.near(ene.position,mypoint,30): # restrict work
                     lastpos = ene.position
-                    for (tag,pos) in self.last_enemies:
+                    for (typ,pos,tag) in self.last_enemies:
                         if tag == ene.tag:
                             lastpos = pos
                     ene_jump = Point2((ene.position.x - lastpos.x, ene.position.y - lastpos.y))
@@ -11490,7 +11519,7 @@ class Chaosbot(sc2.BotAI):
             futurecooldown = reaper.weapon_cooldown - ahead
             for ene in self.enemy_units: # actual visible
                 lastpos = ene.position
-                for (tag, pos) in self.last_enemies:
+                for (typ, pos, tag) in self.last_enemies:
                     if tag == ene.tag:
                         lastpos = pos
                 ene_jump = Point2((ene.position.x - lastpos.x, ene.position.y - lastpos.y))
@@ -11509,7 +11538,7 @@ class Chaosbot(sc2.BotAI):
             # expecting the reaper to be faster
             ene = self.advice_hit
             lastpos = ene.position
-            for (tag, pos) in self.last_enemies:
+            for (typ, pos, tag) in self.last_enemies:
                 if tag == ene.tag:
                     lastpos = pos
             ene_jump = Point2((ene.position.x - lastpos.x, ene.position.y - lastpos.y))
@@ -12489,12 +12518,13 @@ class Chaosbot(sc2.BotAI):
                         for anscv in self.units(SCV):
                             if self.near(anscv.position, scv.position, 5):
                                 minority -= 1.5
-                        for (tag, pos) in self.last_enemies:
-                            for ene in self.enemy_units:  # actual visible
-                                if self.near(ene.position, scv.position, 10):
-                                    # if approaches
-                                    if self.sdist(ene.position, scv.position) < self.sdist(pos, scv.position):
-                                        minority += 1
+                        for (typ, pos, tag) in self.last_enemies:
+                            if self.near(pos, scv.position, 10):
+                                for ene in self.enemy_units(typ):  # actual visible
+                                    if ene.tag == tag:
+                                        # if approaches
+                                        if self.sdist(ene.position, scv.position) < self.sdist(pos, scv.position):
+                                            minority += 1
                         #
                         self.wait_of_scv[scv.tag] -= self.chosen_game_step
                         # timed: bouncing, jumping, biting
@@ -13169,7 +13199,8 @@ class Chaosbot(sc2.BotAI):
                     if not self.we_started_at(struc_type, position):
                         if (struc_type, position) not in self.chosenplaces:
                             if self.frame > 10*22:
-                                self.chosenplaces.append((struc_type, position))
+                                if (struc_type, position) not in self.unthinkable:
+                                    self.chosenplaces.append((struc_type, position))
         # up down depots
         for sd in self.structures(SUPPLYDEPOTLOWERED).ready + self.structures(SUPPLYDEPOT).ready:
             if (SUPPLYDEPOT,sd.position) in self.wall:
@@ -13286,7 +13317,8 @@ class Chaosbot(sc2.BotAI):
 
     def hatescv(self) -> bool:
         ha = False
-        if self.count_of_job['idler']  + self.count_of_job['volunteer'] >= 21:
+        flyingccs = len(self.structures(COMMANDCENTERFLYING)) + len(self.structures(ORBITALCOMMANDFLYING))
+        if self.count_of_job['idler']  + self.count_of_job['volunteer'] >= 21 + 16 * flyingccs:
             ha = True
         if len(self.all_scvt) - self.count_of_job['suicider'] >= self.enoughworkers + 10:
             ha = True
@@ -13847,7 +13879,7 @@ class Chaosbot(sc2.BotAI):
 
 
     async def manage_minerals(self):
-        # carriers are carrying candidates
+        # carriers are carrying
         for scv in self.units(SCV):
             scvt = scv.tag
             if self.job_of_scvt[scvt] == 'carrier':
@@ -13961,7 +13993,8 @@ class Chaosbot(sc2.BotAI):
             for scv in self.units(SCV):
                 scvt = scv.tag
                 if scvt in self.all_scvt:
-                    if self.job_of_scvt[scvt] in self.no_jobs:
+                    job = self.job_of_scvt[scvt]
+                    if (job in self.no_jobs) and (job != 'suicider'):
                         if todo > 0:
                             todo -= 1
                             self.promote(scv,'suicider')
@@ -13970,7 +14003,8 @@ class Chaosbot(sc2.BotAI):
             for scv in self.units(SCV):
                 scvt = scv.tag
                 if scvt in self.all_scvt:
-                    if self.job_of_scvt[scvt] in self.bad_jobs:
+                    job = self.job_of_scvt[scvt]
+                    if job in self.bad_jobs:
                         if todo > 0:
                             todo -= 1
                             self.promote(scv, 'suicider')
