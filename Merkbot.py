@@ -27,6 +27,7 @@ from sc2.ids.unit_typeid import SCV
 from sc2.ids.unit_typeid import RAVEN
 from sc2.ids.unit_typeid import STARPORT
 from sc2.ids.unit_typeid import VIKINGFIGHTER
+from sc2.ids.unit_typeid import VIKINGASSAULT
 from sc2.ids.unit_typeid import MARINE
 from sc2.ids.unit_typeid import BARRACKS
 from sc2.ids.unit_typeid import BUNKER
@@ -391,6 +392,8 @@ class Chaosbot(sc2.BotAI):
     viking_air_range = 9
     viking_min_health = 35
     viking_good_health = 120
+    harrassvikings = set() # of tag of viking for harrass
+    viking_last_pos = nowhere # last attacked enemy hall position
     squadrons = set() # of identification number
     squadron_of_viktag = {}
     size_of_squadron = {} # amount
@@ -799,7 +802,7 @@ class Chaosbot(sc2.BotAI):
     #   strategy[0] is vs Zerg []
     strategy = []
     game_choice = []
-    radio_choices = 40
+    radio_choices = 41
     game_choices = 62
     game_result = 'doubt'
     opening_name = 'no'
@@ -877,7 +880,8 @@ class Chaosbot(sc2.BotAI):
         await self.build_worker(100-self.minerals//100)
         await self.throw_advance()
         await self.start_construction()
-        await self.siege_tanks()
+        if (self.frame % 5 == 4):
+            await self.siege_tanks()
         self.use_cluster()
         self.use_widowmine()
         await self.bc_micro()
@@ -1024,6 +1028,7 @@ class Chaosbot(sc2.BotAI):
             self.init_bcenemy(MISSILETURRET, 60, 6)
             self.init_bcenemy(THOR, 40, 3)
             self.init_bcenemy(PHOENIX, 35, 5)
+            self.init_bcenemy(RAVEN, 30, 5)
             self.init_bcenemy(MARINE, 10, 2)
             self.init_bcenemy(SCV, 0, 1)
         self.init_bcenemy(HYDRALISK, 20, 3)
@@ -1140,6 +1145,7 @@ class Chaosbot(sc2.BotAI):
         self.init_army(SIEGETANK,32,3,'ground')
         self.init_army(SIEGETANKSIEGED,32,3,'ground')
         self.init_army(VIKINGFIGHTER,30,2,'air')
+        self.init_army(VIKINGASSAULT,30,2,'ground')
         self.init_army(MEDIVAC,30,2,'air')
         self.init_army(RAVEN,43,2,'air')
         self.init_army(LIBERATOR,43,3,'air')
@@ -1383,6 +1389,7 @@ class Chaosbot(sc2.BotAI):
         self.init_maxhealth(SIEGETANK, 175)
         self.init_maxhealth(SIEGETANKSIEGED, 175)
         self.init_maxhealth(VIKINGFIGHTER, 125)
+        self.init_maxhealth(VIKINGASSAULT, 125)
         self.init_maxhealth(MEDIVAC, 150)
         self.init_maxhealth(RAVEN, 140)
         self.init_maxhealth(LIBERATOR, 180)
@@ -1911,14 +1918,13 @@ class Chaosbot(sc2.BotAI):
             self.opening_create_kind = BANSHEE
             self.init_banshee_spots()
             self.init_cocoon()
-        elif False: #self.game_choice[40]:
-            # test speedmining. Map 2000AtmospheresAIE. 2 minutes. Easy.
-            self.opening_name = 'speedtest'
-            self.rushopening = True # no blocker
-            self.buildseries_opening = [COMMANDCENTER,COMMANDCENTER,COMMANDCENTER,COMMANDCENTER,COMMANDCENTER,COMMANDCENTER
-                                        ,COMMANDCENTER,COMMANDCENTER,COMMANDCENTER,COMMANDCENTER,COMMANDCENTER,COMMANDCENTER]
-            self.production_pause_egg.add((SCV, 16, BUNKER))
-        # radio_choices = 40
+        if self.game_choice[40]:
+            self.opening_name = 'viking'
+            self.rushopening = True
+            self.buildseries_opening = [SUPPLYDEPOT, REFINERY, BARRACKS, SUPPLYDEPOT, REFINERY, FACTORY,
+                                        STARPORT, FACTORYTECHLAB, VIKINGFIGHTER, SIEGETANK]
+            self.place_proxy(STARPORT,45)
+        # radio_choices = 41
         self.log_success('OPENING: '+self.opening_name)
         #
         self.init_cheese1()
@@ -2236,7 +2242,7 @@ class Chaosbot(sc2.BotAI):
         'CantFindCancelOrder', # 214;
         ]
         # chat
-        await self._client.chat_send('Chaosbot version 16 sep 2021, made by MerkMore', team_only=False)
+        await self._client.chat_send('Chaosbot version 21 sep 2021, made by MerkMore', team_only=False)
         #
         #layout_if.photo_layout()
 
@@ -6608,8 +6614,6 @@ class Chaosbot(sc2.BotAI):
             (thing,place,status) = self.buildorder_exe[nr]
             if status == 'dream':
                 donow = True
-                if self.opening_name.find('speedtest') >= 0:
-                    donow = False
                 for (th, po, ow) in self.thoughts:
                     if (th == thing) and (place == po) and (ow != 'follow_planning_exe'):
                         donow = False
@@ -6986,18 +6990,17 @@ class Chaosbot(sc2.BotAI):
 
     async def throw_advance(self):
         # push throwspots into thought
-        if self.opening_name.find('speedtest') < 0:
-            nr = 0
-            while nr < len(self.throwspots): # a throwspot can be deleted in the loop
-                tps = self.throwspots[nr]
-                (thing, place, status, ow) = tps
-                if (status == 'dream'):
-                    if self.add_thought(thing, place, ow):
-                        newtps = (thing, place, 'thought', ow)
-                        self.log_success('dream to thought a thrown ' + thing.name + ' at ' + self.txt(place))
-                        self.throwspots[self.throwspots.index(tps)] = newtps
-                        del self.dreams[self.dreams.index((thing, place, ow))]
-                nr += 1
+        nr = 0
+        while nr < len(self.throwspots): # a throwspot can be deleted in the loop
+            tps = self.throwspots[nr]
+            (thing, place, status, ow) = tps
+            if (status == 'dream'):
+                if self.add_thought(thing, place, ow):
+                    newtps = (thing, place, 'thought', ow)
+                    self.log_success('dream to thought a thrown ' + thing.name + ' at ' + self.txt(place))
+                    self.throwspots[self.throwspots.index(tps)] = newtps
+                    del self.dreams[self.dreams.index((thing, place, ow))]
+            nr += 1
         # build things into prep
         # save_throw_max_mineralgas to prevent the cc in throwspots[0] waiting.
         # do not hinder buildorder_exe or create_units (except for supplydepot and refinery)
@@ -8923,6 +8926,111 @@ class Chaosbot(sc2.BotAI):
                 self.go_attack(vik, goal)
                 self.emotion_of_unittag[vik.tag] = 'patrolling'
 
+    def landed_viking(self):
+        # early harrass
+        if self.frame % 11 == 10:
+            # check harrassvikings
+            new_harrassvikings = set()
+            for vik in self.units(VIKINGFIGHTER):
+                if vik.tag in self.harrassvikings:
+                    new_harrassvikings.add(vik.tag)
+            for vik in self.units(VIKINGASSAULT):
+                if vik.tag in self.harrassvikings:
+                    new_harrassvikings.add(vik.tag)
+            self.harrassvikings = new_harrassvikings
+        todo = 1 - len(self.harrassvikings)
+        for vik in self.units(VIKINGFIGHTER):
+            if self.emotion_of_unittag[vik.tag] == 'looking':
+                if todo > 0:
+                    todo -= 1
+                    self.harrassvikings.add(vik.tag)
+                    self.emotion_of_unittag[vik.tag] = 'A'
+        for vik in self.units(VIKINGFIGHTER) + self.units(VIKINGASSAULT):
+            if vik.tag in self.harrassvikings:
+                emotion = self.emotion_of_unittag[vik.tag]
+                if emotion == 'A':
+                    # find a position behind enemy lines
+                    minsd = 99999
+                    bestgoal = self.enemy_pos.towards(self.game_info.map_center,-8)
+                    bestpos = self.enemy_pos
+                    for tpa in self.enemy_structureinfo:
+                        (typ, pos, tag) = tpa
+                        if pos != self.viking_last_pos:
+                            if typ in self.hall_types:
+                                goal = pos.towards(self.game_info.map_center,-8)
+                                sd = self.sdist(vik.position,goal)
+                                if sd < minsd:
+                                    minsd = sd
+                                    bestgoal = goal
+                                    bestpos = pos
+                    vik.move(bestgoal)
+                    self.goal_of_unittag[vik.tag] = bestgoal
+                    self.viking_last_pos = bestpos
+                    emotion = 'B'
+                elif emotion == 'B':
+                    # finetuning
+                    goal = self.goal_of_unittag[vik.tag]
+                    if self.near(vik.position,goal,3):
+                        goal = self.place_around(MISSILETURRET,goal)
+                        self.goal_of_unittag[vik.tag] = goal
+                        vik.move(goal)
+                        emotion = 'C'
+                elif emotion == 'C':
+                    # start landing
+                    goal = self.goal_of_unittag[vik.tag]
+                    if vik in self.units(VIKINGFIGHTER).idle:
+                        vik(AbilityId.MORPH_VIKINGASSAULTMODE)
+                        emotion = 'D'
+                elif emotion == 'D':
+                    # end landing
+                    if vik in self.units(VIKINGASSAULT):
+                        emotion = 'E'
+                elif emotion == 'E':
+                    # stand or flee
+                    flee = False
+                    for ene in self.enemy_units:
+                        dist = self.circledist(vik.position,ene.position)
+                        if ene.type_id not in self.all_workertypes:
+                            if ene.can_attack_ground:
+                                if ene.ground_range > dist - 2:
+                                    flee = True
+                                    away = vik.position.towards(ene.position,-7)
+                                    away = self.into_map(away)
+                                    self.goal_of_unittag[vik.tag] = away
+                    if flee:
+                        vik(AbilityId.MORPH_VIKINGFIGHTERMODE)
+                        emotion = 'F'
+                        self.waitframe_of_tag[vik.tag] = self.frame + 45 # 2 sec
+                elif emotion == 'F':
+                    # end take-off
+                    if self.frame >= self.waitframe_of_tag[vik.tag]:
+                        emotion = 'G'
+                elif emotion == 'G':
+                    # run away
+                    away = self.goal_of_unittag[vik.tag]
+                    vik.move(away)
+                    emotion = 'H'
+                    self.waitframe_of_tag[vik.tag] = self.frame + 120 # 5 sec
+                elif emotion == 'H':
+                    # wait, if needed flee further
+                    if vik in self.units(VIKINGFIGHTER).idle:
+                        flee = False
+                        for ene in self.enemy_units:
+                            dist = self.circledist(vik.position,ene.position)
+                            if ene.can_attack_air:
+                                if ene.air_range > dist - 2:
+                                    flee = True
+                                    away = vik.position.towards(ene.position,-7)
+                                    away = self.into_map(away)
+                        if flee:
+                            vik.move(away)
+                            self.waitframe_of_tag[vik.tag] = self.frame + 120 # 5 sec
+                    if self.frame >= self.waitframe_of_tag[vik.tag]:
+                        emotion = 'A'
+                self.emotion_of_unittag[vik.tag] = emotion
+
+
+
     def fly_viking(self):
         # a squadron of vikings has an identification number, a position, a goalposition, a victimtag, a size
         # every viking has an emotion
@@ -8931,75 +9039,82 @@ class Chaosbot(sc2.BotAI):
             if vik.tag not in self.emotion_of_unittag:
                 self.emotion_of_unittag[vik.tag] = 'looking'
                 self.squadron_of_viktag[vik.tag] = -1
+                # wait 2 seconds, so the landed_viking routine can pick it up
+                self.waitframe_of_tag[vik.tag] = self.frame + 40
         # repaired viking
         if self.frame % 31 == 30:
             for vik in self.units(VIKINGFIGHTER):
-                if self.emotion_of_unittag[vik.tag] == 'vik repairing':
-                    if vik.health >= self.viking_good_health:
-                        self.emotion_of_unittag[vik.tag] = 'looking'
+                if vik.tag not in self.harrassvikings:
+                    if self.emotion_of_unittag[vik.tag] == 'vik repairing':
+                        if vik.health >= self.viking_good_health:
+                            self.emotion_of_unittag[vik.tag] = 'looking'
         # new viking gets a squadron; stop looking
         for vik in self.units(VIKINGFIGHTER):
-            if self.emotion_of_unittag[vik.tag] == 'looking':
-                bestsquadron = -1 # not a squadron
-                closest = 99999
-                for squadron in self.squadrons:
-                    sd = self.sdist(vik.position,self.pos_of_squadron[squadron])
-                    if sd < closest:
-                        closest = sd
-                        bestsquadron = squadron
-                if closest < 80*80:
-                    squadron = bestsquadron
-                    self.squadron_of_viktag[vik.tag] = squadron
-                    # init vik move
-                    if self.victim_of_squadron[squadron] == self.notag:
-                        goal = self.goal_of_squadron[squadron]
-                        self.log_command('vik.attack(goal)')
-                        self.go_attack(vik, goal)
-                        self.emotion_of_unittag[vik.tag] = 'patrolling'
-                    else: # has victim
-                        self.emotion_of_unittag[vik.tag] = 'attacking'
-                        for ene in self.enemy_units:  # actual visible
-                            if ene.tag == self.victim_of_squadron[squadron]:
-                                self.log_command('vik.attack(ene)')
-                                vik.attack(ene)
-                else: # no squadron close
-                    # new squadron
-                    squadron = 0
-                    while squadron in self.squadrons:
-                        squadron += 1
-                    self.squadrons.add(squadron)
-                    self.squadron_of_viktag[vik.tag] = squadron
-                    self.pos_of_squadron[squadron] = vik.position
-                    self.victim_of_squadron[squadron] = self.notag
-                    self.size_of_squadron[squadron] = 1
-                    self.set_new_goal_for_squadron(squadron)
+            if vik.tag not in self.harrassvikings:
+                if self.emotion_of_unittag[vik.tag] == 'looking':
+                    if self.frame >= self.waitframe_of_tag[vik.tag]:
+                        bestsquadron = -1 # not a squadron
+                        closest = 99999
+                        for squadron in self.squadrons:
+                            sd = self.sdist(vik.position,self.pos_of_squadron[squadron])
+                            if sd < closest:
+                                closest = sd
+                                bestsquadron = squadron
+                        if closest < 80*80:
+                            squadron = bestsquadron
+                            self.squadron_of_viktag[vik.tag] = squadron
+                            # init vik move
+                            if self.victim_of_squadron[squadron] == self.notag:
+                                goal = self.goal_of_squadron[squadron]
+                                self.log_command('vik.attack(goal)')
+                                self.go_attack(vik, goal)
+                                self.emotion_of_unittag[vik.tag] = 'patrolling'
+                            else: # has victim
+                                self.emotion_of_unittag[vik.tag] = 'attacking'
+                                for ene in self.enemy_units:  # actual visible
+                                    if ene.tag == self.victim_of_squadron[squadron]:
+                                        self.log_command('vik.attack(ene)')
+                                        vik.attack(ene)
+                        else: # no squadron close
+                            # new squadron
+                            squadron = 0
+                            while squadron in self.squadrons:
+                                squadron += 1
+                            self.squadrons.add(squadron)
+                            self.squadron_of_viktag[vik.tag] = squadron
+                            self.pos_of_squadron[squadron] = vik.position
+                            self.victim_of_squadron[squadron] = self.notag
+                            self.size_of_squadron[squadron] = 1
+                            self.set_new_goal_for_squadron(squadron)
         # unhealthy vikings go repair
         for vik in self.units(VIKINGFIGHTER):
-            if vik.health < self.viking_min_health:
-                if self.emotion_of_unittag[vik.tag] != 'vik repairing':
-                    self.emotion_of_unittag[vik.tag] = 'vik repairing'
-                    squadron = self.squadron_of_viktag[vik.tag]
-                    self.squadron_of_viktag[vik.tag] = -1 # not a squadron
-                    self.size_of_squadron[squadron] -= 1
-                    if self.size_of_squadron[squadron] == 0:
-                        self.squadrons.remove(squadron)
-                    dock = self.get_dock(vik.position)
-                    self.log_command('vik.move(dock)')
-                    vik.move(dock)
-                    # and hope it will be repaired
+            if vik.tag not in self.harrassvikings:
+                if vik.health < self.viking_min_health:
+                    if self.emotion_of_unittag[vik.tag] != 'vik repairing':
+                        self.emotion_of_unittag[vik.tag] = 'vik repairing'
+                        squadron = self.squadron_of_viktag[vik.tag]
+                        self.squadron_of_viktag[vik.tag] = -1 # not a squadron
+                        self.size_of_squadron[squadron] -= 1
+                        if self.size_of_squadron[squadron] == 0:
+                            self.squadrons.remove(squadron)
+                        dock = self.get_dock(vik.position)
+                        self.log_command('vik.move(dock)')
+                        vik.move(dock)
+                        # and hope it will be repaired
         # forgotten vikings
         if self.frame % 11 == 10:
             for vik in self.units(VIKINGFIGHTER).idle:
-                if self.emotion_of_unittag[vik.tag] == 'vik repairing':
-                    if vik.tag in self.forgotten_vikings:
-                        moment = self.forgotten_vikings[vik.tag]
-                        if moment + 150 < self.frame:
-                            del self.forgotten_vikings[vik.tag]
-                            dock = self.get_dock(vik.position)
-                            self.log_command('vik.move(dock)')
-                            vik.move(dock)
-                    else:
-                        self.forgotten_vikings[vik.tag] = self.frame
+                if vik.tag not in self.harrassvikings:
+                    if self.emotion_of_unittag[vik.tag] == 'vik repairing':
+                        if vik.tag in self.forgotten_vikings:
+                            moment = self.forgotten_vikings[vik.tag]
+                            if moment + 150 < self.frame:
+                                del self.forgotten_vikings[vik.tag]
+                                dock = self.get_dock(vik.position)
+                                self.log_command('vik.move(dock)')
+                                vik.move(dock)
+                        else:
+                            self.forgotten_vikings[vik.tag] = self.frame
         # died vikings
         if self.frame % 19 == 18:
             squadronviks = 0
@@ -9007,8 +9122,9 @@ class Chaosbot(sc2.BotAI):
                 squadronviks += self.size_of_squadron[squadron]
             viks = 0
             for vik in self.units(VIKINGFIGHTER):
-                if self.emotion_of_unittag[vik.tag] != 'vik repairing':
-                    viks += 1
+                if vik.tag not in self.harrassvikings:
+                    if self.emotion_of_unittag[vik.tag] != 'vik repairing':
+                        viks += 1
             if viks < squadronviks:
                 todel = set()
                 for squadron in self.squadrons:
@@ -9101,54 +9217,55 @@ class Chaosbot(sc2.BotAI):
                         self.victimpos_of_squadron[squadron] = ene.position
         # viking cooldown
         for vik in self.units(VIKINGFIGHTER):
-            if self.emotion_of_unittag[vik.tag] == 'attacking':
-                if vik.weapon_cooldown >= 5: # it shot
-                    squadron = self.squadron_of_viktag[vik.tag]
-                    if self.victim_of_squadron[squadron] != self.notag:
-                        # go move
-                        bestdist = self.bestdist_of_squadron[squadron]
-                        ene_pos = self.victimpos_of_squadron[squadron]
-                        ene_lastpos = self.victimlastpos_of_squadron[squadron]
-                        ene_speedx = (ene_pos.x - ene_lastpos.x) / self.chosen_game_step
-                        ene_speedy = (ene_pos.y - ene_lastpos.y) / self.chosen_game_step
-                        ene_futpos = Point2((ene_pos.x + vik.weapon_cooldown * ene_speedx, ene_pos.y + vik.weapon_cooldown * ene_speedy))
-                        self.emotion_of_unittag[vik.tag] = 'moving'
-                        movepos = ene_futpos.towards(vik.position,bestdist)
-                        movepos = self.undetect_point(movepos)
-                        self.log_command('vik.move(movepos)')
-                        vik.move(movepos)
-                        self.movepos_of_viking[vik.tag] = movepos
-            elif self.emotion_of_unittag[vik.tag] == 'moving':
-                if vik.weapon_cooldown < 5: # can shoot
-                    squadron = self.squadron_of_viktag[vik.tag]
-                    ene_tag = self.victim_of_squadron[squadron]
-                    if ene_tag == self.notag:
-                        goal = self.goal_of_squadron[squadron]
-                        self.log_command('vik.attack(goal)')
-                        self.go_attack(vik, goal)
-                        self.emotion_of_unittag[vik.tag] = 'patrolling'
-                    else: # victim
-                        for ene in self.enemy_units:  # actual visible
-                            if ene.tag == ene_tag:
-                                vik.attack(ene)
-                                self.emotion_of_unittag[vik.tag] = 'attacking'
-                else: # recalc movepos
-                    squadron = self.squadron_of_viktag[vik.tag]
-                    if self.victim_of_squadron[squadron] != self.notag:
-                        # go move
-                        bestdist = self.bestdist_of_squadron[squadron]
-                        ene_pos = self.victimpos_of_squadron[squadron]
-                        ene_lastpos = self.victimlastpos_of_squadron[squadron]
-                        ene_speedx = (ene_pos.x - ene_lastpos.x) / self.chosen_game_step
-                        ene_speedy = (ene_pos.y - ene_lastpos.y) / self.chosen_game_step
-                        ene_futpos = Point2((ene_pos.x + vik.weapon_cooldown * ene_speedx, ene_pos.y + vik.weapon_cooldown * ene_speedy))
-                        movepos = self.movepos_of_viking[vik.tag]
-                        dist = self.circledist(ene_futpos,movepos)
-                        if (dist < bestdist - 0.5) or (dist > bestdist + 0.5):
+            if vik.tag not in self.harrassvikings:
+                if self.emotion_of_unittag[vik.tag] == 'attacking':
+                    if vik.weapon_cooldown >= 5: # it shot
+                        squadron = self.squadron_of_viktag[vik.tag]
+                        if self.victim_of_squadron[squadron] != self.notag:
+                            # go move
+                            bestdist = self.bestdist_of_squadron[squadron]
+                            ene_pos = self.victimpos_of_squadron[squadron]
+                            ene_lastpos = self.victimlastpos_of_squadron[squadron]
+                            ene_speedx = (ene_pos.x - ene_lastpos.x) / self.chosen_game_step
+                            ene_speedy = (ene_pos.y - ene_lastpos.y) / self.chosen_game_step
+                            ene_futpos = Point2((ene_pos.x + vik.weapon_cooldown * ene_speedx, ene_pos.y + vik.weapon_cooldown * ene_speedy))
+                            self.emotion_of_unittag[vik.tag] = 'moving'
                             movepos = ene_futpos.towards(vik.position,bestdist)
+                            movepos = self.undetect_point(movepos)
                             self.log_command('vik.move(movepos)')
                             vik.move(movepos)
                             self.movepos_of_viking[vik.tag] = movepos
+                elif self.emotion_of_unittag[vik.tag] == 'moving':
+                    if vik.weapon_cooldown < 5: # can shoot
+                        squadron = self.squadron_of_viktag[vik.tag]
+                        ene_tag = self.victim_of_squadron[squadron]
+                        if ene_tag == self.notag:
+                            goal = self.goal_of_squadron[squadron]
+                            self.log_command('vik.attack(goal)')
+                            self.go_attack(vik, goal)
+                            self.emotion_of_unittag[vik.tag] = 'patrolling'
+                        else: # victim
+                            for ene in self.enemy_units:  # actual visible
+                                if ene.tag == ene_tag:
+                                    vik.attack(ene)
+                                    self.emotion_of_unittag[vik.tag] = 'attacking'
+                    else: # recalc movepos
+                        squadron = self.squadron_of_viktag[vik.tag]
+                        if self.victim_of_squadron[squadron] != self.notag:
+                            # go move
+                            bestdist = self.bestdist_of_squadron[squadron]
+                            ene_pos = self.victimpos_of_squadron[squadron]
+                            ene_lastpos = self.victimlastpos_of_squadron[squadron]
+                            ene_speedx = (ene_pos.x - ene_lastpos.x) / self.chosen_game_step
+                            ene_speedy = (ene_pos.y - ene_lastpos.y) / self.chosen_game_step
+                            ene_futpos = Point2((ene_pos.x + vik.weapon_cooldown * ene_speedx, ene_pos.y + vik.weapon_cooldown * ene_speedy))
+                            movepos = self.movepos_of_viking[vik.tag]
+                            dist = self.circledist(ene_futpos,movepos)
+                            if (dist < bestdist - 0.5) or (dist > bestdist + 0.5):
+                                movepos = ene_futpos.towards(vik.position,bestdist)
+                                self.log_command('vik.move(movepos)')
+                                vik.move(movepos)
+                                self.movepos_of_viking[vik.tag] = movepos
 
     def heal_a_marine(self, pos) -> bool:
         # self.thechosen will be a marine close to pos
@@ -9227,6 +9344,7 @@ class Chaosbot(sc2.BotAI):
                     self.log_army('medivac will follow a marine')
         # vikings
         self.fly_viking()
+        self.landed_viking()
         # suicider scvs
         if self.count_of_job['suicider'] > 0:
             for scv in self.units(SCV).idle:
@@ -9673,12 +9791,7 @@ class Chaosbot(sc2.BotAI):
         self.cleaning_tank_tags -= todel # leave shotframe, siegepos, emotion
         # get a tank
         if len(self.cleaning_tank_tags) == 0:
-            reserved = 0
-            if SIEGETANK in self.buildseries_opening:
-                reserved = 1
-            if self.opening_name == 'cocoon':
-                reserved = 1
-            if tanks > reserved:
+            if tanks > 1:
                 todo = 1
                 for tnk in self.units(SIEGETANK):
                     tnkt = tnk.tag
@@ -9866,17 +9979,11 @@ class Chaosbot(sc2.BotAI):
                         (mimpos,mimt) = mim
                         if self.near(tnk.position, mimpos, 16):
                             hasmins = True
-                    hasbunkers = 0
-                    for bu in self.structures_of_expo[expo]:
-                        if bu.type_id in [BUNKER]:
-                            if self.near(tnk.position, bu.position, 8):
-                                hasbunkers += 1
                     if not (hasbase and hasmins):
-                        if hasbunkers < 2:
-                            if not self.proxy(tnk.position):
-                                self.log_command('tnk(AbilityId.UNSIEGE_UNSIEGE)')
-                                tnk(AbilityId.UNSIEGE_UNSIEGE)
-                                self.emotion_of_unittag[tnkt] = 'unsieging'
+                        if not self.proxy(tnk.position):
+                            self.log_command('tnk(AbilityId.UNSIEGE_UNSIEGE)')
+                            tnk(AbilityId.UNSIEGE_UNSIEGE)
+                            self.emotion_of_unittag[tnkt] = 'unsieging'
                 elif self.emotion_of_unittag[tnkt] == 'unsieging':
                     if tnk in self.units(SIEGETANK):
                         self.emotion_of_unittag[tnkt] = 'dream'
@@ -14608,7 +14715,7 @@ class Chaosbot(sc2.BotAI):
             if random.random() * sum < self.strategy[spec][nr]:
                 radio_nr = nr
         # TO TEST use next line
-        #radio_nr = 38
+        #radio_nr = 40
         for nr in range(0,self.radio_choices):
             self.game_choice.append(nr == radio_nr)
         for nr in range(self.radio_choices,self.game_choices):
