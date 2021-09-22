@@ -706,6 +706,7 @@ class Chaosbot(sc2.BotAI):
     lazyness_of_scvt = {} # per tag idling scv, the amount of frames it idles
     #   defenders attack somewhere
     last_center_enemies = nowhere
+    defend_phase = {} # per tag of scv job defender, a text for its phase
     #   for missing scvs (fallen or in gaslimbo), the frame is stored
     frame_of_missing_scvt = {}
     #   fun translate output scvt to names
@@ -868,6 +869,7 @@ class Chaosbot(sc2.BotAI):
             await self.manage_minerals()
         await self.manage_rest()
         self.speedmining()
+        self.better_defence()
         await self.bunker_handling()
         await self.bunkercheese1()
         await self.bunkercheese2()
@@ -2242,7 +2244,8 @@ class Chaosbot(sc2.BotAI):
         'CantFindCancelOrder', # 214;
         ]
         # chat
-        await self._client.chat_send('Chaosbot version 21 sep 2021, made by MerkMore', team_only=False)
+        await self._client.chat_send('Chaosbot version 22 sep 2021, made by MerkMore', team_only=False)
+        await self._client.chat_send('(Version 1 vs EvilZoe)', team_only=False)
         #
         #layout_if.photo_layout()
 
@@ -10660,14 +10663,6 @@ class Chaosbot(sc2.BotAI):
                         job = self.job_of_scvt[scvt]
                         if (job == 'defender'):
                             defenders.add(myscv)
-                    if len(defenders) > 0:
-                        # dismiss veterans
-                        veterans = set()
-                        for myscv in defenders:
-                            if myscv.health < 12:
-                                veterans.add(myscv)
-                                self.promote(myscv,'fleeer') # includes move
-                        defenders -= veterans
                     if len(enemies) > 0:
                         # get new defenders
                         toget = wished_defenders - len(defenders)
@@ -10705,28 +10700,147 @@ class Chaosbot(sc2.BotAI):
                                 self.log_command('myscv.move(tow.position)')
                                 myscv.move(tow.position)
                     # We have the defenders. Now what will they do?
-                    if len(enemies) > 0:
-                        # decide if it is grouped
-                        grouped = False
-                        for enepos in enemies:
-                            if self.near(next_center_enemies,enepos,3):
-                                grouped = True
-                        if grouped:
-                            # group attack
-                            for myscv in defenders:
-                                self.log_command('myscv.attack(next_center_enemies)')
-                                myscv.attack(next_center_enemies)
-                        else:
-                            # individual attack
-                            for myscv in defenders:
-                                inattack = False
-                                for order in myscv.orders:
-                                    if order.ability.id == AbilityId.ATTACK:
-                                        inattack = True
-                                if not inattack:
-                                    targetpos = random.choice(tuple(enemies))
-                                    self.log_command('myscv.attack(targetpos)')
-                                    myscv.attack(targetpos)
+                    # see better_defence
+
+    def better_defence(self):
+        # for scvs with job 'defender', sensible individual actions
+        #
+        useful = False
+        for scv in self.units(SCV):
+            scvt = scv.tag
+            if self.job_of_scvt[scvt] == 'defender':
+                useful = True
+        if useful:
+            # minerals to move towards: hismim, homemim
+            hisexpo = self.expo_of_pos(self.enemy_pos)
+            minsd = 99999
+            for (mimpos, mimt) in self.minerals_of_expo[hisexpo]:
+                if self.near(mimpos, self.enemy_pos, 8):
+                    sd = self.sdist(mimpos, self.hisleft)
+                    if sd < minsd:
+                        minsd = sd
+                        hismimt = mimt
+                        hismimpos = mimpos
+            for patch in self.mineral_field:
+                if self.mineraltag(patch) == hismimt:
+                    hismim = patch
+            # homemim
+            myexpo = self.expo_of_pos(self.loved_pos)
+            minsd = 99999
+            for (mimpos, mimt) in self.minerals_of_expo[myexpo]:
+                if self.near(mimpos, self.loved_pos, 8):
+                    sd = self.sdist(mimpos, self.hisleft)
+                    if sd < minsd:
+                        minsd = sd
+                        homemimt = mimt
+                        homemimpos = mimpos
+            for patch in self.mineral_field:
+                if self.mineraltag(patch) == homemimt:
+                    homemim = patch
+        #
+        for scv in self.units(SCV):
+            scvt = scv.tag
+            if self.job_of_scvt[scvt] == 'defender':
+                mypos = scv.position
+                # get close enemies
+                enemies = set()
+                mytile = self.maptile_of_pos(mypos)
+                for tile in self.nine[mytile]:
+                    for ene in self.enemies_of_tile[tile]:
+                        if self.near(mypos,ene.position,7):
+                            if not ene.is_flying:
+                                enemies.add(ene.position)
+                # if no close enemies, get any enemies
+                if len(enemies) == 0:
+                    for ene in self.enemy_units:
+                        if not ene.is_flying:
+                            enemies.add(ene.position)
+                    for ene in self.enemy_structures:
+                        if not ene.is_flying:
+                            enemies.add(ene.position)
+                    # make sure there is something
+                    enemies.add(self.enemy_pos)
+                # calculate their center, weigh close ones extra
+                weightsum = 0
+                cx = 0
+                cy = 0
+                for enepos in enemies:
+                    sd = self.sdist(mypos,enepos)
+                    weight = 1 / (sd+0.1)
+                    weightsum += weight
+                    cx += weight * enepos.x
+                    cy += weight * enepos.y
+                enecenter = Point2((cx / weightsum, cy / weightsum))
+                # wanteddist
+                wanteddist = scv.weapon_cooldown / 12
+                actualdist = self.circledist(mypos,enecenter)
+                if scvt not in self.defend_phase:
+                    self.defend_phase[scvt] = 'free'
+                # phase changes
+                phase = self.defend_phase[scvt]
+                newphase = phase
+                if (scv.health <= 10):
+                    if actualdist < 1:
+                        # cornered, taking an unwanted fight
+                        newphase = 'attack'
+                    elif actualdist < 3:
+                        newphase = 'away'
+                    elif actualdist > 5:
+                        newphase = 'rest'
+                elif (phase == 'rest') and (scv.health < 41):
+                    if actualdist < 1:
+                        # being ambushed, taking an unwanted fight
+                        newphase = 'attack'
+                    elif actualdist < 3:
+                        newphase = 'away'
+                elif (scv.weapon_cooldown < 5):
+                    newphase = 'attack'
+                elif (actualdist > wanteddist + 0.1):
+                    newphase = 'towards'
+                elif (actualdist < wanteddist - 0.1):
+                    newphase = 'away'
+                # metaphases 'away' and 'towards'
+                if newphase == 'away':
+                    if self.sdist(enecenter, homemimpos) > self.sdist(mypos, homemimpos):
+                        newphase = 'homemim'
+                    else:
+                        newphase = 'hismim'
+                elif newphase == 'towards':
+                    if self.sdist(enecenter, homemimpos) > self.sdist(mypos, homemimpos):
+                        newphase = 'hismim'
+                    else:
+                        newphase = 'homemim'
+                # actions
+                if newphase != phase:
+                    if newphase == 'hismim':
+                        scv.gather(hismim)
+                    elif newphase == 'homemim':
+                        scv.gather(homemim)
+                    elif newphase == 'attack':
+                        scv.attack(enecenter)
+                    elif newphase == 'rest':
+                        scv.move(mypos) # stop,halt
+                    # round
+                    self.defend_phase[scvt] = newphase
+                # repair while rest
+                if newphase == 'rest':
+                    if scv in self.units(SCV).idle:
+                        todo = 1
+                        for otherscv in self.units(SCV):
+                            otherscvt = otherscv.tag
+                            if otherscvt != scvt:
+                                if self.near(mypos,otherscv.position,5):
+                                    if self.job_of_scvt[otherscvt] == 'defender':
+                                        if self.defend_phase[otherscvt] == 'rest':
+                                            if otherscv.health < 41:
+                                                if todo > 0:
+                                                    todo -= 1
+                                                    if self.near(mypos,otherscv.position,2):
+                                                        scv.repair(otherscv)
+                                                    else:
+                                                        mid = Point2((0.5*mypos.x+0.5*otherscv.position.x,
+                                                                      0.5*mypos.y+0.5*otherscv.position.y))
+                                                        scv.move(mid)
 
 
     async def cheese1_army(self):
