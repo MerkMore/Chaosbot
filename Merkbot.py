@@ -177,13 +177,14 @@ class Chaosbot(sc2.BotAI):
     #   ############### CHANGE VALUE AD LIB
     do_slowdown = False
     slowdown_frames = 99999
-    slowness = 0.1 # realtime is around 0.05
+    slowness = 0.02 # realtime is around 0.05
     do_log_success = False
     do_log_fail = False
     do_log_command = False
     do_log_attacktype = False
     do_log_workers = False
     do_log_population = False
+    do_log_fighters = False
     do_log_armysize = False
     do_log_army = False
     do_log_swaps = False
@@ -316,6 +317,7 @@ class Chaosbot(sc2.BotAI):
     maptiles = maptile_amount * maptile_amount
     nine = {} # the 9 maptiles around a maptile
     enemies_of_tile = {} # the enemy units and structures per tile
+    goodguys_of_tile = {} # the own units and structures per tile
     expos = 0 # expansionlocations
     expo_of_maptile = {}
     pos_of_expo = {}
@@ -668,11 +670,11 @@ class Chaosbot(sc2.BotAI):
     #   The tag of existing minerals where we want to mine from, in this frame
     all_mimt = []
     #   job_of_scvt dictionary
-    good_jobs = ('builder','settler','fencer','traveller','repairer','escorter','scout','cheeser','pilot')
-    bad_jobs = ('gasminer','mimminer','candidate','carrier','applicant','defender','gasper','reporter')
+    good_jobs = ('builder','settler','fencer','traveller','repairer','fighter','escorter','scout','cheeser','pilot')
+    bad_jobs = ('gasminer','mimminer','candidate','carrier','applicant','gasper','reporter')
     no_jobs = ('idler','suicider','volunteer','inshock','fleeer')
     #
-    jobs_may_idle = ('mimminer','fencer','settler','scout','cheeser','applicant','idler','gasper','pilot')
+    jobs_may_idle = ('mimminer','fencer','settler','scout','fighter','cheeser','applicant','idler','gasper','pilot')
     #
     expected_orders = set()
     #
@@ -704,9 +706,10 @@ class Chaosbot(sc2.BotAI):
     reporter_of_scvt = {}
     #
     lazyness_of_scvt = {} # per tag idling scv, the amount of frames it idles
-    #   defenders attack somewhere
+    #   fighters attack somewhere
     last_center_enemies = nowhere
-    defend_phase = {} # per tag of scv job defender, a text for its phase
+    fighter_phase = {} # per tag of scv job fighter, a text for its phase
+    fighternurse = {} # per tag of scv job fighter phase nurse, the tag of her patient.
     #   for missing scvs (fallen or in gaslimbo), the frame is stored
     frame_of_missing_scvt = {}
     #   fun translate output scvt to names
@@ -803,7 +806,7 @@ class Chaosbot(sc2.BotAI):
     #   strategy[0] is vs Zerg []
     strategy = []
     game_choice = []
-    radio_choices = 41
+    radio_choices = 42
     game_choices = 62
     game_result = 'doubt'
     opening_name = 'no'
@@ -849,6 +852,7 @@ class Chaosbot(sc2.BotAI):
         self.act_on_errors()
         self.init_step_expo()
         self.init_enemies_of_tile()
+        self.init_goodguys_of_tile()
         await self.gamestate()
         await self.get_birds()
         self.get_eggs() # after get_birds
@@ -857,6 +861,7 @@ class Chaosbot(sc2.BotAI):
         self.log_thoughts() # there is no get_thoughts()
         self.log_resource()
         self.log_armysize()
+        self.log_fighters()
         self.log_bcs()
         self.log_orders()
         self.loadcc()
@@ -869,7 +874,7 @@ class Chaosbot(sc2.BotAI):
             await self.manage_minerals()
         await self.manage_rest()
         self.speedmining()
-        self.better_defence()
+        self.fighters()
         await self.bunker_handling()
         await self.bunkercheese1()
         await self.bunkercheese2()
@@ -1001,12 +1006,14 @@ class Chaosbot(sc2.BotAI):
         self.init_expected_order('escorter', AbilityId.ATTACK)
         self.init_expected_order('reporter', AbilityId.ATTACK)
         self.init_expected_order('applicant', AbilityId.MOVE)
-        self.init_expected_order('applicant', AbilityId.HARVEST_RETURN)
+        self.init_expected_order('carrier', AbilityId.HARVEST_RETURN)
         self.init_expected_order('scout', AbilityId.MOVE)
         self.init_expected_order('cheeser', AbilityId.MOVE)
         self.init_expected_order('cheeser', AbilityId.HARVEST_GATHER) # mineralwalking
         self.init_expected_order('suicider', AbilityId.ATTACK)
-        self.init_expected_order('defender', AbilityId.ATTACK)
+        self.init_expected_order('fighter', AbilityId.ATTACK)
+        self.init_expected_order('fighter', AbilityId.HARVEST_GATHER) # mineralwalking
+        self.init_expected_order('fighter',AbilityId.EFFECT_REPAIR)
         self.init_expected_order('repairer',AbilityId.EFFECT_REPAIR)
         # liftable
         self.liftable = [BARRACKS,FACTORY,STARPORT,COMMANDCENTER,ORBITALCOMMAND]
@@ -1081,6 +1088,7 @@ class Chaosbot(sc2.BotAI):
         self.init_structures('T','lab',FACTORYREACTOR, 36, 2)
         self.init_structures('T','lab',STARPORTREACTOR, 36, 2)
         self.init_structures('T','lab',REACTOR, 36, 2)
+        self.init_structures('T','otherbuilding',AUTOTURRET, 0, 2)
         # protoss added for layout
         self.init_structures('P','e',NEXUS, 71, 5)
         self.init_structures('P','e',PYLON, 18, 2)
@@ -1264,6 +1272,7 @@ class Chaosbot(sc2.BotAI):
         self.init_techtree(FUSIONCORE,STARPORT)
         self.init_techtree(ARMORY,FACTORY)
         self.init_techtree(BUNKER,BARRACKS)
+        self.init_techtree(AUTOTURRET,RAVEN)
         # First is unit
         self.init_techtree(BATTLECRUISER,STARPORTTECHLAB)
         self.init_techtree(BATTLECRUISER,FUSIONCORE)
@@ -1920,13 +1929,22 @@ class Chaosbot(sc2.BotAI):
             self.opening_create_kind = BANSHEE
             self.init_banshee_spots()
             self.init_cocoon()
-        if self.game_choice[40]:
+        elif self.game_choice[40]:
             self.opening_name = 'viking'
             self.rushopening = True
             self.buildseries_opening = [SUPPLYDEPOT, REFINERY, BARRACKS, SUPPLYDEPOT, REFINERY, FACTORY,
                                         STARPORT, FACTORYTECHLAB, VIKINGFIGHTER, SIEGETANK]
             self.place_proxy(STARPORT,45)
-        # radio_choices = 41
+        # Next opening is not advised. Restrict radio_choices.
+        elif self.game_choice[41]:
+            self.opening_name = 'immediate_fight'
+            self.rushopening = True
+            self.buildseries_opening = [SUPPLYDEPOT, BARRACKS, MARINE, BUNKER]
+            if self.enemy_race == Race.Zerg:
+                bunkerpos = self.init_cheese_position(self.enemyramp_pos, 7, BUNKER)
+            else:
+                bunkerpos = self.init_cheese_position(self.enemy_pos, 79, BUNKER)
+            self.chosenplaces.append((BUNKER, bunkerpos))
         self.log_success('OPENING: '+self.opening_name)
         #
         self.init_cheese1()
@@ -2244,8 +2262,7 @@ class Chaosbot(sc2.BotAI):
         'CantFindCancelOrder', # 214;
         ]
         # chat
-        await self._client.chat_send('Chaosbot version 22 sep 2021, made by MerkMore', team_only=False)
-        await self._client.chat_send('(Version 1 vs EvilZoe)', team_only=False)
+        await self._client.chat_send('Chaosbot version 26 sep 2021, made by MerkMore', team_only=False)
         #
         #layout_if.photo_layout()
 
@@ -2298,7 +2315,7 @@ class Chaosbot(sc2.BotAI):
                     self.goal_of_flying_struct[cc.tag] = place
                     self.landings_of_flying_struct[cc.tag] = 0
         #
-        for cc in self.structures(COMMANDCENTER):
+        for cc in self.structures(COMMANDCENTER).ready:
             if self.purpose[cc.tag] == 'wishtofly':
                 self.purpose[cc.tag] = 'load'
                 if not cc.is_idle:
@@ -2462,6 +2479,36 @@ class Chaosbot(sc2.BotAI):
     def log_army(self,stri):
         if self.do_log_army:
             print(' On '+str(self.frame)+' army '+stri)
+
+    def log_fighters(self):
+        if self.do_log_fighters:
+            print('----------')
+            for scv in self.units(SCV):
+                scvt = scv.tag
+                if self.job_of_scvt[scvt] == 'fighter':
+                    mypos = scv.position
+                    enecenter = self.calculate_enecenter(mypos)
+                    # wanteddist
+                    wanteddist = scv.weapon_cooldown / 12
+                    actualdist = self.circledist(mypos,enecenter)
+                    if scvt in self.fighter_phase:
+                        phase = self.fighter_phase[scvt]
+                    else:
+                        phase = 'free'
+                    # log for debugging
+                    print('fighter ' + self.name(scvt) + ' '+ phase + ' ' + str(actualdist))
+                    if scvt in self.fighternurse:
+                        otherscvt = self.fighternurse[scvt]
+                        print('fighter ' + self.name(scvt) + ' repairs ' + self.name(otherscvt))
+                    orders = ""
+                    for order in scv.orders:
+                        if type(order.target) == int:
+                            orders = orders + '    ' + str(order.ability.id) + ', ' + str(order.target) + ', ' + str(
+                                order.progress)
+                        else:
+                            orders = orders + '   ' + str(order.ability.id) + ', ' + self.txt(order.target) + ', ' + str(
+                                order.progress)
+                    print('fighter orders ' + orders)
 
     def log_bcs(self):
         if self.do_log_bcs:
@@ -2930,13 +2977,13 @@ class Chaosbot(sc2.BotAI):
                 normal = False
                 job = self.job_of_scvt[scv.tag]
                 if len(scv.orders) == 2:
-                    if job == 'defender':
+                    if job == 'fighter':
                         if scv.orders[0].ability.id == AbilityId.ATTACK:
                             if scv.orders[1].ability.id == AbilityId.ATTACK:
                                 normal = True
                     if job == 'mimminer':
                         if scv.orders[0].ability.id == AbilityId.HARVEST_RETURN:
-                            if scv.orders[1].ability.id == AbilityId.HARVEST_RETURN:
+                            if scv.orders[1].ability.id == AbilityId.HARVEST_RETURN: # bug?
                                 normal = True
                 if (len(scv.orders) == 1):
                     if (job,scv.orders[0].ability.id) in self.expected_orders:
@@ -2985,6 +3032,13 @@ class Chaosbot(sc2.BotAI):
                 return 6
             else:
                 return layout_if.layout[vakx][vaky]
+        else:
+            return 3
+
+    def read_layout_ignore_creep(self, vakx,vaky) -> int:
+        if (self.map_left <= vakx) and (vakx < self.map_right) and (self.map_bottom <= vaky) and (vaky < self.map_top):
+            point = Point2((vakx,vaky))
+            return layout_if.layout[vakx][vaky]
         else:
             return 3
 
@@ -3101,6 +3155,10 @@ class Chaosbot(sc2.BotAI):
                         dy = abs(vaky-y)
                         if (dx <= 2) or (dy <= 2):
                             placable = placable and (self.read_layout(vakx, vaky) == mustbecolor)
+            elif struc == AUTOTURRET:
+                for vakx in range(round(x - siz / 2), round(x + siz / 2)):
+                    for vaky in range(round(y - siz / 2), round(y + siz / 2)):
+                        placable = placable and (self.read_layout_ignore_creep(vakx, vaky) == mustbecolor)
             else:
                 for vakx in range(round(x-siz/2),round(x+siz/2)):
                     for vaky in range(round(y-siz/2),round(y+siz/2)):
@@ -3259,6 +3317,17 @@ class Chaosbot(sc2.BotAI):
             # we need the structure itself, and do not care for out-of-vision, so use not enemy_structureinfo  
             maptile = self.maptile_of_pos(ene.position)
             self.enemies_of_tile[maptile].add(ene)
+
+    def init_goodguys_of_tile(self):
+        self.goodguys_of_tile = {}
+        for maptile in range(0, self.maptiles):
+            self.goodguys_of_tile[maptile] = set()
+        for myn in self.units:
+            maptile = self.maptile_of_pos(myn.position)
+            self.goodguys_of_tile[maptile].add(myn)
+        for myn in self.structures:
+            maptile = self.maptile_of_pos(myn.position)
+            self.goodguys_of_tile[maptile].add(myn)
 
 
     # a expo is a group of maptiles, roughly around an expansion
@@ -10315,7 +10384,7 @@ class Chaosbot(sc2.BotAI):
                     if self.frame < self.wait_of_unittag[ra.tag]: # valid only some seconds
                         poop = False
             if poop:
-                pooppos = self.place_around(MISSILETURRET, pooppos)
+                pooppos = self.place_around(AUTOTURRET, pooppos)
                 abilities = (await self.get_available_abilities([ra]))[0]
                 if AbilityId.BUILDAUTOTURRET_AUTOTURRET in abilities:
                     self.log_command('ra(AbilityId.BUILDAUTOTURRET_AUTOTURRET, pooppos)')
@@ -10593,122 +10662,195 @@ class Chaosbot(sc2.BotAI):
             del self.speciality_of_tag[tag]
 
     async def worker_defence(self):
-        for tow in self.all_mine_bases:
-            if tow.tag not in self.speciality_of_tag:
-                expo = self.expo_of_pos(tow.position)
-                # calc enemies and enemy_power
-                enemies = set() # set of pos
-                enemy_power = 0
-                cx = 0
-                cy = 0
-                n_enemies = 0
-                for ene in self.enemy_units_of_expo[expo]:
-                    if not ene.is_flying:
-                        if (tow.position == self.loved_pos) or (self.near(ene.position,tow.position,10)):
-                            enemies.add(ene.position)
-                            enemy_power += self.unit_power(ene.type_id)
-                            cx = cx + ene.position.x
-                            cy = cy + ene.position.y
-                            n_enemies += 1
-                for tpa in self.enemy_structureinfo_of_expo[expo]:
-                    (typ,pos,tag) = tpa
-                    enemies.add(pos)
-                    enemy_power += self.unit_power(typ)
-                    cx = cx + pos.x
-                    cy = cy + pos.y
-                    n_enemies += 1
-                if n_enemies > 0:
-                    center_enemies = Point2((cx / n_enemies, cy / n_enemies))
-                    # use 1 gamestep lookahead
-                    if not self.near(center_enemies, self.last_center_enemies,2):
-                        self.last_center_enemies = center_enemies
-                    next_center_enemies = Point2(((2*center_enemies.x-self.last_center_enemies.x), (2*center_enemies.y-self.last_center_enemies.y)))
-                    self.last_center_enemies = center_enemies
-                # calc my_power
-                my_power = 0
-                for myn in self.units_of_expo[expo]:
-                    my_power += self.unit_power(myn.type_id)
-                for myn in self.structures_of_expo[expo]:
-                    if myn.type_id in [PLANETARYFORTRESS,MISSILETURRET,BUNKER]:
-                        my_power += self.unit_power(myn.type_id)
-                if my_power * 3 < enemy_power * 2:
-                    # no hope
-                    self.log_success('eeeeek!!!')
-                    away = Point2((2*tow.position.x-next_center_enemies.x, 2*tow.position.y-next_center_enemies.y))
-                    for myscv in self.scvs_of_expo[expo]:
-                        job = self.job_of_scvt[myscv.tag]
-                        if (job in self.bad_jobs + self.no_jobs) and (job not in {'inshock','fleeer'}):
-                            self.promote(myscv,'inshock')
-                            self.log_command('my_scv.move(away)')
-                            myscv.move(away)
-                    if tow in self.structures(ORBITALCOMMAND):
-                        self.purpose[tow.tag] = 'fly'
-                    elif tow in self.structures(COMMANDCENTER):
-                        self.purpose[tow.tag] = 'wishtofly'
-                    if len(self.all_bases) < 2:
-                        toplace = random.choice(self.expansion_locations)
-                        self.goal_of_flying_struct[tow.tag] = toplace
-                        self.landings_of_flying_struct[tow.tag] = 0
-                else: #defend
-                    if len(enemies) == 1:
-                        wished_defenders = enemy_power/50 + 1
-                    elif len(enemies) > 0:
-                        wished_defenders = enemy_power/50 + 2
-                    else:
-                        wished_defenders = 0
-                    # calc defenders
-                    defenders = set()
-                    for myscv in self.scvs_of_expo[expo]:
+        if self.opening_name == 'immediate_fight':
+            # test the 'fighter' job by a primitive workerrush
+            if len(self.structures) > 1: # after starting depot
+                miners = 0
+                fighters = 0
+                for myscv in self.units(SCV):
+                    scvt = myscv.tag
+                    job = self.job_of_scvt[scvt]
+                    if (job == 'mimminer'):
+                        miners += 1
+                    elif (job == 'fighter'):
+                        fighters += 1
+                if (miners > 5) and (fighters < 10):
+                    todo = 1
+                    for myscv in self.units(SCV):
                         scvt = myscv.tag
                         job = self.job_of_scvt[scvt]
-                        if (job == 'defender'):
-                            defenders.add(myscv)
-                    if len(enemies) > 0:
-                        # get new defenders
-                        toget = wished_defenders - len(defenders)
-                        if toget > 0:
-                            recruits = set()
-                            for myscv in self.scvs_of_expo[expo]:
-                                if myscv.health >= 12:
-                                    scvt = myscv.tag
-                                    job = self.job_of_scvt[scvt]
-                                    if job in (self.bad_jobs + self.no_jobs):
-                                        if job != 'defender':
+                        if (job not in self.good_jobs):
+                            if todo > 0:
+                                todo -= 1
+                                self.promote(myscv,'fighter')
+        else: # normal
+            for tow in self.all_mine_bases:
+                if tow.tag not in self.speciality_of_tag:
+                    expo = self.expo_of_pos(tow.position)
+                    # calc enemies and enemy_power
+                    enemies = set() # set of pos
+                    enemy_power = 0
+                    cx = 0
+                    cy = 0
+                    n_enemies = 0
+                    for ene in self.enemy_units_of_expo[expo]:
+                        if not ene.is_flying:
+                            if (tow.position == self.loved_pos) or (self.near(ene.position,tow.position,10)):
+                                enemies.add(ene.position)
+                                enemy_power += self.unit_power(ene.type_id)
+                                cx = cx + ene.position.x
+                                cy = cy + ene.position.y
+                                n_enemies += 1
+                    for tpa in self.enemy_structureinfo_of_expo[expo]:
+                        (typ,pos,tag) = tpa
+                        enemies.add(pos)
+                        enemy_power += self.unit_power(typ)
+                        cx = cx + pos.x
+                        cy = cy + pos.y
+                        n_enemies += 1
+                    if n_enemies > 0:
+                        center_enemies = Point2((cx / n_enemies, cy / n_enemies))
+                        # use 1 gamestep lookahead
+                        if not self.near(center_enemies, self.last_center_enemies,2):
+                            self.last_center_enemies = center_enemies
+                        next_center_enemies = Point2(((2*center_enemies.x-self.last_center_enemies.x), (2*center_enemies.y-self.last_center_enemies.y)))
+                        self.last_center_enemies = center_enemies
+                    # calc my_power
+                    my_power = 0
+                    for myn in self.units_of_expo[expo]:
+                        my_power += self.unit_power(myn.type_id)
+                    for myn in self.structures_of_expo[expo]:
+                        if myn.type_id in [PLANETARYFORTRESS,MISSILETURRET,BUNKER]:
+                            my_power += self.unit_power(myn.type_id)
+                    if my_power * 3 < enemy_power * 2:
+                        # no hope
+                        self.log_success('eeeeek!!!')
+                        away = Point2((2*tow.position.x-next_center_enemies.x, 2*tow.position.y-next_center_enemies.y))
+                        for myscv in self.scvs_of_expo[expo]:
+                            job = self.job_of_scvt[myscv.tag]
+                            if (job in self.bad_jobs + self.no_jobs) and (job not in {'inshock','fleeer'}):
+                                self.promote(myscv,'inshock')
+                                self.log_command('my_scv.move(away)')
+                                myscv.move(away)
+                        if tow in self.structures(ORBITALCOMMAND):
+                            self.purpose[tow.tag] = 'fly'
+                        elif tow in self.structures(COMMANDCENTER):
+                            self.purpose[tow.tag] = 'wishtofly'
+                        if len(self.all_bases) < 2:
+                            toplace = random.choice(self.expansion_locations)
+                            self.goal_of_flying_struct[tow.tag] = toplace
+                            self.landings_of_flying_struct[tow.tag] = 0
+                    else: #defend
+                        if len(enemies) == 1:
+                            wished_fighters = enemy_power/50 + 1
+                        elif len(enemies) > 0:
+                            wished_fighters = enemy_power/50 + 2
+                        else:
+                            wished_fighters = 0
+                        # calc fighters
+                        fighters = set()
+                        for myscv in self.scvs_of_expo[expo]:
+                            scvt = myscv.tag
+                            job = self.job_of_scvt[scvt]
+                            if (job == 'fighter'):
+                                fighters.add(myscv)
+                        if len(enemies) > 0:
+                            # get new fighters
+                            toget = wished_fighters - len(fighters)
+                            if toget > 0:
+                                recruits = set()
+                                for myscv in self.scvs_of_expo[expo]:
+                                    if myscv.health >= 12:
+                                        scvt = myscv.tag
+                                        job = self.job_of_scvt[scvt]
+                                        if job in (self.bad_jobs + self.no_jobs):
                                             recruits.add(myscv)
-                            while (toget > 0) and (len(recruits) > 0):
-                                bestsd = 99999
-                                for myscv in recruits:
-                                    sd = self.sdist(myscv.position,next_center_enemies)
-                                    if sd < bestsd:
-                                        bestscv = myscv
-                                        bestsd = sd
-                                myscv = bestscv
-                                scvt = myscv.tag
-                                recruits.remove(myscv)
-                                # promote to defender and let idle
-                                toget -= 1
-                                self.promote(myscv,'defender')
-                    if (len(defenders) > wished_defenders) or (len(enemies) == 0):
-                        # dismiss some defenders
-                        todel = len(defenders) - wished_defenders
-                        if len(enemies) == 0:
-                            todel = len(defenders)
-                        for myscv in defenders:
-                            if (todel > 0):
-                                todel -= 1
-                                self.promote(myscv,'idler')
-                                self.log_command('myscv.move(tow.position)')
-                                myscv.move(tow.position)
-                    # We have the defenders. Now what will they do?
-                    # see better_defence
+                                while (toget > 0) and (len(recruits) > 0):
+                                    bestsd = 99999
+                                    for myscv in recruits:
+                                        sd = self.sdist(myscv.position,next_center_enemies)
+                                        if sd < bestsd:
+                                            bestscv = myscv
+                                            bestsd = sd
+                                    myscv = bestscv
+                                    scvt = myscv.tag
+                                    recruits.remove(myscv)
+                                    # promote to fighter and let idle
+                                    toget -= 1
+                                    self.promote(myscv,'fighter')
+                        if (len(fighters) > wished_fighters) or (len(enemies) == 0):
+                            # dismiss some fighters
+                            todel = len(fighters) - wished_fighters
+                            if len(enemies) == 0:
+                                todel = len(fighters)
+                            for myscv in fighters:
+                                if (todel > 0):
+                                    todel -= 1
+                                    self.promote(myscv,'idler')
+                                    self.log_command('myscv.move(tow.position)')
+                                    myscv.move(tow.position)
+                        # We have the fighters. Now what will they do? See self.fighters()
 
-    def better_defence(self):
-        # for scvs with job 'defender', sensible individual actions
+    def calculate_enecenter(self,mypos) -> Point2:
+        # get close enemies
+        enemies = set()
+        mytile = self.maptile_of_pos(mypos)
+        for tile in self.nine[mytile]:
+            for ene in self.enemies_of_tile[tile]:
+                if self.near(mypos, ene.position, 7):
+                    if not ene.is_flying:
+                        if ene.type_id not in {LARVA,EGG}:
+                            enemies.add(ene.position)
+        # if no close enemies, get any enemies
+        if len(enemies) == 0:
+            for ene in self.enemy_units:
+                if not ene.is_flying:
+                    if ene.type_id not in {LARVA, EGG}:
+                        enemies.add(ene.position)
+        # if no enemy units, get enemy structures
+        if len(enemies) == 0:
+            for ene in self.enemy_structures:
+                if not ene.is_flying:
+                    enemies.add(ene.position)
+        # make sure there is something
+        if len(enemies) == 0:
+            enemies.add(self.enemy_pos)
+        # calculate enemy center, weigh close ones extra
+        weightsum = 0
+        cx = 0
+        cy = 0
+        for enepos in enemies:
+            sd = self.sdist(mypos, enepos)
+            weight = 1 / (sd + 0.1)
+            weightsum += weight
+            cx += weight * enepos.x
+            cy += weight * enepos.y
+        enecenter = Point2((cx / weightsum, cy / weightsum))
+        return enecenter
+
+    def check_walk(self,mytag,mypos,topos):
+        # topos should be dist 2 from mypos
+        mid = Point2((0.5*mypos.x+0.5*topos.x,0.5*mypos.y+0.5*topos.y))
+        can = self.canstandon(mid)
+        mytile = self.maptile_of_pos(mid)
+        for tile in self.nine[mytile]:
+            for ene in self.enemies_of_tile[tile]:
+                if self.near(mid, ene.position, 1):
+                    if not ene.is_flying:
+                        can = False
+            for myn in self.goodguys_of_tile[tile]:
+                if self.near(mid, myn.position, 1):
+                    if myn.tag != mytag:
+                        can = False
+        return can
+
+    def fighters(self):
+        # for scvs with job 'fighter', sensible individual actions
         #
         useful = False
         for scv in self.units(SCV):
             scvt = scv.tag
-            if self.job_of_scvt[scvt] == 'defender':
+            if self.job_of_scvt[scvt] == 'fighter':
                 useful = True
         if useful:
             # minerals to move towards: hismim, homemim
@@ -10737,61 +10879,98 @@ class Chaosbot(sc2.BotAI):
             for patch in self.mineral_field:
                 if self.mineraltag(patch) == homemimt:
                     homemim = patch
-        #
+            # fighter_phase, goal_of_scvt should exist
+            for scv in self.units(SCV):
+                scvt = scv.tag
+                if self.job_of_scvt[scvt] == 'fighter':
+                    if scvt not in self.fighter_phase:
+                        self.fighter_phase[scvt] = 'free'
+                    if scvt not in self.goal_of_unittag:
+                        self.goal_of_unittag[scvt] = self.nowhere
+            # self.fighternurse relevance
+            todel = set() # of nurse
+            for nurse in self.fighternurse:
+                repairee = self.fighternurse[nurse]
+                seen = 0
+                for scv in self.units(SCV):
+                    scvt = scv.tag
+                    if self.job_of_scvt[scvt] == 'fighter':
+                        if self.fighter_phase[scvt] == 'nurse':
+                            if scvt == nurse:
+                                seen += 1
+                        if self.fighter_phase[scvt] in {'rest','nurse'}:
+                            if scvt == repairee:
+                                if scv.health < self.healthybound:
+                                    seen += 1
+                if seen < 2:
+                    todel.add(nurse)
+            for nurse in todel:
+                del self.fighternurse[nurse]
+            # new self.fighternurse
+            for scv in self.units(SCV):
+                scvt = scv.tag
+                if self.job_of_scvt[scvt] == 'fighter':
+                    mypos = scv.position
+                    if self.fighter_phase[scvt] == 'rest':
+                        enecenter = self.calculate_enecenter(mypos)
+                        minsd = 99999
+                        bestscvt = scvt
+                        for otherscv in self.units(SCV):
+                            otherscvt = otherscv.tag
+                            if otherscvt != scvt:
+                                if self.job_of_scvt[otherscvt] == 'fighter':
+                                    if self.fighter_phase[otherscvt] == 'rest':
+                                        otherpos = otherscv.position
+                                        sd = self.sdist(mypos,otherpos)
+                                        co = self.sdist(enecenter,otherpos)
+                                        ce = self.sdist(enecenter,mypos)
+                                        if sd < co + ce:
+                                            if otherscv.health < self.healthybound:
+                                                if sd < minsd:
+                                                    minsd = sd
+                                                    bestscvt = otherscvt
+                        if minsd < 99999:
+                            self.fighternurse[scvt] = bestscvt
+            #
         for scv in self.units(SCV):
             scvt = scv.tag
-            if self.job_of_scvt[scvt] == 'defender':
+            if self.job_of_scvt[scvt] == 'fighter':
                 mypos = scv.position
-                # get close enemies
-                enemies = set()
-                mytile = self.maptile_of_pos(mypos)
-                for tile in self.nine[mytile]:
-                    for ene in self.enemies_of_tile[tile]:
-                        if self.near(mypos,ene.position,7):
-                            if not ene.is_flying:
-                                enemies.add(ene.position)
-                # if no close enemies, get any enemies
-                if len(enemies) == 0:
-                    for ene in self.enemy_units:
-                        if not ene.is_flying:
-                            enemies.add(ene.position)
-                    for ene in self.enemy_structures:
-                        if not ene.is_flying:
-                            enemies.add(ene.position)
-                    # make sure there is something
-                    enemies.add(self.enemy_pos)
-                # calculate their center, weigh close ones extra
-                weightsum = 0
-                cx = 0
-                cy = 0
-                for enepos in enemies:
-                    sd = self.sdist(mypos,enepos)
-                    weight = 1 / (sd+0.1)
-                    weightsum += weight
-                    cx += weight * enepos.x
-                    cy += weight * enepos.y
-                enecenter = Point2((cx / weightsum, cy / weightsum))
+                enecenter = self.calculate_enecenter(mypos)
                 # wanteddist
                 wanteddist = scv.weapon_cooldown / 12
                 actualdist = self.circledist(mypos,enecenter)
-                if scvt not in self.defend_phase:
-                    self.defend_phase[scvt] = 'free'
+                awaypos = mypos.towards(enecenter, -2)
+                awaywalk = self.check_walk(scvt, mypos, awaypos)
+                phase = self.fighter_phase[scvt]
                 # phase changes
-                phase = self.defend_phase[scvt]
                 newphase = phase
-                if (scv.health <= 10):
-                    if actualdist < 1:
-                        # cornered, taking an unwanted fight
+                if (phase == 'nurse'):
+                    if (scv.health >= self.healthybound):
                         newphase = 'attack'
-                    elif actualdist < 3:
-                        newphase = 'away'
-                    elif actualdist > 5:
-                        newphase = 'rest'
-                elif (phase == 'rest') and (scv.health < 41):
-                    if actualdist < 1:
+                    elif actualdist < 1:
                         # being ambushed, taking an unwanted fight
                         newphase = 'attack'
-                    elif actualdist < 3:
+                    elif actualdist < 3.5:
+                        newphase = 'away'
+                    elif scvt not in self.fighternurse:
+                        newphase = 'rest'
+                elif (phase == 'rest'):
+                    if (scv.health >= self.healthybound):
+                        newphase = 'attack'
+                    elif actualdist < 1:
+                        # being ambushed, taking an unwanted fight
+                        newphase = 'attack'
+                    elif actualdist < 3.5:
+                        newphase = 'away'
+                    elif scvt in self.fighternurse:
+                        newphase = 'nurse'
+                    elif (scv.health >= 31):
+                        newphase = 'attack'
+                elif (scv.health <= 10):
+                    if actualdist > 5:
+                        newphase = 'rest'
+                    else:
                         newphase = 'away'
                 elif (scv.weapon_cooldown < 5):
                     newphase = 'attack'
@@ -10801,7 +10980,9 @@ class Chaosbot(sc2.BotAI):
                     newphase = 'away'
                 # metaphases 'away' and 'towards'
                 if newphase == 'away':
-                    if self.sdist(enecenter, homemimpos) > self.sdist(mypos, homemimpos):
+                    if awaywalk:
+                        newphase = 'walk'
+                    elif self.sdist(enecenter, homemimpos) > self.sdist(mypos, homemimpos):
                         newphase = 'homemim'
                     else:
                         newphase = 'hismim'
@@ -10810,37 +10991,45 @@ class Chaosbot(sc2.BotAI):
                         newphase = 'hismim'
                     else:
                         newphase = 'homemim'
-                # actions
+                # do action?
+                do_action = False
                 if newphase != phase:
+                    do_action = True
+                goal = self.goal_of_unittag[scvt]
+                if self.near(mypos,goal,1):
+                    do_action = True
+                if (phase == newphase):
+                    if scv in self.units(SCV).idle:
+                        # e.g. repair while no minerals
+                        if phase != 'rest':
+                            do_action = True
+                if self.frame % 23 == 22:
+                    # some hanging situations remained
+                    do_action = True
+                # action
+                if do_action:
                     if newphase == 'hismim':
                         scv.gather(hismim)
+                        self.goal_of_unittag[scvt] = hismimpos
                     elif newphase == 'homemim':
                         scv.gather(homemim)
+                        self.goal_of_unittag[scvt] = homemimpos
+                    elif newphase == 'walk':
+                        scv.move(awaypos)
+                        self.goal_of_unittag[scvt] = awaypos
                     elif newphase == 'attack':
                         scv.attack(enecenter)
+                        self.goal_of_unittag[scvt] = enecenter
                     elif newphase == 'rest':
-                        scv.move(mypos) # stop,halt
-                    # round
-                    self.defend_phase[scvt] = newphase
-                # repair while rest
-                if newphase == 'rest':
-                    if scv in self.units(SCV).idle:
-                        todo = 1
+                        self.log_command('scv(AbilityId.STOP)')  # stop moving
+                        scv(AbilityId.STOP)
+                    elif newphase == 'nurse':
+                        otherscvt = self.fighternurse[scvt] # exists because nurse
                         for otherscv in self.units(SCV):
-                            otherscvt = otherscv.tag
-                            if otherscvt != scvt:
-                                if self.near(mypos,otherscv.position,5):
-                                    if self.job_of_scvt[otherscvt] == 'defender':
-                                        if self.defend_phase[otherscvt] == 'rest':
-                                            if otherscv.health < 41:
-                                                if todo > 0:
-                                                    todo -= 1
-                                                    if self.near(mypos,otherscv.position,2):
-                                                        scv.repair(otherscv)
-                                                    else:
-                                                        mid = Point2((0.5*mypos.x+0.5*otherscv.position.x,
-                                                                      0.5*mypos.y+0.5*otherscv.position.y))
-                                                        scv.move(mid)
+                            if otherscv.tag == otherscvt:
+                                scv.repair(otherscv)
+                # round
+                self.fighter_phase[scvt] = newphase
 
 
     async def cheese1_army(self):
@@ -11554,18 +11743,18 @@ class Chaosbot(sc2.BotAI):
                         if cc not in self.structures(COMMANDCENTER).ready:
                             self.log_command('cc(AbilityId.CANCEL_BUILDINPROGRESS)')
                             cc(AbilityId.CANCEL_BUILDINPROGRESS)
-                    if cc in self.structures(COMMANDCENTER).ready:
-                        if self.find_tobuildwalk_a_place(COMMANDCENTER):
-                            goal = self.function_result_Point2
-                            self.write_layout(COMMANDCENTER, goal)
-                            if not cc.is_idle:
-                                self.log_command('cc(AbilityId.CANCEL_QUEUECANCELTOSELECTION)') # build worker
-                                cc(AbilityId.CANCEL_QUEUECANCELTOSELECTION)
-                            self.goal_of_flying_struct[cc.tag] = goal
-                            self.landings_of_flying_struct[cc.tag] = 0
-                            self.log_success('move cheese COMMANDCENTER')
-                            self.log_command('cc(AbilityId.LIFT')
-                            cc(AbilityId.LIFT)
+                        if cc in self.structures(COMMANDCENTER).ready:
+                            if self.find_tobuildwalk_a_place(COMMANDCENTER):
+                                goal = self.function_result_Point2
+                                self.write_layout(COMMANDCENTER, goal)
+                                if not cc.is_idle:
+                                    self.log_command('cc(AbilityId.CANCEL_QUEUECANCELTOSELECTION)') # build worker
+                                    cc(AbilityId.CANCEL_QUEUECANCELTOSELECTION)
+                                self.goal_of_flying_struct[cc.tag] = goal
+                                self.landings_of_flying_struct[cc.tag] = 0
+                                self.log_success('move cheese COMMANDCENTER')
+                                self.log_command('cc(AbilityId.LIFT')
+                                cc(AbilityId.LIFT)
                 for cc in self.structures(COMMANDCENTERFLYING):
                     if cc.tag == self.cheese3_cc_tag:
                         if self.find_tobuildwalk_a_place(COMMANDCENTER):
@@ -13302,15 +13491,14 @@ class Chaosbot(sc2.BotAI):
                         self.purpose[bu.tag] = 'float'
                 elif bu.health < 500:
                     if bu.tag not in self.speciality_of_tag:
-                        if not bu.is_idle:
-                            self.log_command('bu(AbilityId.CANCEL_QUEUE5)') # build unit
-                            bu(AbilityId.CANCEL_QUEUE5)
-                            self.log_command('bu(AbilityId.CANCEL_QUEUECANCELTOSELECTION)') # build worker
-                            bu(AbilityId.CANCEL_QUEUECANCELTOSELECTION)
-                        self.landings_of_flying_struct[bu.tag] = 0
-                        self.log_success('up '+srt.name)
-                        self.log_command('bu(AbilityId.LIFT')
-                        bu(AbilityId.LIFT)
+                        if bu.type_id not in {COMMANDCENTER,ORBITALCOMMAND}: # those have code elsewhere
+                            if not bu.is_idle:
+                                self.log_command('bu(AbilityId.CANCEL_QUEUE5)') # build unit
+                                bu(AbilityId.CANCEL_QUEUE5)
+                            self.landings_of_flying_struct[bu.tag] = 0
+                            self.log_success('up '+srt.name)
+                            self.log_command('bu(AbilityId.LIFT')
+                            bu(AbilityId.LIFT)
 
     def land(self):
         # attacked buildings can fly, survive, be repaired, and land back.
@@ -14573,6 +14761,7 @@ class Chaosbot(sc2.BotAI):
                                 self.go_gather(scv,mim)
 
     def hop_cc(self):
+        # there are in-between ccs, so expo cannot be used.
         tomove = set() # of cc
         moveto = set() # of ccpos
         cancelable = {AbilityId.COMMANDCENTERTRAIN_SCV}
@@ -14584,23 +14773,33 @@ class Chaosbot(sc2.BotAI):
                     if order.ability.id not in cancelable:
                         movable = False
                 if movable:        
-                    expo = self.expo_of_pos(cc.position)
                     # move reason: low minerals
                     patches = 0
-                    for mim in self.minerals_of_expo[expo]:
-                        patches +=1
+                    for (mimpos, mimt) in self.all_minerals:
+                        if self.near(mimpos,cc.position,10):
+                            patches +=1
                     if patches < 4:
                         tomove.add(cc)
                     # move reason: enemies
-                    if self.ground_strength_of_expo[expo] < -50: # about 3 marines
+                    strength = 0
+                    mytile = self.maptile_of_pos(cc.position)
+                    for tile in self.nine[mytile]:
+                        for myn in self.goodguys_of_tile[tile]:
+                            if self.near(myn.position, cc.position, 10):
+                                strength += self.ground_strength(myn)
+                        for ene in self.enemies_of_tile[tile]:
+                            if self.near(ene.position,cc.position,10):
+                                strength -= self.ground_strength(ene)
+                    if strength < -50: # about 3 marines
                         tomove.add(cc)
         # moveto (cc_pos)
         if len(tomove) > 0:
             for ccpos in self.expansion_locations:
                 expo = self.expo_of_pos(ccpos)
                 patches = 0
-                for mim in self.minerals_of_expo[expo]:
-                    patches += 1
+                for (mimpos, mimt) in self.all_minerals:
+                    if self.near(mimpos, ccpos, 10):
+                        patches += 1
                 if patches >= 5:
                     if self.check_layout(COMMANDCENTER,ccpos):
                         moveto.add(ccpos)
@@ -14628,11 +14827,16 @@ class Chaosbot(sc2.BotAI):
                 if order.ability.id in cancelable:
                     self.log_command('tomove_choice(AbilityId.CANCEL_BUILDINPROGRESS)')
                     tomove_choice(AbilityId.CANCEL_BUILDINPROGRESS)
+                    self.log_command('bu(AbilityId.CANCEL_QUEUECANCELTOSELECTION)')  # build worker
+                    bu(AbilityId.CANCEL_QUEUECANCELTOSELECTION)
             self.goal_of_flying_struct[tomove_choice.tag] = moveto_choice
             self.landings_of_flying_struct[tomove_choice.tag] = 0
             self.log_success('up base')
-            self.log_command('tomove_choice(AbilityId.LIFT')
-            tomove_choice(AbilityId.LIFT)
+            # lift via purpose
+            if cc.type_id == COMMANDCENTER:
+                self.purpose[cc.tag] = 'wishtofly'
+            elif cc.type_id == ORBITALCOMMAND:
+                self.purpose[cc.tag] = 'fly'
             # give a hopped cc a destiny
             if tomove_choice in self.structures(COMMANDCENTER):
                 self.cc_destiny[moveto_choice] = 'pf'
@@ -14829,7 +15033,7 @@ class Chaosbot(sc2.BotAI):
             if random.random() * sum < self.strategy[spec][nr]:
                 radio_nr = nr
         # TO TEST use next line
-        #radio_nr = 40
+        #radio_nr = 41
         for nr in range(0,self.radio_choices):
             self.game_choice.append(nr == radio_nr)
         for nr in range(self.radio_choices,self.game_choices):
@@ -14845,7 +15049,7 @@ def main():
     #map = 'JagannathaAIE'
     opponentspecies = random.choice([Race.Terran,Race.Zerg,Race.Protoss])
     # TO TEST use next line
-    #opponentspecies = Race.Terran
+    #opponentspecies = Race.Zerg
     # Easy/Medium/Hard/VeryHard
     run_game(maps.get(map), [
         Bot(Race.Terran, Chaosbot()),
