@@ -187,6 +187,7 @@ class Chaosbot(sc2.BotAI):
     do_log_fighters = False
     do_log_armysize = False
     do_log_army = False
+    do_log_cc = False
     do_log_swaps = False
     do_log_bcs = False
     do_log_gasminer = False
@@ -2262,7 +2263,7 @@ class Chaosbot(sc2.BotAI):
         'CantFindCancelOrder', # 214;
         ]
         # chat
-        await self._client.chat_send('Chaosbot version 29 sep 2021, made by MerkMore', team_only=False)
+        await self._client.chat_send('Chaosbot version 30 sep 2021, made by MerkMore', team_only=False)
         #
         #layout_if.photo_layout()
 
@@ -2304,21 +2305,26 @@ class Chaosbot(sc2.BotAI):
         # flee when unhealthy
         for cc in self.structures(COMMANDCENTER).ready:
             if cc.health < 800: # or other reasons
-                self.purpose[cc.tag] = 'wishtofly'
-                if len(self.all_bases) < 2:
-                    place = random.choice(self.expansion_locations)
-                    self.goal_of_flying_struct[cc.tag] = place
-                    self.landings_of_flying_struct[cc.tag] = 0
+                if self.purpose[cc.tag] == 'scv':
+                    self.purpose[cc.tag] = 'wishtofly'
+                    self.log_cc('Commandcenter '+str(cc.tag)+' '+self.txt(cc.position)+' wishes to fly because of low health.')
+                    if len(self.all_bases) < 2:
+                        place = random.choice(self.expansion_locations)
+                        self.goal_of_flying_struct[cc.tag] = place
+                        self.landings_of_flying_struct[cc.tag] = 0
         for cc in self.structures(ORBITALCOMMAND):
             if cc.health < 800: # or other reasons
-                self.purpose[cc.tag] = 'fly'
-                if len(self.all_bases) < 2:
-                    place = random.choice(self.expansion_locations)
-                    self.goal_of_flying_struct[cc.tag] = place
-                    self.landings_of_flying_struct[cc.tag] = 0
+                if self.purpose[cc.tag] == 'scv':
+                    self.purpose[cc.tag] = 'fly'
+                    self.log_cc('Orbitalcommand '+str(cc.tag)+' '+self.txt(cc.position)+' wishes to fly because of low health.')
+                    if len(self.all_bases) < 2:
+                        place = random.choice(self.expansion_locations)
+                        self.goal_of_flying_struct[cc.tag] = place
+                        self.landings_of_flying_struct[cc.tag] = 0
         #
         for cc in self.structures(COMMANDCENTER).ready:
             if self.purpose[cc.tag] == 'wishtofly':
+                self.log_cc('Commandcenter '+str(cc.tag)+' '+self.txt(cc.position)+' will cancel and load.')
                 self.purpose[cc.tag] = 'load'
                 if not cc.is_idle:
                     self.log_command('cc(AbilityId.CANCEL_QUEUECANCELTOSELECTION)')  # build worker
@@ -2346,6 +2352,8 @@ class Chaosbot(sc2.BotAI):
                     cc(AbilityId.LOADALL_COMMANDCENTER)
                     self.purpose[cc.tag] = 'closethedoors'
             elif self.purpose[cc.tag] == 'closethedoors':
+                passe = len(cc.passengers)
+                self.log_cc('Commandcenter '+str(cc.tag)+' '+self.txt(cc.position)+' closes its doors with '+str(passe)+' passengers.')
                 self.purpose[cc.tag] = 'fly'
                 for scv in self.units(SCV):
                     if self.near(scv.position, cc.position, 9):
@@ -2481,6 +2489,10 @@ class Chaosbot(sc2.BotAI):
     def log_army(self,stri):
         if self.do_log_army:
             print(' On '+str(self.frame)+' army '+stri)
+
+    def log_cc(self,stri):
+        if self.do_log_cc:
+            print(' On '+str(self.frame)+' cc '+stri)
 
     def log_fighters(self):
         if self.do_log_fighters:
@@ -10729,14 +10741,17 @@ class Chaosbot(sc2.BotAI):
                                 self.promote(myscv,'inshock')
                                 self.log_command('my_scv.move(away)')
                                 myscv.move(away)
-                        if tow in self.structures(ORBITALCOMMAND):
-                            self.purpose[tow.tag] = 'fly'
-                        elif tow in self.structures(COMMANDCENTER):
-                            self.purpose[tow.tag] = 'wishtofly'
-                        if len(self.all_bases) < 2:
-                            toplace = random.choice(self.expansion_locations)
-                            self.goal_of_flying_struct[tow.tag] = toplace
-                            self.landings_of_flying_struct[tow.tag] = 0
+                        if self.purpose[tow.tag] == 'scv':
+                            if tow.type_id in {ORBITALCOMMAND,COMMANDCENTER}:
+                                self.log_cc('Hall '+str(tow.tag)+' '+ self.txt(tow.position) + ' wishes to fly because of many enemies.')
+                                if tow in self.structures(ORBITALCOMMAND):
+                                    self.purpose[tow.tag] = 'fly'
+                                elif tow in self.structures(COMMANDCENTER):
+                                    self.purpose[tow.tag] = 'wishtofly'
+                                if len(self.all_bases) < 2:
+                                    toplace = random.choice(self.expansion_locations)
+                                    self.goal_of_flying_struct[tow.tag] = toplace
+                                    self.landings_of_flying_struct[tow.tag] = 0
                     else: #defend
                         if len(enemies) == 1:
                             wished_fighters = enemy_power/50 + 1
@@ -13509,6 +13524,7 @@ class Chaosbot(sc2.BotAI):
                     self.goal_of_flying_struct[bu.tag] = bu.position
                 if bu in self.all_bases:
                     if self.purpose[bu.tag] == 'fly':
+                        self.log_cc(srt.name + ' '+str(bu.tag)+' ' + self.txt(bu.position) + ' takes off to fly.')
                         self.landings_of_flying_struct[bu.tag] = 0
                         self.log_success('up ' + srt.name)
                         self.log_command('bu(AbilityId.LIFT')
@@ -13540,6 +13556,7 @@ class Chaosbot(sc2.BotAI):
                         self.log_success('it is close.')
                         # land
                         if basekind in self.hall_types:
+                            self.log_cc(srt.name + ' '+str(bu.tag)+' ' + self.txt(bu.position) + ' lands.')
                             self.purpose[bu.tag] = 'land'
                             self.waitframe_of_tag[bu.tag] = self.frame + 20
                         # maybe wait
@@ -13610,6 +13627,11 @@ class Chaosbot(sc2.BotAI):
                             if kind == COMMANDCENTER:
                                 if len(cc.passengers) > 0:
                                     cc(AbilityId.UNLOADALL_COMMANDCENTER)
+                            self.purpose[cc.tag] = 'scv'
+                            self.log_cc(kind.name + ' '+str(cc.tag)+' ' + self.txt(cc.position) + ' landed safe.')
+                        else:
+                            self.log_cc(kind.name + ' '+str(cc.tag)+' ' + self.txt(cc.position) + ' landed unsafe.')
+                            # set purpose to scv, so it can be moved again
                             self.purpose[cc.tag] = 'scv'
 
 
@@ -14793,34 +14815,34 @@ class Chaosbot(sc2.BotAI):
         # tomove (cc)
         for cc in self.structures(COMMANDCENTER).ready + self.structures(ORBITALCOMMAND).ready:
             if cc.tag not in self.speciality_of_tag:
-                movable = True
-                for order in cc.orders:
-                    if order.ability.id not in cancelable:
-                        movable = False
-                if movable:        
-                    # move reason: low minerals
-                    patches = 0
-                    for (mimpos, mimt) in self.all_minerals:
-                        if self.near(mimpos,cc.position,10):
-                            patches +=1
-                    if patches < 4:
-                        tomove.add(cc)
-                    # move reason: enemies
-                    strength = 0
-                    mytile = self.maptile_of_pos(cc.position)
-                    for tile in self.nine[mytile]:
-                        for myn in self.goodguys_of_tile[tile]:
-                            if self.near(myn.position, cc.position, 10):
-                                strength += self.ground_strength(myn)
-                        for ene in self.enemies_of_tile[tile]:
-                            if self.near(ene.position,cc.position,10):
-                                strength -= self.ground_strength(ene)
-                    if strength < -50: # about 3 marines
-                        tomove.add(cc)
+                if self.purpose[cc.tag] == 'scv':
+                    movable = True
+                    for order in cc.orders:
+                        if order.ability.id not in cancelable:
+                            movable = False
+                    if movable:
+                        # move reason: low minerals
+                        patches = 0
+                        for (mimpos, mimt) in self.all_minerals:
+                            if self.near(mimpos,cc.position,10):
+                                patches +=1
+                        if patches < 4:
+                            tomove.add(cc)
+                        # move reason: enemies
+                        strength = 0
+                        mytile = self.maptile_of_pos(cc.position)
+                        for tile in self.nine[mytile]:
+                            for myn in self.goodguys_of_tile[tile]:
+                                if self.near(myn.position, cc.position, 10):
+                                    strength += self.ground_strength(myn)
+                            for ene in self.enemies_of_tile[tile]:
+                                if self.near(ene.position,cc.position,10):
+                                    strength -= self.ground_strength(ene)
+                        if strength < -50: # about 3 marines
+                            tomove.add(cc)
         # moveto (cc_pos)
         if len(tomove) > 0:
             for ccpos in self.expansion_locations:
-                expo = self.expo_of_pos(ccpos)
                 patches = 0
                 for (mimpos, mimt) in self.all_minerals:
                     if self.near(mimpos, ccpos, 10):
@@ -14835,36 +14857,39 @@ class Chaosbot(sc2.BotAI):
                 minsd = 99999
                 for cc in tomove:
                     sd = self.sdist(cc.position,moveto_choice)
-                    if sd < minsd:
+                    if (sd < minsd) and (sd >= 2): # do not move to self
                         tomove_choice = cc
                         minsd = sd
-            else: # len(tomove <= len(moveto)
+            else: # len(tomove) <= len(moveto)
                 tomove_choice = random.choice(tuple(tomove))
                 minsd = 99999
                 for ccpos in moveto:
                     sd = self.sdist(ccpos, tomove_choice.position)
-                    if sd < minsd:
+                    if (sd < minsd) and (sd >= 2): # do not move to self
                         moveto_choice = ccpos
                         minsd = sd
-            # hop tomove_choice to moveto_choice
-            self.write_layout(COMMANDCENTER,moveto_choice)
-            for order in tomove_choice.orders:
-                if order.ability.id in cancelable:
-                    self.log_command('tomove_choice(AbilityId.CANCEL_BUILDINPROGRESS)')
-                    tomove_choice(AbilityId.CANCEL_BUILDINPROGRESS)
-                    self.log_command('tomove_choice(AbilityId.CANCEL_QUEUECANCELTOSELECTION)')  # build worker
-                    tomove_choice(AbilityId.CANCEL_QUEUECANCELTOSELECTION)
-            self.goal_of_flying_struct[tomove_choice.tag] = moveto_choice
-            self.landings_of_flying_struct[tomove_choice.tag] = 0
-            self.log_success('up base')
-            # lift via purpose
-            if cc.type_id == COMMANDCENTER:
-                self.purpose[cc.tag] = 'wishtofly'
-            elif cc.type_id == ORBITALCOMMAND:
-                self.purpose[cc.tag] = 'fly'
-            # give a hopped cc a destiny
-            if tomove_choice in self.structures(COMMANDCENTER):
-                self.cc_destiny[moveto_choice] = 'pf'
+            if minsd < 99999:
+                # hop tomove_choice to moveto_choice
+                self.write_layout(COMMANDCENTER,moveto_choice)
+                for order in tomove_choice.orders:
+                    if order.ability.id in cancelable:
+                        self.log_command('tomove_choice(AbilityId.CANCEL_BUILDINPROGRESS)')
+                        tomove_choice(AbilityId.CANCEL_BUILDINPROGRESS)
+                        self.log_command('tomove_choice(AbilityId.CANCEL_QUEUECANCELTOSELECTION)')  # build worker
+                        tomove_choice(AbilityId.CANCEL_QUEUECANCELTOSELECTION)
+                self.goal_of_flying_struct[tomove_choice.tag] = moveto_choice
+                self.landings_of_flying_struct[tomove_choice.tag] = 0
+                self.log_success('up base')
+                # lift via purpose
+                if cc.type_id == COMMANDCENTER:
+                    self.log_cc('Commandcenter '+str(cc.tag) +' '+ self.txt(cc.position) + ' wishes to fly by hop_cc')
+                    self.purpose[cc.tag] = 'wishtofly'
+                elif cc.type_id == ORBITALCOMMAND:
+                    self.log_cc('Orbitalcommand '+str(cc.tag) +' '+ self.txt(cc.position) + ' will fly by hop_cc')
+                    self.purpose[cc.tag] = 'fly'
+                # give a hopped cc a destiny
+                if tomove_choice in self.structures(COMMANDCENTER):
+                    self.cc_destiny[moveto_choice] = 'pf'
 
     #*********************************************************************************************************************
 
