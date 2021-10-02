@@ -2263,7 +2263,7 @@ class Chaosbot(sc2.BotAI):
         'CantFindCancelOrder', # 214;
         ]
         # chat
-        await self._client.chat_send('Chaosbot version 30 sep 2021, made by MerkMore', team_only=False)
+        await self._client.chat_send('Chaosbot version 2 oct 2021, made by MerkMore', team_only=False)
         #
         #layout_if.photo_layout()
 
@@ -2381,7 +2381,8 @@ class Chaosbot(sc2.BotAI):
             around = self.random_mappoint()
             if self.proxy(around):
                 ok = False
-            if (not self.near(around, self.game_info.map_center, 60)):
+            #if (not self.near(around, self.game_info.map_center, 60)):
+            if not self.near(around,self.hisright,35):
                 ok = False
             place = self.place_around(BARRACKS, around)
             for (mimpos,mimt) in self.all_minerals:
@@ -10643,7 +10644,7 @@ class Chaosbot(sc2.BotAI):
         todel = set()
         for (buipos,ralpos) in self.set_rally:
             for bui in self.structures.ready:
-                if bui.position == buipos:
+                if bui.position == buipos: # this excludes labs
                     if bui.type_id not in self.landable:
                         done = False
                         for tar in self.structures:
@@ -13561,10 +13562,19 @@ class Chaosbot(sc2.BotAI):
                             self.waitframe_of_tag[bu.tag] = self.frame + 20
                         # maybe wait
                         mustwait = False
+                        # maybe wait for willswap
                         for (block,blockpos) in self.willswap:
                             if blockpos == goal:
                                 mustwait = True
                                 self.log_success('can not land on '+block.name)
+                        # maybe wait for enemies
+                        if basekind in self.hall_types:
+                            mytile = self.maptile_of_pos(bu.position)
+                            for tile in self.nine[mytile]:
+                                for ene in self.enemies_of_tile[tile]:
+                                    if self.near(ene.position,bu.position,7):
+                                        if not ene.is_flying:
+                                            mustwait = True
                         if not mustwait:
                             self.log_success('down '+srt.name)
                             self.log_command('bu(AbilityId.LAND,self.goal_of_flying_struct[bu.tag])')
@@ -15083,7 +15093,7 @@ class Chaosbot(sc2.BotAI):
             if random.random() * sum < self.strategy[spec][nr]:
                 radio_nr = nr
         # TO TEST use next line
-        #radio_nr = 41
+        #radio_nr = 25
         for nr in range(0,self.radio_choices):
             self.game_choice.append(nr == radio_nr)
         for nr in range(self.radio_choices,self.game_choices):
