@@ -222,7 +222,6 @@ class Chaosbot(sc2.BotAI):
     frame = 0 # will have even numbers if chosen_game_step=2
     frames_per_second = 22.4 # a gameclient property
     expansion_locations = [] # expansion_locations_list debugged
-    enemy_species = 0
     #
     errortexts = []
     reaper_speed_official = 5.25
@@ -304,6 +303,8 @@ class Chaosbot(sc2.BotAI):
     map_top = 0
     #
     flee_circle = []
+    opponent = 0 # opponent_id on ladder, else opponent_species
+    opponent_species = 0 # 99999 for Z, etc
     #
     maxhealth = {}  # per unittype the health_max
     #
@@ -651,7 +652,7 @@ class Chaosbot(sc2.BotAI):
     nuke_target = None
     #
     cc_destiny_rush = False
-    cc_destiny = {} # [pos] = 'oc'/'pf'
+    cc_destiny = {} # [pos] = 'oc'/'pf'/not_in
     #
     # painted on the layout, so as not to build other things there. Yet can place cc there.
     possible_cc_positions = set()
@@ -805,8 +806,9 @@ class Chaosbot(sc2.BotAI):
     bui_min_lab = {}
     bui_of_pos = {}
     happy_made = set()
-    #   strategy[0] is vs Zerg []
-    strategy = []
+    strategy = [] # for some opponents, per gamechoice, the chance to make this choice.
+    strategy_oppi = [] # opponent_id, to pair on stratline with strategy
+    stratline = 0 # which line in strategy 
     game_choice = []
     radio_choices = 42
     game_choices = 62
@@ -955,6 +957,7 @@ class Chaosbot(sc2.BotAI):
         bunker_if.step()
         self.vulture()
         await self.marine_fun()
+        await self.win_loss()
         #
         # preparation for next step
         self.get_last_enemies()
@@ -1414,6 +1417,20 @@ class Chaosbot(sc2.BotAI):
         self.init_maxhealth(AUTOTURRET, 150)
         #
         self.init_nine()
+        #
+        # opponent_species
+        if self.enemy_race == Race.Zerg:
+            self.opponent_species = 99999
+        elif self.enemy_race == Race.Terran:
+            self.opponent_species = 99998
+        elif self.enemy_race == Race.Protoss:
+            self.opponent_species = 99997
+        else:
+            self.opponent_species = 99996
+        # opponent
+        self.opponent = self.opponent_id
+        if self.opponent is None:
+            self.opponent = self.opponent_species
         #
         self.enemy_pos = self.enemy_start_locations[0].position
         self.lefttarget = self.enemy_pos
@@ -2263,7 +2280,8 @@ class Chaosbot(sc2.BotAI):
         'CantFindCancelOrder', # 214;
         ]
         # chat
-        await self._client.chat_send('Chaosbot version 2 oct 2021, made by MerkMore', team_only=False)
+        await self._client.chat_send('Chaosbot version 4 oct 2021, made by MerkMore', team_only=False)
+        await self._client.chat_send('Good luck and have fun, '+str(self.opponent), team_only=False)
         #
         #layout_if.photo_layout()
 
@@ -7449,16 +7467,17 @@ class Chaosbot(sc2.BotAI):
             if self.game_phase == 'opening':
                 if self.check_techtree(ORBITALCOMMAND):
                     for cc in self.structures(COMMANDCENTER):
-                        if self.cc_destiny[cc.position] == 'oc':
-                            done = False
-                            for (th, pos, status, ow) in self.throwspots:
-                                if (th == ORBITALCOMMAND) and (pos == cc.position):
-                                    done = True
-                            for (th,scv,pos,dura) in self.eggs:
-                                if (th == ORBITALCOMMAND) and (pos == cc.position):
-                                    done = True
-                            if not done:
-                                self.throw_at_spot(ORBITALCOMMAND,cc.position,'urgent_ocs')
+                        if cc.position in self.cc_destiny:
+                            if self.cc_destiny[cc.position] == 'oc':
+                                done = False
+                                for (th, pos, status, ow) in self.throwspots:
+                                    if (th == ORBITALCOMMAND) and (pos == cc.position):
+                                        done = True
+                                for (th,scv,pos,dura) in self.eggs:
+                                    if (th == ORBITALCOMMAND) and (pos == cc.position):
+                                        done = True
+                                if not done:
+                                    self.throw_at_spot(ORBITALCOMMAND,cc.position,'urgent_ocs')
 
     def pfoc_adlib(self):
         if ('base' in self.good_plans):
@@ -9053,7 +9072,7 @@ class Chaosbot(sc2.BotAI):
                     # finetuning
                     goal = self.goal_of_unittag[vik.tag]
                     if self.near(vik.position,goal,3):
-                        goal = self.place_around(MISSILETURRET,goal)
+                        goal = self.place_around(AUTOTURRET,goal) # can be on creep
                         self.goal_of_unittag[vik.tag] = goal
                         vik.move(goal)
                         emotion = 'C'
@@ -9940,7 +9959,7 @@ class Chaosbot(sc2.BotAI):
                             if self.emotion_of_unittag[tnkt] == 'enthousiast':
                                 # get siegepos
                                 around = self.cleaning_object_pos.towards(self.loved_pos,10)
-                                siegepos = self.place_around(MISSILETURRET, around)
+                                siegepos = self.place_around(AUTOTURRET, around)
                                 self.cleaning_tank_siegepos[tnkt] = siegepos
                                 # Mark as used.
                                 self.write_layout(MISSILETURRET, siegepos)
@@ -10040,9 +10059,9 @@ class Chaosbot(sc2.BotAI):
                             goal = self.homeramp_pos.towards(self.loved_pos, 12)
                         else:
                             goal = tow.position.towards(self.game_info.map_center, -3)
-                    place = self.place_around(MISSILETURRET,goal)
+                    place = self.place_around(AUTOTURRET,goal)
                     # Mark as used.
-                    self.write_layout(MISSILETURRET, place)
+                    self.write_layout(AUTOTURRET, place)
                     self.tankplaces.add(place)
                     self.go_attack(tnk, place)
                     self.emotion_of_unittag[tnkt] = 'moving'
@@ -13362,8 +13381,8 @@ class Chaosbot(sc2.BotAI):
                     for tnk in self.units(SIEGETANK):
                         self.speciality_of_tag[tnk.tag] = self.opening_name
                         goal = self.cheese3_bunker_pos.towards(self.loved_pos,2.2)
-                        goal = self.place_around(MISSILETURRET,goal)
-                        self.write_layout(MISSILETURRET, goal)
+                        goal = self.place_around(AUTOTURRET,goal)
+                        self.write_layout(AUTOTURRET, goal)
                         self.tankplaces.add(goal)
                         self.go_attack(tnk, goal)
                     self.cheese3_phase = 'H'
@@ -13379,8 +13398,8 @@ class Chaosbot(sc2.BotAI):
                         self.speciality_of_tag[tnk.tag] = self.opening_name
                         self.cheese3_tanktags.add(tnk.tag)
                         goal = self.cheese3_bunker_pos.towards(self.loved_pos,2.2)
-                        goal = self.place_around(MISSILETURRET,goal)
-                        self.write_layout(MISSILETURRET, goal)
+                        goal = self.place_around(AUTOTURRET,goal)
+                        self.write_layout(AUTOTURRET, goal)
                         self.tankplaces.add(goal)
                         self.go_attack(tnk, goal)
                     self.cheese3_phase = 'H'
@@ -15037,67 +15056,160 @@ class Chaosbot(sc2.BotAI):
 #
 #   We feed back won-or-loss of a game to the strategy.
 #
+    async def win_loss(self):
+        if self.game_result == 'doubt':
+            # win and loss conditions
+            if len(self.enemy_structureinfo) == len(self.enemy_structures): # all visible
+                ene_max_hea = -1
+                for stru in self.enemy_structures: # visible now
+                    if stru.type_id not in {SPORECRAWLER,SPINECRAWLER,AUTOTURRET}:
+                        if stru.health > ene_max_hea:
+                            ene_max_hea = stru.health
+                if ene_max_hea < 200:
+                    self.game_result = 'win'
+            if len(self.structures) == 1:
+                my_max_hea = -1
+                for stru in self.structures:
+                    if stru.health > my_max_hea:
+                        my_max_hea = stru.health
+                if my_max_hea < 200:
+                    self.game_result = 'loss'
+            # tune strategy
+            if self.game_result == 'win':
+                for nr in range(0,self.game_choices):
+                    was = self.strategy[self.stratline][nr]
+                    if self.game_choice[nr]:
+                        will = was * 0.9 + 0.1
+                    else:
+                        will = was * 0.9
+                    self.strategy[self.stratline][nr] = will
+            elif self.game_result == 'loss':
+                for nr in range(0,self.game_choices):
+                    was = self.strategy[self.stratline][nr]
+                    if self.game_choice[nr]:
+                        will = was * 0.9
+                    else:
+                        will = was * 0.9 + 0.1
+                    self.strategy[self.stratline][nr] = will
+            # write strategy
+            if self.game_result != 'doubt':
+                print(self.game_result)
+                self.write_strategy()
+
     def write_strategy(self):
         pl = open('data/strategy.txt','w')
-        for nr in range(0,self.game_choices):
-            stri = ''
-            for spec in range(0,4):
-                rou = round(self.strategy[spec][nr]*100000)/100000
+        for ix in range(0,len(self.strategy)):
+            oppi = self.strategy_oppi[ix]
+            astrat = self.strategy[ix]
+            stri = 'opponent '+str(oppi)
+            iix = 0
+            while iix < len(astrat):
+                if iix % 10 == 0:
+                    pl.write(stri + '\n')
+                    stri = ''
+                rou = round(astrat[iix]*100000)/100000
                 stri = stri+str(rou)+' '
-            pl.write(stri+'\n')
+                iix += 1
+            pl.write(stri + '\n')
         pl.close()
 
+    def line_of_oppi(self, oppi):
+        line = len(self.strategy_oppi)
+        for mayline in range(0,len(self.strategy_oppi)):
+            if self.strategy_oppi[mayline] == oppi:
+                line = mayline
+        return line
 
     async def init_strategy(self):
-        # strategy is a list of chances to choose a strategic aspect.
-        # e.g. radio_choices = 3, then the first 3 chances should add up to 1
-        # The rest of the choices is free (between 0 and 1)
-        # blind init strategy
-        self.strategy = []    
+        # strategy is a list of winchances to choose a strategic aspect.
+        # opponent-id based init strategy.
+        # for unknown opponents race-based.
+        #
+        # file strategy.txt must have shape:
+        #      opponent 236
+        #      0.775 0.006 0.111  (about 10 on a line, last line maybe less, total self.game_choices)
+        #
+        # defaults
+        self.strategy = []
         for spec in range(0, 4):
-            astrategy = []
+            oppi = 99999 - spec
+            self.strategy_oppi.append(oppi)
+            newstrategy = []
             for i in range(0,self.game_choices):
-                astrategy.append(0.5)
-            self.strategy.append(astrategy)    
+                newstrategy.append(0.5)
+            self.strategy.append(newstrategy)
         # read from disk
         pl = open('data/strategy.txt','r')
         read_strategy = pl.read().splitlines()
         pl.close()
-        for nr in range(0,len(read_strategy)):
-            woord = read_strategy[nr].split()
-            for spec in range(0, 4):
-                self.strategy[spec][nr] = float(woord[spec])
-        # enemy species
-        if self.enemy_race == Race.Zerg:
-            self.enemy_species = 0
-        elif self.enemy_race == Race.Terran:
-            self.enemy_species = 1
-        elif self.enemy_race == Race.Protoss:
-            self.enemy_species = 2
-        else:
-            self.enemy_species = 3
-        spec = self.enemy_species
+        # overwrite read lines already in strategy
+        putline = -1
+        putnr = 0
+        for line in range(0,len(read_strategy)):
+            words = read_strategy[line].split()
+            if words[0] == 'opponent':
+                oppi = float(words[1])
+                putline = self.line_of_oppi(oppi)
+                putnr = 0
+            elif putline < len(self.strategy):
+                for aword in words:
+                    self.strategy[putline][putnr] = float(aword)
+                    putnr += 1
+        # add read lines not yet in strategy
+        putline = -1
+        for line in range(0,len(read_strategy)):
+            words = read_strategy[line].split()
+            if words[0] == 'opponent':
+                if putline == len(self.strategy):
+                    self.strategy_oppi.append(oppi)
+                    self.strategy.append(newstrategy)
+                oppi = float(words[1])
+                putline = self.line_of_oppi(oppi)
+                newstrategy = []
+            elif putline == len(self.strategy):
+                for aword in words:
+                    newstrategy.append(float(aword))
+        if putline == len(self.strategy):
+            self.strategy_oppi.append(oppi)
+            self.strategy.append(newstrategy)
+        self.stratline = self.line_of_oppi(self.opponent)
+        if self.stratline == len(self.strategy):
+            # new opponent, so use species info copy
+            speciesline = self.line_of_oppi(self.opponent_species)
+            newstrategy = self.strategy[speciesline].copy()
+            self.strategy_oppi.append(self.opponent)
+            self.strategy.append(newstrategy)
         # radio tuning
-        sum = 0.0
+        totalsum = 0.0
         for nr in range(0,self.radio_choices):
-            sum = sum + self.strategy[spec][nr]
-        for nr in range(0,self.radio_choices):
-            self.strategy[spec][nr] = self.strategy[spec][nr] / sum
+            totalsum = totalsum + self.strategy[self.stratline][nr]
+        # radiostrategy
+        radiostrategy = []
+        for chance in self.strategy[self.stratline]:
+            radiostrategy.append(chance / totalsum)
         # init game_choice
         self.game_choice = []
-        # find radio_nr with an overwrite calculation
+        # chance-system radio_nr (using an overwrite calculation)
         radio_nr = 0
         sum = 0.0
         for nr in range(0,self.radio_choices):
-            sum += self.strategy[spec][nr]
-            if random.random() * sum < self.strategy[spec][nr]:
+            sum += radiostrategy[nr]
+            if random.random() * sum < radiostrategy[nr]:
+                radio_nr = nr
+        # max-system radio_nr (brutal alternative of chance-system)
+        maxval = -1
+        radio_nr = -1
+        for nr in range(0,self.radio_choices):
+            cval = radiostrategy[nr]
+            if cval > maxval:
+                maxval = cval
                 radio_nr = nr
         # TO TEST use next line
         #radio_nr = 25
         for nr in range(0,self.radio_choices):
             self.game_choice.append(nr == radio_nr)
         for nr in range(self.radio_choices,self.game_choices):
-            self.game_choice.append(random.random() < self.strategy[spec][nr])
+            self.game_choice.append(random.random() < self.strategy[self.stratline][nr])
         self.game_result = 'doubt'
 
 #*********************************************************************************************************************
