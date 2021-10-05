@@ -303,8 +303,8 @@ class Chaosbot(sc2.BotAI):
     map_top = 0
     #
     flee_circle = []
-    opponent = 0 # opponent_id on ladder, else opponent_species
-    opponent_species = 0 # 99999 for Z, etc
+    opponent = '' # opponent_id on ladder, else opponent_species
+    opponent_species = '' # Zerg/Terran/Protoss/Random
     #
     maxhealth = {}  # per unittype the health_max
     #
@@ -1420,13 +1420,13 @@ class Chaosbot(sc2.BotAI):
         #
         # opponent_species
         if self.enemy_race == Race.Zerg:
-            self.opponent_species = 99999
+            self.opponent_species = 'zerg'
         elif self.enemy_race == Race.Terran:
-            self.opponent_species = 99998
+            self.opponent_species = 'terran'
         elif self.enemy_race == Race.Protoss:
-            self.opponent_species = 99997
+            self.opponent_species = 'protoss'
         else:
-            self.opponent_species = 99996
+            self.opponent_species = 'someone'
         # opponent
         self.opponent = self.opponent_id
         if self.opponent is None:
@@ -2281,7 +2281,7 @@ class Chaosbot(sc2.BotAI):
         ]
         # chat
         await self._client.chat_send('Chaosbot version 5 oct 2021, made by MerkMore', team_only=False)
-        await self._client.chat_send('Good luck and have fun, '+str(self.opponent), team_only=False)
+        await self._client.chat_send('Good luck and have fun, '+self.opponent, team_only=False)
         #
         #layout_if.photo_layout()
 
@@ -15131,8 +15131,7 @@ class Chaosbot(sc2.BotAI):
         #
         # defaults
         self.strategy = []
-        for spec in range(0, 4):
-            oppi = 99999 - spec
+        for oppi in {'zerg','terran','protoss','someone'}:
             self.strategy_oppi.append(oppi)
             newstrategy = []
             for i in range(0,self.game_choices):
@@ -15148,7 +15147,7 @@ class Chaosbot(sc2.BotAI):
         for line in range(0,len(read_strategy)):
             words = read_strategy[line].split()
             if words[0] == 'opponent':
-                oppi = float(words[1])
+                oppi = words[1]
                 putline = self.line_of_oppi(oppi)
                 putnr = 0
             elif putline < len(self.strategy):
@@ -15163,7 +15162,7 @@ class Chaosbot(sc2.BotAI):
                 if putline == len(self.strategy):
                     self.strategy_oppi.append(oppi)
                     self.strategy.append(newstrategy)
-                oppi = float(words[1])
+                oppi = words[1]
                 putline = self.line_of_oppi(oppi)
                 newstrategy = []
             elif putline == len(self.strategy):
