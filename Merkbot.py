@@ -2280,7 +2280,7 @@ class Chaosbot(sc2.BotAI):
         'CantFindCancelOrder', # 214;
         ]
         # chat
-        await self._client.chat_send('Chaosbot version 5 oct 2021, made by MerkMore', team_only=False)
+        await self._client.chat_send('Chaosbot version 7 oct 2021, made by MerkMore', team_only=False)
         await self._client.chat_send('Good luck and have fun, '+self.opponent, team_only=False)
         #
         #layout_if.photo_layout()
@@ -10823,6 +10823,21 @@ class Chaosbot(sc2.BotAI):
                                     myscv.move(tow.position)
                         # We have the fighters. Now what will they do? See self.fighters()
 
+    def calc_outnumber(self, mypos) -> int:
+        # (own units at dist < 2) - (hisunits at dist < 2)
+        outnumber = 0
+        mytile = self.maptile_of_pos(mypos)
+        for tile in self.nine[mytile]:
+            for myn in self.goodguys_of_tile[tile]:
+                if self.near(mypos, myn.position, 2):
+                    outnumber += 1
+            for ene in self.enemies_of_tile[tile]:
+                if self.near(mypos, ene.position, 2):
+                    if not ene.is_flying:
+                        if ene.type_id not in {LARVA,EGG}:
+                            outnumber -= 1
+        return outnumber
+
     def calculate_enecenter(self,mypos) -> Point2:
         # get close enemies
         enemies = set()
@@ -11021,6 +11036,11 @@ class Chaosbot(sc2.BotAI):
                             newphase = 'rest'
                         else:
                             newphase = 'away'
+                    elif (phase == 'hesitate'):
+                        if self.calc_outnumber(mypos) >= 0:
+                            newphase = 'attack'
+                        elif (actualdist < 1):
+                            newphase = 'attack'
                     elif (scv.weapon_cooldown < 5):
                         newphase = 'attack'
                     elif (actualdist > wanteddist + 0.1):
@@ -11048,6 +11068,11 @@ class Chaosbot(sc2.BotAI):
                                 newphase = 'homemim'
                         else:
                             newphase = 'walktowards'
+                    # may hesitate to attack
+                    if newphase == 'attack':
+                        if self.calc_outnumber(mypos) < 0:
+                            if actualdist > 1:
+                                newphase = 'hesitate'
                     # do action?
                     do_action = False
                     if newphase != phase:
@@ -11083,6 +11108,9 @@ class Chaosbot(sc2.BotAI):
                         elif newphase == 'rest':
                             self.log_command('scv(AbilityId.STOP)')  # stop moving
                             scv(AbilityId.STOP)
+                        elif newphase == 'hesitate':
+                            scv.move(awaypos)
+                            self.goal_of_unittag[scvt] = awaypos
                         elif newphase == 'nurse':
                             otherscvt = self.fighternurse[scvt] # exists because nurse
                             for otherscv in self.units(SCV):
@@ -15079,17 +15107,17 @@ class Chaosbot(sc2.BotAI):
                 for nr in range(0,self.game_choices):
                     was = self.strategy[self.stratline][nr]
                     if self.game_choice[nr]:
-                        will = was * 0.9 + 0.1
+                        will = was * 0.85 + 0.15
                     else:
-                        will = was * 0.9
+                        will = was * 0.85
                     self.strategy[self.stratline][nr] = will
             elif self.game_result == 'loss':
                 for nr in range(0,self.game_choices):
                     was = self.strategy[self.stratline][nr]
                     if self.game_choice[nr]:
-                        will = was * 0.9
+                        will = was * 0.85
                     else:
-                        will = was * 0.9 + 0.1
+                        will = was * 0.85 + 0.15
                     self.strategy[self.stratline][nr] = will
             # write strategy
             if self.game_result != 'doubt':
@@ -15204,7 +15232,7 @@ class Chaosbot(sc2.BotAI):
                 maxval = cval
                 radio_nr = nr
         # TO TEST use next line
-        #radio_nr = 25
+        #radio_nr = 41
         for nr in range(0,self.radio_choices):
             self.game_choice.append(nr == radio_nr)
         for nr in range(self.radio_choices,self.game_choices):
