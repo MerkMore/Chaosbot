@@ -397,7 +397,7 @@ class Chaosbot(sc2.BotAI):
     viking_min_health = 35
     viking_good_health = 120
     harrassvikings = set() # of tag of viking for harrass
-    viking_last_pos = nowhere # last attacked enemy hall position
+    viking_last_att_pos = nowhere # last attacked enemy hall position
     squadrons = set() # of identification number
     squadron_of_viktag = {}
     size_of_squadron = {} # amount
@@ -444,6 +444,14 @@ class Chaosbot(sc2.BotAI):
     #
     last_enemies = set() # of (type,position,tag)
     #
+    # wa_ is worker attack administration
+    wa_ihitted = 0 # total hit count
+    wa_iwashit = 0 # total being hit count
+    wa_repair = 0 # total own hp repair
+    wa_hitframe = {} # per worker, estimated frame of the last hit dealt
+    wa_lastscvs = set() # set of own scv (tag,position,health)
+    wa_lastene = set() # set of enemy worker (tag,position,canhit)
+    #
     yamatoed = {} # per enemytag the shootframe. To prevent a group of bcs overkilling the same target.
     #
     # cluster is a number, 0<=cluster<100. It groups widowmines, burried and bare.
@@ -453,6 +461,7 @@ class Chaosbot(sc2.BotAI):
     size_of_cluster = {} # per cluster the amount of mines in it.
     #
     last_health = {}
+    #
     #   army coodination
     goal_of_unittag = {} # control of unit movement
     last_sd_of_unittag = {} # control of unit movement
@@ -963,6 +972,8 @@ class Chaosbot(sc2.BotAI):
         self.get_last_enemies()
         self.get_last_health()
         self.make_trail()
+        #if self.frame < 4000:
+        #    self.wa_step()
         #
 
 
@@ -1929,7 +1940,7 @@ class Chaosbot(sc2.BotAI):
             self.workerrushstartframe = 300  # 300
             self.init_marine_opening(1)
         elif self.game_choice[37]:
-            self.opening_name = 'workerrush-13-marine'
+            self.opening_name = 'workerrush-13-marine-2'
             self.rushopening = True
             self.startworkerrushers = 13 # 13
             self.workerrushstartframe = 390  # 390
@@ -2280,7 +2291,7 @@ class Chaosbot(sc2.BotAI):
         'CantFindCancelOrder', # 214;
         ]
         # chat
-        await self._client.chat_send('Chaosbot version 7 oct 2021, made by MerkMore', team_only=False)
+        await self._client.chat_send('Chaosbot version 8 oct 2021, made by MerkMore', team_only=False)
         await self._client.chat_send('Good luck and have fun, '+self.opponent, team_only=False)
         #
         #layout_if.photo_layout()
@@ -8537,11 +8548,11 @@ class Chaosbot(sc2.BotAI):
 
     def get_last_health(self):
         # collect health for next step
-        for ene in self.units:
-            self.last_health[ene.tag] = ene.health
-        for ene in self.structures:
-            self.last_health[ene.tag] = ene.health
-            
+        for myn in self.units:
+            self.last_health[myn.tag] = myn.health
+        for myn in self.structures:
+            self.last_health[myn.tag] = myn.health
+
     def make_trail(self):
         # per unit the trail of its last 10 movements positions 
         if self.frame % 13 == 12: # mark trail per half second
@@ -9056,7 +9067,7 @@ class Chaosbot(sc2.BotAI):
                     bestpos = self.enemy_pos
                     for tpa in self.enemy_structureinfo:
                         (typ, pos, tag) = tpa
-                        if pos != self.viking_last_pos:
+                        if pos != self.viking_last_att_pos:
                             if typ in self.hall_types:
                                 goal = pos.towards(self.game_info.map_center,-8)
                                 sd = self.sdist(vik.position,goal)
@@ -9066,7 +9077,7 @@ class Chaosbot(sc2.BotAI):
                                     bestpos = pos
                     vik.move(bestgoal)
                     self.goal_of_unittag[vik.tag] = bestgoal
-                    self.viking_last_pos = bestpos
+                    self.viking_last_att_pos = bestpos
                     emotion = 'B'
                 elif emotion == 'B':
                     # finetuning
@@ -10948,6 +10959,7 @@ class Chaosbot(sc2.BotAI):
                         self.fighter_phase[scvt] = 'free'
                     if scvt not in self.goal_of_unittag:
                         self.goal_of_unittag[scvt] = self.nowhere
+                    self.log_unitorder(scv, self.fighter_phase[scvt])
             # self.fighternurse relevance
             todel = set() # of nurse
             for nurse in self.fighternurse:
@@ -12412,6 +12424,110 @@ class Chaosbot(sc2.BotAI):
                     if AbilityId.BEHAVIOR_CLOAKOFF_GHOST in abilities:
                         ghost(AbilityId.BEHAVIOR_CLOAKOFF_GHOST)
 
+
+    # workerfight administration wa_ ######################################################
+    # As long as no other units are out,
+    # this administration tries to grasp the worker-hits-worker counts.
+    #
+    # wa_ihitted   total hit count
+    # wa_iwashit   total being hit count
+    # wa_repair    total repair
+    # wa_hitframe  per worker, estimated frame of the last hit dealt
+    # wa_lastscvs  set of own scv (tag,position,health)
+    # wa_lastene   set of enemy worker (tag,position,canhit)
+    
+    def wa_step(self):
+        # log
+        print('hitted '+str(self.wa_ihitted)+'   was hit '+str(self.wa_iwashit)+'   repaired '+str(self.wa_repair))
+        for scv in self.units(SCV):
+            for order in scv.orders:
+                if order.ability.id == AbilityId.ATTACK:
+                    if type(order.target) == int:
+                        for ene in self.enemy_structures:
+                            if ene.tag == order.target:
+                                print('an scv attacks ' + ene.name)
+        # init wa_hitframe
+        for ene in self.enemy_units:  # actual visible
+            if ene.type_id in {DRONE, SCV, PROBE}:
+                if ene.tag not in self.wa_hitframe:
+                    self.wa_hitframe[ene.tag] = -99999
+        for scv in self.units(SCV):
+            if scv.tag not in self.wa_hitframe:
+                self.wa_hitframe[scv.tag] = -99999
+        # repair
+        for scv in self.units(SCV):
+            for (scvt, lastscvpos, lastscvhealth) in self.wa_lastscvs:
+                if scvt == scv.tag:
+                    if scv.health > lastscvhealth:
+                        self.wa_repair += (scv.health - lastscvhealth)
+        # hitting
+        for scv in self.units(SCV):
+            for (scvt, lastscvpos, lastscvhealth) in self.wa_lastscvs:
+                if scvt == scv.tag:
+                    if scv.weapon_cooldown > 10:
+                        hitworker = False
+                        minsd = 99999
+                        for (enetag, lastenepos,canhit) in self.wa_lastene:
+                            if self.near(lastenepos, lastscvpos, 0.95):  # 0.85 theory
+                                hitworker = True
+                            minsd = min(minsd,self.sdist(lastenepos, lastscvpos))
+                        estiframe = self.frame - (24 - scv.weapon_cooldown)
+                        if estiframe > self.wa_hitframe[scvt] + 16:
+                            self.wa_hitframe[scvt] = estiframe
+                            if hitworker:
+                                self.wa_ihitted += 1
+                            else:
+                                print('hit a brick? '+str(minsd))
+        # being hit
+        for scv in self.units(SCV):
+            for (scvt, lastscvpos, lastscvhealth) in self.wa_lastscvs:
+                if scvt == scv.tag:
+                    if scv.health < lastscvhealth:
+                        # I was bitten
+                        bites = round((lastscvhealth - scv.health)/5)
+                        self.wa_iwashit += bites
+                        crulpits = set()
+                        for (enetag, lastenepos,canhit) in self.wa_lastene:
+                            if canhit:
+                                if self.near(lastenepos, lastscvpos, 0.95):  # 0.85 theory
+                                    crulpits.add(enetag)
+                        if len(crulpits) <= bites:
+                            for crulpittag in crulpits:
+                                self.wa_hitframe[crulpittag] = self.frame - 2
+        # being hit to death
+        for (scvt,lastscvpos,lastscvhealth) in self.wa_lastscvs:
+            living = False
+            for scv in self.units(SCV):
+                if scv.tag == scvt:
+                    living = True
+            if not living:
+                bites = 0
+                mishealth = lastscvhealth
+                while mishealth > 0:
+                    mishealth -= 5
+                    bites += 1
+                crulpits = set()
+                # actual visible does not work after death
+                for (enetag,lastenepos,canhit) in self.wa_lastene:
+                    if canhit:
+                        if self.near(lastenepos, lastscvpos, 0.95):  # 0.85 theory
+                            crulpits.add(enetag)
+                # the scv could have gone into gas, or could have been bitten to death
+                if len(crulpits) >= bites:
+                    self.wa_iwashit += bites
+                    if len(crulpits) <= bites:
+                        for crulpittag in crulpits:
+                            self.wa_hitframe[crulpittag] = self.frame - 2
+        # wa_lastscvs
+        self.wa_lastscvs = set()
+        for scv in self.units(SCV):
+            self.wa_lastscvs.add((scv.tag,scv.position,scv.health))
+        # wa_lastene
+        self.wa_lastene = set()
+        for ene in self.enemy_units:  # actual visible
+            if ene.type_id in {DRONE, SCV, PROBE}:
+                canhit = (self.wa_hitframe[ene.tag] < self.frame - 16)
+                self.wa_lastene.add((ene.tag,ene.position,canhit))
 
     # workerrush ###########################################################################
 
@@ -15093,14 +15209,14 @@ class Chaosbot(sc2.BotAI):
                     if stru.type_id not in {SPORECRAWLER,SPINECRAWLER,AUTOTURRET}:
                         if stru.health > ene_max_hea:
                             ene_max_hea = stru.health
-                if ene_max_hea < 200:
+                if ene_max_hea < 456:
                     self.game_result = 'win'
             if len(self.structures) == 1:
                 my_max_hea = -1
                 for stru in self.structures:
                     if stru.health > my_max_hea:
                         my_max_hea = stru.health
-                if my_max_hea < 200:
+                if my_max_hea < 456:
                     self.game_result = 'loss'
             # tune strategy
             if self.game_result == 'win':
@@ -15108,28 +15224,35 @@ class Chaosbot(sc2.BotAI):
                     was = self.strategy[self.stratline][nr]
                     if self.game_choice[nr]:
                         will = was * 0.85 + 0.15
-                    else:
+                    elif nr >= self.radio_choices:
                         will = was * 0.85
+                    else:
+                        will = was
                     self.strategy[self.stratline][nr] = will
             elif self.game_result == 'loss':
                 for nr in range(0,self.game_choices):
                     was = self.strategy[self.stratline][nr]
                     if self.game_choice[nr]:
                         will = was * 0.85
-                    else:
+                    elif nr >= self.radio_choices:
                         will = was * 0.85 + 0.15
+                    else:
+                        will = was
                     self.strategy[self.stratline][nr] = will
             # write strategy
             if self.game_result != 'doubt':
                 self.log_success(self.game_result)
                 self.write_strategy()
+                await self._client.chat_send('gg', team_only=False)
 
     def write_strategy(self):
         pl = open('data/strategy.txt','w')
+        stri = '# strategy.txt'
+        pl.write(stri + '\n')
         for ix in range(0,len(self.strategy)):
             oppi = self.strategy_oppi[ix]
             astrat = self.strategy[ix]
-            stri = 'opponent '+str(oppi)
+            stri = 'opponent '+oppi
             iix = 0
             while iix < len(astrat):
                 if iix % 10 == 0:
@@ -15154,7 +15277,8 @@ class Chaosbot(sc2.BotAI):
         # for unknown opponents race-based.
         #
         # file strategy.txt must have shape:
-        #      opponent 236
+        #      # strategy.txt
+        #      opponent 23-ie6-56
         #      0.775 0.006 0.111  (about 10 on a line, last line maybe less, total self.game_choices)
         #
         # defaults
@@ -15174,7 +15298,9 @@ class Chaosbot(sc2.BotAI):
         putnr = 0
         for line in range(0,len(read_strategy)):
             words = read_strategy[line].split()
-            if words[0] == 'opponent':
+            if words[0] == '#':
+                pass
+            elif words[0] == 'opponent':
                 oppi = words[1]
                 putline = self.line_of_oppi(oppi)
                 putnr = 0
@@ -15186,7 +15312,10 @@ class Chaosbot(sc2.BotAI):
         putline = -1
         for line in range(0,len(read_strategy)):
             words = read_strategy[line].split()
-            if words[0] == 'opponent':
+            if words[0] == '#':
+                pass
+            elif words[0] == 'opponent':
+                # first, finish former putline
                 if putline == len(self.strategy):
                     self.strategy_oppi.append(oppi)
                     self.strategy.append(newstrategy)
@@ -15199,7 +15328,9 @@ class Chaosbot(sc2.BotAI):
         if putline == len(self.strategy):
             self.strategy_oppi.append(oppi)
             self.strategy.append(newstrategy)
+        # strategy line
         self.stratline = self.line_of_oppi(self.opponent)
+        # for a new opponent, add a strategy.
         if self.stratline == len(self.strategy):
             # new opponent, so use species info copy
             speciesline = self.line_of_oppi(self.opponent_species)
