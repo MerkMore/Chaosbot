@@ -153,6 +153,7 @@ from sc2.ids.unit_typeid import NYDUSCANAL
 from sc2.ids.unit_typeid import INFESTATIONPIT
 from sc2.ids.unit_typeid import ULTRALISKCAVERN
 from sc2.ids.unit_typeid import CREEPTUMOR
+from sc2.ids.unit_typeid import CREEPTUMORBURROWED
 from sc2.ids.unit_typeid import DRONE
 from sc2.ids.unit_typeid import QUEEN
 from sc2.ids.unit_typeid import SPORECRAWLER
@@ -179,6 +180,7 @@ class Chaosbot(sc2.BotAI):
     slowdown_frames = 0
     slowness = 0.3 # realtime is around 0.05
     do_log_success = False
+    do_log_bird_history = False
     do_log_fail = False
     do_log_command = False
     do_log_attacktype = False
@@ -274,6 +276,8 @@ class Chaosbot(sc2.BotAI):
     upgrade_benefitter = set() # of (upgrade,benefitter)
     hometop = set() # empty squares near start, inside the wall, inside ramps
     homeramp_pos = None
+    homenatural_pos = None
+    homenaturalchoke_pos = None
     enemytop = set() # empty squares near enemy_pos
     enemyramp_pos = None
     enemynatural_pos = None
@@ -367,6 +371,8 @@ class Chaosbot(sc2.BotAI):
     preps = set() # (martype,bartype,pos,dura,owner) or (thingtype,scv,buildpos,dura,owner)
     eggs = set() # (martype,bartype,buildingpos,dura) or (thingtype,scv,buildpos,dura)
     birds = set() # (thingtype,pos)
+    #
+    bird_am_history = {} # for log_bird_history
     # for different constructionwish subsystems to interact
     # Systems must first put a thought in "thoughts" before they can build_thing.
     # The (thingtype,pos) must be unique
@@ -385,6 +391,10 @@ class Chaosbot(sc2.BotAI):
     neighbours = set()
     chosenplaces = []
     #   ############### ARMY AND STRUCTURE MANAGEMENT
+    # corrosive biles
+    biles = set()
+    bile_landframe = set()
+    #
     throw_history_set = set()
     # medivacs:
     victim_of_medivac = {} # per medivac the marine it follows
@@ -673,7 +683,7 @@ class Chaosbot(sc2.BotAI):
     goal_of_trabu_scvt = {}
     structure_of_trabu_scvt = {}
     owner_of_trabu_scvt = {}
-    arrivals = set() # of (scvtag, goal, building, maxarrivalframe) for travellers
+    arrivals = set() # of (scvtag, goal, building, startframe, maxarrivalframe) for travellers
     #   scv management:
     #   The tag of existing own scvs, in this frame. scvs in limbo included.
     all_scvt = []
@@ -846,6 +856,7 @@ class Chaosbot(sc2.BotAI):
     earn_show = False
     #
     tag_sent = False
+    win_ignore = set()
     #
     # *********************************************************************************************************************
     async def on_start(self):
@@ -878,6 +889,7 @@ class Chaosbot(sc2.BotAI):
         self.log_fighters()
         self.log_bcs()
         self.log_orders()
+        self.log_bird_history()
         self.loadcc()
         await self.manage_workers() # before planning
         if self.minerals < self.vespene:
@@ -1032,6 +1044,8 @@ class Chaosbot(sc2.BotAI):
         self.init_expected_order('fighter', AbilityId.HARVEST_GATHER) # mineralwalking
         self.init_expected_order('fighter',AbilityId.EFFECT_REPAIR)
         self.init_expected_order('repairer',AbilityId.EFFECT_REPAIR)
+        #
+        self.win_ignore = {SPORECRAWLER,SPINECRAWLER,AUTOTURRET,CREEPTUMOR,CREEPTUMORBURROWED}
         # liftable
         self.liftable = [BARRACKS,FACTORY,STARPORT,COMMANDCENTER,ORBITALCOMMAND]
         self.landable = [BARRACKSFLYING,FACTORYFLYING,STARPORTFLYING,COMMANDCENTERFLYING,ORBITALCOMMANDFLYING]
@@ -1144,6 +1158,7 @@ class Chaosbot(sc2.BotAI):
         self.init_structures('Z','e',INFESTATIONPIT, 36, 3)
         self.init_structures('Z','e',ULTRALISKCAVERN, 46, 3)
         self.init_structures('Z','e',CREEPTUMOR, 11, 1)
+        self.init_structures('Z','e',CREEPTUMORBURROWED, 11, 1)
         # add for cheese with barracks and bunker
         # warning: this complicated much. Restrict to buildseries and placement.txt
         self.init_structures('T','armybuilding',INFESTEDBARRACKS, 46, 3)
@@ -1399,6 +1414,7 @@ class Chaosbot(sc2.BotAI):
         self.init_maxhealth(INFESTATIONPIT, 850)
         self.init_maxhealth(ULTRALISKCAVERN, 850)
         self.init_maxhealth(CREEPTUMOR, 50)
+        self.init_maxhealth(CREEPTUMORBURROWED, 50)
         self.init_maxhealth(INFESTEDBARRACKS, 1000)
         self.init_maxhealth(INFESTEDBUNKER, 400)
         self.init_maxhealth(INFESTEDFACTORY, 1250)
@@ -1579,6 +1595,10 @@ class Chaosbot(sc2.BotAI):
                 self.reaper_bunker2_pos = Point2((float(woord[2]), float(woord[3])))
             elif (woord[0] == 'position') and (woord[1] == 'HOMERAMP'):
                 self.homeramp_pos = Point2((float(woord[2]), float(woord[3])))
+            elif (woord[0] == 'position') and (woord[1] == 'HOMENATURAL'):
+                self.homenatural_pos = Point2((float(woord[2]), float(woord[3])))
+            elif (woord[0] == 'position') and (woord[1] == 'HOMENATURALCHOKE'):
+                self.homenaturalchoke_pos = Point2((float(woord[2]), float(woord[3])))
             elif (woord[0] == 'position') and (woord[1] == 'ENEMYRAMP'):
                 self.enemyramp_pos = Point2((float(woord[2]), float(woord[3])))
             elif (woord[0] == 'position') and (woord[1] == 'ENEMYNATURAL'):
@@ -1976,13 +1996,18 @@ class Chaosbot(sc2.BotAI):
             self.chosenplaces.append((BUNKER, bunkerpos))
         elif self.game_choice[42]:
             self.opening_name = 'banshee_flock'
-            self.buildseries_opening = [SUPPLYDEPOT, COMMANDCENTER, BARRACKS, BUNKER, MARINE, MARINE,
-                                        FACTORY, STARPORT, STARPORT, STARPORT,
-                                        STARPORTTECHLAB,BANSHEECLOAK,STARPORTTECHLAB,STARPORTTECHLAB]
-            #self.chosenplaces.append((BUNKER, bunkerpos))
+            self.buildseries_opening = [SUPPLYDEPOT, COMMANDCENTER, BARRACKS, REFINERY, REFINERY, BUNKER,
+                                        MARINE, FACTORY, SUPPLYDEPOT, ORBITALCOMMAND, MARINE, REFINERY,
+                                        STARPORT, STARPORT, STARPORT, MARINE,
+                                        STARPORTTECHLAB,STARPORTTECHLAB,STARPORTTECHLAB,BANSHEECLOAK]
+            self.chosenplaces.append((COMMANDCENTER, self.homenatural_pos))
+            bunkerplace = self.homenaturalchoke_pos.towards(self.homenatural_pos,2)
+            bunkerplace = self.place_around(BUNKER,bunkerplace)
+            self.chosenplaces.append((BUNKER,bunkerplace))
             self.opening_create_units = 6
             self.opening_create_kind = BANSHEE
-        # radio_choices = 43
+            bunker_if.hiding_spot = bunkerplace.towards(self.homenatural_pos,3)
+            # radio_choices = 43
         self.log_success('OPENING: '+self.opening_name)
         #
         self.init_cheese1()
@@ -2299,7 +2324,7 @@ class Chaosbot(sc2.BotAI):
         'CantFindCancelOrder', # 214;
         ]
         # chat
-        await self._client.chat_send('Chaosbot version 18 oct 2021, made by MerkMore', team_only=False)
+        await self._client.chat_send('Chaosbot version 20 oct 2021, made by MerkMore', team_only=False)
         await self._client.chat_send('Good luck and have fun, '+self.opponent, team_only=False)
         #
         #layout_if.photo_layout()
@@ -2983,6 +3008,41 @@ class Chaosbot(sc2.BotAI):
                         print(' On '+str(self.frame)+' ' + thingtype.name + ' is at ' + self.txt(pos))
                 else:
                     print(' On '+str(self.frame)+' ' + thingtype.name + ' is at ' + self.txt(pos))
+
+    def log_bird_history(self):
+        if self.do_log_bird_history:
+            # count the birds
+            new_bird_am = {}
+            am = 0
+            for reftype in {REFINERY,REFINERYRICH}:
+                for ref in self.structures(reftype):
+                    am += len(ref.passengers)
+            new_bird_am[SCV] = am
+            for (thing,pos) in self.birds:
+                if thing in new_bird_am:
+                    new_bird_am[thing] += 1
+                else:
+                    new_bird_am[thing] = 1
+            # compare to self.bird_am_history
+            for thing in new_bird_am:
+                am = new_bird_am[thing]
+                if thing in self.bird_am_history:
+                    am -= self.bird_am_history[thing]
+                if am == 1:
+                    print('created a '+thing.name)
+                elif am > 0:
+                    print('created '+str(am)+' '+thing.name)
+            for thing in self.bird_am_history:
+                am = self.bird_am_history[thing]
+                if thing in new_bird_am:
+                    am -= new_bird_am[thing]
+                if am == 1:
+                    print('lost a ' + thing.name)
+                elif am > 0:
+                    print('lost ' + str(am) + ' ' + thing.name)
+            # set bird_am_history
+            self.bird_am_history = new_bird_am
+
 
     def log_thoughts(self):
         if self.do_log_thoughts:
@@ -4454,6 +4514,7 @@ class Chaosbot(sc2.BotAI):
                         found = True
         # find a new place directly
         if (building == COMMANDCENTER) and (not found):
+            self.get_all_future_basepos()
             tried = 0
             found = False
             while (not found) and (tried < 20):
@@ -4491,8 +4552,8 @@ class Chaosbot(sc2.BotAI):
                         if not self.we_started_at(building, place):
                             if place not in [pl for (th, pl) in self.buildorder]:
                                 seen = False
-                                for cc in self.all_mine_bases:
-                                    if self.near(place, cc.position, self.miner_bound):
+                                for ccpos in self.all_future_basepos:
+                                    if self.near(place, ccpos, self.miner_bound):
                                         seen = True
                                 if seen:
                                     places.append(place)
@@ -5696,6 +5757,7 @@ class Chaosbot(sc2.BotAI):
         self.log_prediction()
         # toskip
         for (thing,place) in toskip:
+            self.log_success('I have to skip a '+thing.name)
             self.remove_from_planning_etc(thing,place)
 
 
@@ -5967,11 +6029,11 @@ class Chaosbot(sc2.BotAI):
         self.structure_of_trabu_scvt = new_structure_of_trabu_scvt
         #   arrivals are only for travellers
         new_arrivals = set()
-        for sgbf in self.arrivals:
-            (scvt, agoal, abuilding, aframe) = sgbf
+        for sgbsf in self.arrivals:
+            (scvt, agoal, abuilding, sframe, aframe) = sgbsf
             if scvt in self.job_of_scvt:
                 if self.job_of_scvt[scvt] == 'traveller':
-                    new_arrivals.add(sgbf)
+                    new_arrivals.add(sgbsf)
         self.arrivals = new_arrivals
         # goal_of_flying_struct, structure exists
         new_goal_of_flying_struct = {}
@@ -6799,6 +6861,7 @@ class Chaosbot(sc2.BotAI):
                     done.add((thing,place))
         # clean each _exe
         for (thing,place) in done:
+            self.log_success('I have done a '+thing.name)
             self.remove_from_planning_etc(thing,place)
 
 
@@ -7799,6 +7862,7 @@ class Chaosbot(sc2.BotAI):
         for tps in throwtodel:
             del self.throwspots[self.throwspots.index(tps)]
         # del buildorder_exe etc
+        self.log_success('I finished prepping a '+martype.name)
         self.remove_from_planning_etc(martype, pos)
 
 
@@ -7888,10 +7952,10 @@ class Chaosbot(sc2.BotAI):
                 building = self.structure_of_trabu_scvt[scvt]
                 for scv in self.units(SCV):
                     if scv.tag == scvt:
-                        # check the traveller
-                        ok = True
-                        for (atag, agoal, abuilding, aframe) in self.arrivals:
+                        for (atag, agoal, abuilding, sframe, aframe) in self.arrivals:
                             if (atag == scvt) and (agoal == goal) and (abuilding == building):
+                                # check the traveller
+                                ok = True
                                 if self.frame > aframe:
                                     self.log_success('Traveller is over time!')
                                     ok = False
@@ -7899,34 +7963,35 @@ class Chaosbot(sc2.BotAI):
                                     # expect the absense of traveller to delete the rest
                                     # accept few of these timeouts
                                     self.throw_history(building, goal)
-                        if (len(scv.orders) == 0):
-                            ok = False
-                            self.log_success('Traveller idle')
-                        else:
-                            for order in scv.orders:
-                                if order.ability.id == AbilityId.HARVEST_GATHER:
-                                    if self.near(scv.position,goal,15):
+                                elif self.frame > sframe + 6: # allow startup frames
+                                    if (len(scv.orders) == 0):
                                         ok = False
-                                        self.log_success('Traveller gathers near goal')
-                                elif order.ability.id != AbilityId.MOVE:
-                                    ok = False
-                                    self.log_success('Traveller doesnt move but ')
-                                    #print(order.ability.id)
-                                elif type(order.target) == int:
-                                    ok = False
-                                    self.log_success('Traveller moves to thing')
-                                elif (order.target.x != goal.x) or (order.target.y != goal.y): # fails as one condition
-                                    ok = False
-                                    self.log_success('Traveller moves not to goal')
-                        if not ok:
-                            self.log_success('Traveller ' + self.name(scvt) + ' went astray, rerouted')
-                            scv.move(goal)
-                        if self.near(scv.position, goal, 12):
-                            self.clear_from_mines(goal)
-                        # settling
-                        if self.near(scv.position, goal, 3):
-                            self.log_success('build site of a '+building.name+' reached')
-                            self.promote(scv,'settler')
+                                        self.log_success('Traveller idle')
+                                    else:
+                                        for order in scv.orders:
+                                            if order.ability.id == AbilityId.HARVEST_GATHER:
+                                                if self.near(scv.position,goal,15):
+                                                    ok = False
+                                                    self.log_success('Traveller gathers near goal')
+                                            elif order.ability.id != AbilityId.MOVE:
+                                                ok = False
+                                                self.log_success('Traveller doesnt move but ')
+                                                #print(order.ability.id)
+                                            elif type(order.target) == int:
+                                                ok = False
+                                                self.log_success('Traveller moves to thing')
+                                            elif (order.target.x != goal.x) or (order.target.y != goal.y): # fails as one condition
+                                                ok = False
+                                                self.log_success('Traveller moves not to goal')
+                                if not ok:
+                                    self.log_success('Traveller ' + self.name(scvt) + ' went astray, rerouted')
+                                    scv.move(goal)
+                                if self.near(scv.position, goal, 12):
+                                    self.clear_from_mines(goal)
+                                # settling
+                                if self.near(scv.position, goal, 3):
+                                    self.log_success('build site of a '+building.name+' reached')
+                                    self.promote(scv,'settler')
         for scvt in self.goal_of_trabu_scvt:
             if self.job_of_scvt[scvt] == 'settler':
                 goal = self.goal_of_trabu_scvt[scvt]
@@ -8038,7 +8103,7 @@ class Chaosbot(sc2.BotAI):
                     restdura = self.walk_duration(scv.position,goal)
                     self.preps.add((building, scv, goal, restdura, owner))
                     maxdura = 2 * restdura + 2
-                    self.arrivals.add((scv.tag,goal,building,self.frame+22.4*maxdura))
+                    self.arrivals.add((scv.tag,goal,building,self.frame,self.frame+22.4*maxdura))
         return didit
 
     def build_commandcenter(self,trabu_scvt,goal,owner):
@@ -8071,7 +8136,7 @@ class Chaosbot(sc2.BotAI):
                 restdura = self.walk_duration(scv.position, goal)
                 self.preps.add((building, scv, goal, restdura, owner))
                 maxdura = 2 * restdura + 2
-                self.arrivals.add((scv.tag,goal,building,self.frame + 22.4 * maxdura))
+                self.arrivals.add((scv.tag,goal,building,self.frame,self.frame + 22.4 * maxdura))
         # give the cc a cc_destiny
         if goal in self.expansion_locations:
             if self.cc_destiny_rush:
@@ -9785,123 +9850,130 @@ class Chaosbot(sc2.BotAI):
                 del self.banshee_right[tag]
                 del self.fearframe_of_banshee[tag]
         # per banshee
-        for ban in self.units(BANSHEE):
-            banpos = ban.position
-            if ban.tag not in self.fearframe_of_banshee:
-                # init
-                self.lefttarget_righttarget()
-                self.emotion_of_unittag[ban.tag] = 'resting'
-                leftminusright = 0
-                for rba in self.banshee_right:
-                    if rba:
-                        leftminusright -= 1
-                    else:
-                        leftminusright += 1
-                if leftminusright < 0:
-                    self.banshee_right[ban.tag] = False
-                elif leftminusright > 0:
-                    self.banshee_right[ban.tag] = True
-                else:
-                    if self.sdist(banpos,self.hisleft) < self.sdist(banpos,self.hisright):
+        if len(self.biles) == 0: # else the dodging will be done by other code
+            for ban in self.units(BANSHEE):
+                banpos = ban.position
+                if ban.tag not in self.fearframe_of_banshee:
+                    # init
+                    self.lefttarget_righttarget()
+                    self.emotion_of_unittag[ban.tag] = 'resting'
+                    leftminusright = 0
+                    for rba in self.banshee_right:
+                        if rba:
+                            leftminusright -= 1
+                        else:
+                            leftminusright += 1
+                    if leftminusright < 0:
                         self.banshee_right[ban.tag] = False
-                    else:
+                    elif leftminusright > 0:
                         self.banshee_right[ban.tag] = True
-                self.fearframe_of_banshee[ban.tag] = 0
-            # goal
-            if self.banshee_right[ban.tag]:
-                goal = self.righttarget
-            else:
-                goal = self.lefttarget
-            if self.detect_hash != self.detect_old_hash:
-                self.detect_old_hash = self.detect_hash
-                goal = self.undetect_point(goal)
-            emo = self.emotion_of_unittag[ban.tag]
-            mytile = self.maptile_of_pos(banpos)
-            # cloack and uncloack
-            for tile in self.nine[mytile]:
-                for ene in self.enemies_of_tile[tile]:
-                    if self.air_strength(ene) > 0:
-                        if self.near(ene.position,banpos,10):
-                            self.fearframe_of_banshee[ban.tag] = self.frame
-            if ban.tag in self.last_health:
-                if ban.health < self.last_health[ban.tag]:
-                    self.fearframe_of_banshee[ban.tag] = self.frame
-            if ban.is_cloaked:
-                if self.fearframe_of_banshee[ban.tag] + 300 < self.frame:
-                    ban(AbilityId.BEHAVIOR_CLOAKOFF_BANSHEE)
-            else:
-                if self.fearframe_of_banshee[ban.tag] + 50 >= self.frame:
-                    if ban.energy >= 40:
-                        if self.we_finished_a(BANSHEECLOAK):
-                            ban(AbilityId.BEHAVIOR_CLOAKON_BANSHEE)
-            #
-            # being scanned
-            for effect in self.state.effects:
-                if effect.id == EffectId.SCANNERSWEEP:
-                    for effectpos in effect.positions:
-                        if self.near(effectpos,banpos,13.5): # scanrange + 0.5
+                    else:
+                        if self.sdist(banpos,self.hisleft) < self.sdist(banpos,self.hisright):
+                            self.banshee_right[ban.tag] = False
+                        else:
+                            self.banshee_right[ban.tag] = True
+                    self.fearframe_of_banshee[ban.tag] = 0
+                # goal
+                if self.banshee_right[ban.tag]:
+                    goal = self.righttarget
+                else:
+                    goal = self.lefttarget
+                if self.detect_hash != self.detect_old_hash:
+                    self.detect_old_hash = self.detect_hash
+                    goal = self.undetect_point(goal)
+                emo = self.emotion_of_unittag[ban.tag]
+                mytile = self.maptile_of_pos(banpos)
+                # cloack and uncloack
+                for tile in self.nine[mytile]:
+                    for ene in self.enemies_of_tile[tile]:
+                        if self.air_strength(ene) > 0:
+                            if self.near(ene.position,banpos,10):
+                                self.fearframe_of_banshee[ban.tag] = self.frame
+                if ban.tag in self.last_health:
+                    if ban.health < self.last_health[ban.tag]:
+                        self.fearframe_of_banshee[ban.tag] = self.frame
+                if ban.is_cloaked:
+                    if self.fearframe_of_banshee[ban.tag] + 300 < self.frame:
+                        ban(AbilityId.BEHAVIOR_CLOAKOFF_BANSHEE)
+                else:
+                    if self.fearframe_of_banshee[ban.tag] + 50 >= self.frame:
+                        if ban.energy >= 40:
+                            if self.we_finished_a(BANSHEECLOAK):
+                                ban(AbilityId.BEHAVIOR_CLOAKON_BANSHEE)
+                #
+                # being scanned
+                for effect in self.state.effects:
+                    if effect.id == EffectId.SCANNERSWEEP:
+                        for effectpos in effect.positions:
+                            if self.near(effectpos,banpos,13.5): # scanrange + 0.5
+                                if self.banshee_right[ban.tag]:
+                                    ban.move(self.hisright)
+                                else:
+                                    ban.move(self.hisleft)
+                                emo = 'fleeing' # banshee
+                                self.shame_of_unittag[ban.tag] = 100
+                #
+                if emo == 'resting':
+                    start = True
+                    if self.we_started_a(BANSHEECLOAK):
+                        start = False
+                    for (thing,pos) in self.birds:
+                        if thing == BANSHEECLOAK:
+                            start = True
+                    for (thing,bartype,pos,upgdura) in self.eggs:
+                        if thing == BANSHEECLOAK:
+                            flightdura = 0.17 * (self.circledist(banpos,goal) - 10)
+                            if upgdura < flightdura:
+                                start = True
+                    if (self.opening_create_kind == BANSHEE):
+                        if (self.opening_create_units > 0):
+                            start = False
+                        for (marty, bartype, pos, dura) in self.eggs:
+                            if (marty == BANSHEE):
+                                start = False
+                    if start:
+                        mid = self.sneakymid(banpos,goal)
+                        self.go_move(ban, mid)
+                        emo = 'approaching'
+                elif emo == 'approaching':
+                    if self.no_move_or_near(ban, 8, 4):
+                        if self.near(banpos,goal,1):
+                            emo = 'near'
+                            ban.move(goal)
+                        else:
+                            mid = self.sneakymid(banpos, goal)
+                            self.go_move(ban, mid)
+                elif emo == 'near':
+                    if self.near(banpos,goal,0.5):
+                        emo = 'reached'
+                        ban(AbilityId.HOLDPOSITION)
+                elif emo == 'reached':
+                    if not self.near(banpos,goal,0.5):
+                        ban.move(goal)
+                    if ban.energy < 15: # cloack runs low
+                        if self.fearframe_of_banshee[ban.tag] + 200 >= self.frame: # if it has fear
                             if self.banshee_right[ban.tag]:
                                 ban.move(self.hisright)
                             else:
                                 ban.move(self.hisleft)
-                            emo = 'fleeing' # banshee
-                            self.shame_of_unittag[ban.tag] = 100
-            #
-            if emo == 'resting':
-                start = True
-                if self.we_started_a(BANSHEECLOAK):
-                    start = False
-                for (thing,pos) in self.birds:
-                    if thing == BANSHEECLOAK:
-                        start = True
-                for (thing,bartype,pos,upgdura) in self.eggs:
-                    if thing == BANSHEECLOAK:
-                        flightdura = 0.17 * (self.circledist(banpos,goal) - 10)
-                        if upgdura < flightdura:
-                            start = True
-                if start:
-                    mid = self.sneakymid(banpos,goal)
-                    self.go_move(ban, mid)
-                    emo = 'approaching'
-            elif emo == 'approaching':
-                if self.no_move_or_near(ban, 8, 4):
-                    if self.near(banpos,goal,1):
-                        emo = 'near'
-                        ban.move(goal)
-                    else:
-                        mid = self.sneakymid(banpos, goal)
-                        self.go_move(ban, mid)
-            elif emo == 'near':
-                if self.near(banpos,goal,0.5):
-                    emo = 'reached'
-                    ban(AbilityId.HOLDPOSITION)
-            elif emo == 'reached':
-                if not self.near(banpos,goal,0.5):
-                    ban.move(goal)
-                if ban.energy < 15: # cloack runs low
-                    if self.fearframe_of_banshee[ban.tag] + 200 >= self.frame: # if it has fear
+                            emo = 'refresh'
+                elif emo == 'refresh':
+                    flightdura = 0.17 * (self.circledist(banpos, goal) - 10)
+                    if ban.energy + flightdura >= 70:
+                        emo = 'resting'
+                elif emo == 'fleeing': # banshee
+                    if ban.energy < 15:
+                        # cloack runs low
                         if self.banshee_right[ban.tag]:
                             ban.move(self.hisright)
                         else:
                             ban.move(self.hisleft)
                         emo = 'refresh'
-            elif emo == 'refresh':
-                flightdura = 0.17 * (self.circledist(banpos, goal) - 10)
-                if ban.energy + flightdura >= 70:
-                    emo = 'resting'
-            elif emo == 'fleeing': # banshee
-                if ban.energy < 15:
-                    # cloack runs low
-                    if self.banshee_right[ban.tag]:
-                        ban.move(self.hisright)
+                    elif self.shame_of_unittag[ban.tag] <= 0:
+                        emo = 'resting'
                     else:
-                        ban.move(self.hisleft)
-                    emo = 'refresh'
-                elif self.shame_of_unittag[ban.tag] <= 0:
-                    emo = 'resting'
-                else:
-                    self.shame_of_unittag[ban.tag] -= self.chosen_game_step
-            self.emotion_of_unittag[ban.tag] = emo
+                        self.shame_of_unittag[ban.tag] -= self.chosen_game_step
+                self.emotion_of_unittag[ban.tag] = emo
 
 
 
@@ -10475,22 +10547,37 @@ class Chaosbot(sc2.BotAI):
 
 
     async def dodge_bile(self):
+        # delete old biles
+        # ignore the possibility of multiple biles at the same spot
+        todel = set()
+        for (pos,landframe) in self.bile_landframe:
+            if self.frame > landframe:
+                todel.add((pos,landframe))
+        for (pos,landframe) in todel:
+            self.biles.remove(pos)
+        self.bile_landframe -= todel
+        # new biles
         for effect in self.state.effects:
             if effect.id == EffectId.RAVAGERCORROSIVEBILECP:
-                for kind in self.all_army:
-                    if kind not in {SIEGETANKSIEGED,LIBERATORAG,WIDOWMINEBURROWED}:
-                        for bc in self.units(kind).ready:
-                            mustflee = False
-                            for bileposition in effect.positions:
-                                if self.near(bileposition,bc.position,3):
-                                    mustflee = True
-                                    abile = bileposition
-                            if mustflee:
-                                topoint = self.flee(bc.position,3.2)
-                                while self.near(abile,topoint,3):
-                                    topoint = self.flee(bc.position, 3.2)
-                                self.log_command('bc(AbilityId.MOVE_MOVE,topoint)')
-                                bc(AbilityId.MOVE_MOVE,topoint)
+                for bileposition in effect.positions:
+                    if bileposition not in self.biles:
+                        self.biles.add(bileposition)
+                        self.bile_landframe.add((bileposition,self.frame + 60))
+        # dodge biles
+        for bileposition in self.biles:
+            for kind in self.all_army:
+                if kind not in {SIEGETANKSIEGED,LIBERATORAG,WIDOWMINEBURROWED}:
+                    for bc in self.units(kind).ready:
+                        mustflee = False
+                        if self.near(bileposition,bc.position,3):
+                            mustflee = True
+                            abile = bileposition
+                        if mustflee:
+                            topoint = self.flee(bc.position,3.2)
+                            while self.near(abile,topoint,3):
+                                topoint = self.flee(bc.position, 3.2)
+                            self.log_command('bc(AbilityId.MOVE_MOVE,topoint)')
+                            bc(AbilityId.MOVE_MOVE,topoint)
 
     def eval_libspots(self):
         # sometimes check the spots for known dangers and usefulness
@@ -15304,14 +15391,23 @@ class Chaosbot(sc2.BotAI):
     async def win_loss(self):
         if self.game_result == 'doubt':
             # win and loss conditions
-            if len(self.enemy_structureinfo) == len(self.enemy_real_structures): # all visible
-                ene_max_hea = -1
-                for stru in self.enemy_real_structures: # visible now
-                    if stru.type_id not in {SPORECRAWLER,SPINECRAWLER,AUTOTURRET}:
-                        if stru.health > ene_max_hea:
-                            ene_max_hea = stru.health
-                if ene_max_hea < 456:
-                    self.game_result = 'win'
+            # known
+            known = 0
+            for tpa in self.enemy_structureinfo:
+                (typ, pos, tag) = tpa
+                if typ not in self.win_ignore:
+                    known += 1
+            # actual visible
+            ene_max_hea = -1
+            seen = 0
+            for stru in self.enemy_real_structures: # visible now
+                if stru.type_id not in self.win_ignore:
+                    seen += 1
+                    if stru.health > ene_max_hea:
+                        ene_max_hea = stru.health
+            if (ene_max_hea < 456) and (seen == known):
+                self.game_result = 'win'
+            #
             if len(self.structures) == 1:
                 my_max_hea = -1
                 for stru in self.structures:
@@ -15342,7 +15438,7 @@ class Chaosbot(sc2.BotAI):
                     self.strategy[self.stratline][nr] = will
             # write strategy
             if self.game_result != 'doubt':
-                self.log_success(self.game_result)
+                self.log_success('gg '+self.game_result)
                 self.write_strategy()
                 await self._client.chat_send('gg', team_only=False)
 
@@ -15467,7 +15563,7 @@ class Chaosbot(sc2.BotAI):
                 radio_numbers.add(nr)
         radio_nr = random.choice(tuple(radio_numbers))
         # TO TEST use next line
-        radio_nr = 42
+        #radio_nr = 42
         for nr in range(0,self.radio_choices):
             self.game_choice.append(nr == radio_nr)
         for nr in range(self.radio_choices,self.game_choices):

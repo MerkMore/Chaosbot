@@ -2,7 +2,7 @@
 # Makes text for building placement
 # appends the output to file "data\placement.txt"
 # author: MerkMore
-# version 19 aug 2021
+# version 19 oct 2021
 from layout_if_py import layout_if
 import random
 from math import sqrt, sin, cos, acos, pi
@@ -30,6 +30,7 @@ class prog:
     startsquare = (0,0)
     enemystartsquare = (0,0)
     enemynatural = (0,0)
+    homenatural = (0,0)
     ramptopcenter = (0,0)
     centerresult = (0,0)
     edgeresult = set()
@@ -210,9 +211,72 @@ class prog:
         ramp = ramptop.copy()
         self.extend(ramp)
         self.get_center(ramp)
-        x = 0.001*round(1000*(self.centerresult[0]+0.5))
-        y = 0.001*round(1000*(self.centerresult[1]+0.5))
+        rampcenter = self.centerresult
+        x = 0.001*round(1000*(rampcenter[0]+0.5))
+        y = 0.001*round(1000*(rampcenter[1]+0.5))
         text.write('position HOMERAMP ' + str(x) + ' ' + str(y) + '\n')
+        # homenatural
+        closest = 99999
+        for lo in self.expansions:
+            sd = self.sdist(lo,self.startsquare)
+            if sd > 3*3:
+                sd = self.sdist(lo,rampcenter)
+                if sd < closest:
+                    closest = sd
+                    self.homenatural = (lo[0]+2,lo[1]+2)
+        x = self.homenatural[0]+0.5
+        y = self.homenatural[1]+0.5
+        text.write('position HOMENATURAL ' + str(x) + ' ' + str(y) + '\n')
+        #
+        # HOME NATURAL CHOKE
+        # centertile
+        around = self.mapcenter
+        bestsd = 99999
+        for x in range(around[0]-20,around[0]+20):
+            for y in range(around[1]-20,around[1]+20):
+                square = (x,y)
+                if self.istile(square): # can place a tank
+                    sd = self.sdist(square,around)
+                    if sd < bestsd:
+                        bestsquare = square
+                        bestsd = sd
+        centertile = bestsquare
+        # estimate a choke as natural in the direction of mapcenter dist 0.5*dist(start,natural)
+        wantsize = 0.5 * self.circledist(self.homenatural,self.startsquare)
+        hassize = self.circledist(self.homenatural,self.mapcenter)
+        vec = (self.mapcenter[0] - self.homenatural[0], self.mapcenter[1] - self.homenatural[1])
+        vec = (vec[0] * wantsize / hassize, vec[1] * wantsize / hassize)
+        estimate = (round(self.homenatural[0] + vec[0]),round(self.homenatural[1] + vec[1]))
+        self.logg('estimate nat. choke '+str(estimate[0])+','+str(estimate[1]))
+        naturalchoke = estimate
+        # check that a tankpath can be found without choking
+        homenattile = (round(self.homenatural[0]),round(self.homenatural[1]))
+        while not self.istile(homenattile): # can place a tank
+            homenattile = (homenattile[0],homenattile[1]+1)
+        pathstart = {homenattile}
+        pathend = {centertile}
+        self.path_direction = centertile
+        if not self.has_path(pathstart, pathend):
+            self.logg('no path from natural to centertile?!')
+        # now get good chokes around estimate
+        chokes = set()
+        for dx in range(-19,20):
+            for dy in range(-19,20):
+                choke = (estimate[0]+dx,estimate[1]+dy)
+                self.mask_disk(choke,10)
+                if self.istile(homenattile) and self.istile(centertile):
+                    if not self.has_path(pathstart,pathend):
+                        chokes.add(choke)
+                        self.logg('found choke ' + str(choke[0]) + ',' + str(choke[1]))
+                self.mask_disk(choke, 10) # unmask
+            #
+        self.logg('found chokes: '+str(len(chokes)))
+        if len(chokes) > 0:
+            self.get_center(chokes)
+            x = 0.001*round(1000*(self.centerresult[0])) # do not add 0.5 as these are real centers
+            y = 0.001*round(1000*(self.centerresult[1]))
+            text.write('position HOMENATURALCHOKE ' + str(x) + ' ' + str(y) + '\n')
+            homenaturalchoke = (round(x),round(y))
         #
         # ENEMY NATURAL CHOKE
         # centertile
@@ -253,6 +317,7 @@ class prog:
                 if self.istile(ennattile) and self.istile(centertile):
                     if not self.has_path(pathstart,pathend):
                         chokes.add(choke)
+                        self.logg('found choke ' + str(choke[0]) + ',' + str(choke[1]))
                 self.mask_disk(choke, 10) # unmask
             #
         self.logg('found chokes: '+str(len(chokes)))

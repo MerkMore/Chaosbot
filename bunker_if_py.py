@@ -1,6 +1,6 @@
 # bunker_if_py.py
 # author: MerkMore
-# version: 19 feb 2021
+# version: 20 oct 2021
 # Burny style
 #
 # use:   from bunker_if_py import bunker_if
@@ -51,6 +51,7 @@ class bunker_if:
     goalbunkertag = {}
     loadpast = {}
     astate = {}
+    sometimes = 0
 
     def log(stri):
         if bunker_if.do_log:
@@ -91,6 +92,7 @@ class bunker_if:
         #                  astate 'resting'       no goalbunkertag.
         #                  astate 'disturbed'     no goalbunkertag, is attacking a worker
         #
+        bunker_if.sometimes += 1
         load_frames = 20
         load_dist = 6
         # old_goalbunkertag
@@ -366,6 +368,17 @@ class bunker_if:
                     if man.tag == mant:
                         man.attack(bunker_if.hiding_spot)
                         bunker_if.astate[mant] = 'resting'
+        # sometimes, kick a marine that won't walk
+        if bunker_if.sometimes % 10 == 0:
+            for man in bunker_if.units(MARINE).idle:
+                for mant in bunker_if.visible_marinetags:
+                    if man.tag == mant:
+                        if bunker_if.astate[mant] == 'walking':
+                            bunt = bunker_if.goalbunkertag[mant]
+                            for bun in bunker_if.structures(BUNKER):
+                                if bun.tag == bunt:
+                                    if not bunker_if.near(man.position, bun.position, load_dist):
+                                        man.move(bunker_if.door[bunt])
         # log
         if len(bunker_if.bunkertags) > 0:
             bunker_if.log('bunkers '+str(len(bunker_if.bunkertags))+'  marines '+str(len(bunker_if.marinetags))
