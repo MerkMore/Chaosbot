@@ -327,8 +327,10 @@ class Chaosbot(sc2.BotAI):
     expos = 0 # expansionlocations
     expo_of_maptile = {}
     pos_of_expo = {}
-    minerals_of_expo = {} # all_minerals, not mined-out. Per expo: (mimpos,positiontag)
-    vespene_of_expo = {} #
+    # a postag is a kind of tag based on position. The position can have halves and is in 0,200 x 0,200.
+    # an enemy building or mineralpatch has no stable tag, because of fog-of-war.
+    minerals_of_expo = {} # all_minerals, not mined-out. Per expo: (mimpos,postag)
+    vespene_of_expo = {} # all gasgeysers, not mined-out. Per expo: (gaspos,postag)
     units_of_expo = {} # units
     scvs_of_expo = {} # units(SCV)
     structures_of_expo = {} # structures
@@ -345,16 +347,17 @@ class Chaosbot(sc2.BotAI):
     #   gamestate values constant in this frame after gamestate:
     all_bases = [] # including at odd positions
     all_mine_bases = [] # at expansion_locations
-    all_refineries = []
     army_supply = 0
     all_scvtags = set() # simple, no limbo like in all_scvt
     all_mine_basetags = set()
     all_structuretags = set() # simple
     all_bunkertags = set() # simple
     all_minerals = set() # mineral_field but with a stable tag. (mimpos,mimt). Not mined-out.
+    all_vespene = set() # vespene_geyser but with a stable tag. (gaspos,gast). Not mined-out.
     mineral_field_hash = 0 # to skip computing all_minerals
     supply_rate = 0.17
     enoughworkers = 0 # about 80 but reduced when floating minerals
+    sacrificed = False # do not build workers after you sacrificed some.
     # some average counts related to supply:
     good_worker_supply = 0
     good_army_supply = 0
@@ -470,6 +473,8 @@ class Chaosbot(sc2.BotAI):
     goal_of_cluster = {} # per cluster a Point2
     cluster_of_mine = {} # per widowminetag (or burried) the cluster it is in.
     size_of_cluster = {} # per cluster the amount of mines in it.
+    #
+    cleaners = set() # escorters clean enemy structures near home
     #
     last_health = {}
     #
@@ -687,31 +692,33 @@ class Chaosbot(sc2.BotAI):
     #   scv management:
     #   The tag of existing own scvs, in this frame. scvs in limbo included.
     all_scvt = []
-    #   The tag of existing refineries where we want to mine from, in this frame
-    all_gast = []
-    #   The tag of existing minerals where we want to mine from, in this frame
-    all_mimt = []
+    #   The existing refineries where we want to mine from, in this frame
+    all_gas_to_mine = set() # of (gaspos,gast) with gast a postag
+    #   The existing minerals where we want to mine from, in this frame
+    all_mim_to_mine = set() # of (gaspos,gast) with gast a postag
     #   job_of_scvt dictionary
-    good_jobs = ('builder','settler','fencer','traveller','repairer','fighter','escorter','scout','cheeser','pilot')
+    good_jobs = ('builder','settler','fencer','traveller','repairer','fighter','escorter'
+                 ,'scout','cheeser','pilot','sacrifice')
     bad_jobs = ('gasminer','mimminer','candidate','carrier','applicant','gasper','reporter')
     no_jobs = ('idler','suicider','volunteer','inshock','fleeer')
     #
-    jobs_may_idle = ('mimminer','fencer','settler','scout','fighter','cheeser','applicant','idler','gasper','pilot')
+    jobs_may_idle = ('mimminer','fencer','settler','scout','fighter','cheeser','applicant'
+                     ,'idler','gasper','pilot','sacrifice')
     #
     expected_orders = set()
     #
     job_of_scvt = {}
     count_of_job = {}
-    #   applicants and candidates have a vision, a tag of a base to walk to
+    #   applicants,candidates,carriers have a vision, a tag of a base to walk to
     vision_of_scvt = {}
     #   recalculated each frame:
     wanted_of_cct = {}
     #   gas harvesting assignments
-    gast_of_scvt = {}
-    count_of_gast = {}
+    gas_of_minert = {} # gas=(gaspo,gast), gast is a postag
+    nminers_of_gast = {}
     #   mineral harvesting assignments
-    mimt_of_minert = {}
-    count_of_mimt = {}
+    mim_of_minert = {} # mim=(mimpos,mimt), mimt is a postag.
+    nminers_of_mimt = {}
     # speedmining.
     # No deceleration when having a queued command at minerals. No deceleration when avoiding collisions. 
     phase_of_minert = {}
@@ -892,12 +899,15 @@ class Chaosbot(sc2.BotAI):
         self.log_bird_history()
         self.loadcc()
         await self.manage_workers() # before planning
+        if (self.frame % 5 == 4):
+            self.housecleaning()
         if self.minerals < self.vespene:
             await self.manage_minerals()
             await self.manage_gas()
         else:
             await self.manage_gas()
             await self.manage_minerals()
+        await self.get_applicants()
         await self.manage_rest()
         self.speedmining()
         self.fighters()
@@ -925,6 +935,7 @@ class Chaosbot(sc2.BotAI):
         self.deserted()
         await self.repair_bc()
         if (self.frame % 7 == 6):
+            self.maxout_sacrifice()
             self.do_repair()
             self.urgent_supplydepots_adlib()
             self.refineries_adlib()
@@ -1014,6 +1025,7 @@ class Chaosbot(sc2.BotAI):
             self.expansion_locations.append(correctpoint)
         #
         self.init_all_minerals()
+        self.init_all_vespene()
         self.init_expo()
         self.init_step_expo()
         self.all_categories = {'worker','army','base','armybuilding','upgradebuilding','upgrade'
@@ -1896,7 +1908,7 @@ class Chaosbot(sc2.BotAI):
                 place = self.place_around(FACTORY, around)
                 nearminerals = False
                 for (mimpos,mimt) in self.all_minerals:
-                    if self.near(place,mimpos,3):
+                    if self.near(place,mimpos,4):
                         nearminerals = True
                 if not nearminerals:
                     self.chosenplaces.append((FACTORY, place))
@@ -2015,7 +2027,7 @@ class Chaosbot(sc2.BotAI):
         #
         # init gather
         for (mimpos,mimt) in self.all_minerals:
-            self.count_of_mimt[mimt] = 0
+            self.nminers_of_mimt[mimt] = 0
         for miner in self.units(SCV):
             minert = miner.tag
             if minert not in self.speciality_of_tag:
@@ -2023,36 +2035,34 @@ class Chaosbot(sc2.BotAI):
                 best_sd = 99999
                 bestmim = (self.nowhere,self.notag)
                 for (mimpos,mimt) in self.all_minerals:
-                    if self.count_of_mimt[mimt] < 2:
-                        sd = self.sdist(miner.position,mimpos) + 30 * self.count_of_mimt[mimt]
+                    if self.nminers_of_mimt[mimt] < 2:
+                        sd = self.sdist(miner.position,mimpos) + 30 * self.nminers_of_mimt[mimt]
                         if sd < best_sd:
                             best_sd = sd
                             bestmim = (mimpos,mimt)
                 (mimpos,mimt) = bestmim
-                self.mimt_of_minert[minert] = mimt
-                self.count_of_mimt[mimt] += 1
+                self.mim_of_minert[minert] = bestmim
+                self.nminers_of_mimt[mimt] += 1
         # gather (unless second)
         for miner in self.units(SCV):
             minert = miner.tag
-            if minert in self.mimt_of_minert:
+            if minert in self.mim_of_minert:
                 gogather = True
-                thismimt = self.mimt_of_minert[minert]
-                if self.count_of_mimt[thismimt] == 2:
+                mim = self.mim_of_minert[minert]
+                (mimpos,mimt) = mim
+                if self.nminers_of_mimt[mimt] == 2:
                     # smallest tag will mine first
-                    for otherminert in self.mimt_of_minert:
-                        if self.mimt_of_minert[otherminert] == thismimt:
+                    for otherminert in self.mim_of_minert:
+                        if self.mim_of_minert[otherminert] == mim:
                             if otherminert < minert:
                                 gogather = False
-                for (mimpos,mimt) in self.all_minerals:
-                    if mimt == thismimt:
-                        if gogather:
-                            mim = (mimpos,mimt)
-                            self.go_gather(miner,mim)
-                            self.phase_of_minert[minert] = 'G'
-                        else: # needs move to prevent automatic mining
-                            startpoint = self.loved_pos.towards(mimpos,3)
-                            miner.move(startpoint)
-                            self.phase_of_minert[minert] = 'W'
+                if gogather:
+                    self.go_gather_mim(miner,mim)
+                    self.phase_of_minert[minert] = 'G'
+                else: # needs move to prevent automatic mining
+                    startpoint = self.loved_pos.towards(mimpos,3)
+                    miner.move(startpoint)
+                    self.phase_of_minert[minert] = 'W'
         self.fix_count_of_job()
         #
         #  preparing midgame
@@ -2324,7 +2334,7 @@ class Chaosbot(sc2.BotAI):
         'CantFindCancelOrder', # 214;
         ]
         # chat
-        await self._client.chat_send('Chaosbot version 20 oct 2021, made by MerkMore', team_only=False)
+        await self._client.chat_send('Chaosbot version 22 oct 2021, made by MerkMore', team_only=False)
         await self._client.chat_send('Good luck and have fun, '+self.opponent, team_only=False)
         #
         #layout_if.photo_layout()
@@ -2335,30 +2345,44 @@ class Chaosbot(sc2.BotAI):
                 await self._client.chat_send('Tag:'+self.opening_name, team_only=True)
                 self.tag_sent = True
 
-    def mineraltag(self, patch) -> int:
-        return round(1000*patch.position.x+2*patch.position.y)
+    def postag(self,pos) -> int:    
+        return round(400*pos.x+2*pos.y)
 
+    def postag_of_patch(self, patch) -> int:
+        return self.postag(patch.position)
+        
     def init_all_minerals(self):
         if len(self.mineral_field) != self.mineral_field_hash:
             self.mineral_field_hash = len(self.mineral_field)
-            self.all_minerals = {(patch.position,self.mineraltag(patch)) for patch in self.mineral_field}
+            self.all_minerals = {(patch.position,self.postag_of_patch(patch)) for patch in self.mineral_field}
 
-    def go_gather(self, scv, mim):
-        # about 4/sec
+    def init_all_vespene(self):
+        self.all_vespene = {(gey.position,self.postag(gey.position)) for gey in self.vespene_geyser}
+        # i hope this means not empty
+
+    def go_gather_gas(self, scv, gas):
+        (gaspos,gast) = gas
+        for ref in self.structures(REFINERY)+self.structures(REFINERYRICH):
+            if ref.position == gaspos:
+                self.log_command('scv.gather(ref)')
+                scv.gather(ref)
+
+    def go_gather_mim(self, scv, mim):
         (mimpos,mimt) = mim
+        # about 4/sec
         scvt = scv.tag
         done = False
         if scvt in self.hint_patch_of_scvt:
             patch = self.hint_patch_of_scvt[scvt]
             if patch in self.mineral_field:
-                if self.mineraltag(patch) == mimt:
+                if self.postag_of_patch(patch) == mimt:
                     self.log_command('scv.gather(patch)')
                     scv.gather(patch)
                     done = True
         if not done:
             #print('* ',str(self.frame))    about 1/second
             for patch in self.mineral_field:
-                if self.mineraltag(patch) == mimt:
+                if self.postag_of_patch(patch) == mimt:
                     self.log_command('scv.gather(patch)')
                     scv.gather(patch)
                     self.hint_patch_of_scvt[scvt] = patch
@@ -2706,16 +2730,17 @@ class Chaosbot(sc2.BotAI):
             for scvt in self.all_scvt:
                 if self.job_of_scvt[scvt] == 'gasminer':
                     print(str(scvt)+',')
-            for gast in self.all_gast:
+            for gas in self.all_gas_to_mine:
+                (gaspos,gast) = gas
                 print('gas '+str(gast)+': ')
-                for scvt in self.gast_of_scvt: 
-                    if self.gast_of_scvt[scvt] == gast:
+                for scvt in self.gas_of_minert: 
+                    if self.gas_of_minert[scvt] == gas:
                         print(str(scvt))
             for scvt in self.all_scvt:
                 if self.job_of_scvt[scvt] == 'gasminer':
-                    if scvt not in self.gast_of_scvt:
+                    if scvt not in self.gas_of_minert:
                         print('gasminer without assignment '+self.name(scvt)) 
-            for scvt in self.gast_of_scvt:
+            for scvt in self.gas_of_minert:
                 if scvt not in self.all_scvt:
                     print('assignment but not existing?! scv '+self.name(scvt))
                 if scvt not in self.job_of_scvt:
@@ -2791,6 +2816,16 @@ class Chaosbot(sc2.BotAI):
             res = err.result
             abiname = sc2.AbilityId(abiid).name
             self.log_fail(False,'Error trying '+abiname+' '+self.errortexts[res])
+            # anti burrowed ling code
+            if res == 44: # 'CantBuildLocationInvalid'
+                for items in self.buildandretry:
+                    (scvt, building, goal, startframe) = items
+                    if (building == COMMANDCENTER) and (scvt == unittag):
+                        # trow turret
+                        turpos = goal.towards(self.game_info.map_center,-3)
+                        turpos = self.place_around(MISSILETURRET,turpos)
+                        self.throw_at_spot(MISSILETURRET,turpos,'act_on_errors')
+
 
     def position_of_building(self, bui) -> Point2:
         if bui.type_id in self.all_labs:
@@ -3511,12 +3546,9 @@ class Chaosbot(sc2.BotAI):
         for (onepos,onet) in self.all_minerals:
             expo = self.expo_of_pos(onepos)
             self.minerals_of_expo[expo].add((onepos,onet))
-        for one in self.vespene_geyser:
-            expo = self.expo_of_pos(one.position)
-            place = one.position
-            for bui in self.structures(REFINERY) + self.structures(REFINERYRICH):
-                if bui.position == place:
-                    self.vespene_of_expo[expo].add(one)
+        for (onepos,onet) in self.all_vespene:
+            expo = self.expo_of_pos(onepos)
+            self.vespene_of_expo[expo].add((onepos,onet))
         for one in self.units(SCV):
             expo = self.expo_of_pos(one.position)
             self.scvs_of_expo[expo].add(one)
@@ -4046,41 +4078,35 @@ class Chaosbot(sc2.BotAI):
             j = self.job_of_scvt[scvt]
             self.count_of_job[j] += 1
 
-    def fix_count_of_mimt(self):
-        #       calculate the amount of gatherers on each mineral, using mimt_of_minert
-        self.count_of_mimt = {}
-        for mimt in self.all_mimt:
-            self.count_of_mimt[mimt] = 0
-        for scvt in self.mimt_of_minert:
-            mimt = self.mimt_of_minert[scvt]
-            if mimt in self.all_mimt:
-                self.count_of_mimt[mimt] += 1
+    def fix_nminers_of_mimt(self):
+        # calculate the amount of gatherers on each mineral, using mim_of_minert
+        self.nminers_of_mimt = {}
+        for mim in self.all_mim_to_mine:
+            (mimpos,mimt) = mim
+            self.nminers_of_mimt[mimt] = 0
+        for scvt in self.mim_of_minert:
+            mim = self.mim_of_minert[scvt]
+            if mim in self.all_mim_to_mine:
+                (mimpos, mimt) = mim
+                self.nminers_of_mimt[mimt] += 1
 
-    def fix_count_of_gast(self):
-        #       calculate the amount of gatherers on each gas, using gast_of_scvt
-        self.count_of_gast = {}
-        for gast in self.all_gast:
-            self.count_of_gast[gast] = 0
-        for scvt in self.gast_of_scvt:
-            gast = self.gast_of_scvt[scvt]
-            if gast in self.all_gast:
-                self.count_of_gast[gast] += 1
-        #for gast in self.all_gast:
-        #    cg = self.count_of_gast[gast]
-        #    self.log_workers('count_of_gast['+str(gast)+'] = '+str(cg))
-
-    def maxmimminers(self) -> int:
-        return len(self.all_mimt) * 2
-
-    def maxgasminers(self) -> int:
-        return len(self.all_gast) * 3
-
+    def fix_nminers_of_gast(self):
+        # calculate the amount of gatherers on each gas, using gas_of_minert
+        self.nminers_of_gast = {}
+        for gas in self.all_gas_to_mine:
+            (gaspos, gast) = gas
+            self.nminers_of_gast[gast] = 0
+        for scvt in self.gas_of_minert:
+            gas = self.gas_of_minert[scvt]
+            if gas in self.all_gas_to_mine:
+                (gaspos,gast) = gas
+                self.nminers_of_gast[gast] += 1
 
     def mimminer_vacatures(self) -> int:
-        return self.maxmimminers() - len(self.mimt_of_minert)
+        return len(self.all_mim_to_mine) * 2 - len(self.mim_of_minert)
 
     def gasminer_vacatures(self) -> int:
-        return self.maxgasminers() - len(self.gast_of_scvt)
+        return len(self.all_gas_to_mine) * 3 - len(self.gas_of_minert)
 
     # some routines with t=(t[0],t[1]) notation
 
@@ -4200,59 +4226,15 @@ class Chaosbot(sc2.BotAI):
         best_scvt = self.notag
         for scv in self.units(SCV):
             scvt = scv.tag
-            if scvt in self.all_scvt:
-                job = self.job_of_scvt[scvt]
-                if (job in self.no_jobs) and (job != 'suicider'):
-                    sd = self.sdist(scv.position,point)
-                    if sd < best_sdist:
-                        best_sdist = sd
-                        best_scvt = scvt
+            job = self.job_of_scvt[scvt]
+            if (job in self.no_jobs) and (job != 'suicider'):
+                sd = self.sdist(scv.position,point)
+                if sd < best_sdist:
+                    best_sdist = sd
+                    best_scvt = scvt
         scvt = best_scvt
         self.log_fail((best_sdist < 99999),'no idler found.')
         return scvt        
-
-    def get_near_gast_free(self,point) -> int:
-        #       supposes done:   fix_count_of_gast
-        #       suggestion: call   if self.gasminer_vacatures() > 0:
-        best_sdist = 80000
-        best_gast = self.notag
-        for gas in self.all_refineries:
-            gast = gas.tag
-            if gast in self.all_gast:
-                if self.count_of_gast[gast] < 3:
-                    sd = self.sdist(gas.position,point)
-                    if sd < best_sdist:
-                        best_sdist = sd
-                        best_gast = gast
-        gast = best_gast
-        self.log_fail((best_sdist < 80000),'no workposition on gas found.')
-        return gast        
-
-    def get_near_mimt_free(self,point) -> int:
-        # supposes done:   fix_count_of_mimt
-        # suggestion: call   if self.mimminer_vacatures() > 0:
-        # Stimulate taking close free ones.
-        best_sdist = 99999
-        best_mimt = -1
-        expo = self.expo_of_pos(point)
-        for (mimpos,mimt) in self.minerals_of_expo[expo]:
-            if mimt in self.all_mimt:
-                if self.count_of_mimt[mimt] < 2:
-                    sd = self.sdist(mimpos,point) + 30 * self.count_of_mimt[mimt]
-                    if sd < best_sdist:
-                        best_sdist = sd
-                        best_mimt = mimt
-        if best_sdist == 99999:
-            for (mimpos,mimt) in self.all_minerals:
-                if mimt in self.all_mimt:
-                    if self.count_of_mimt[mimt] < 2:
-                        sd = self.sdist(mimpos,point) + 30 * self.count_of_mimt[mimt]
-                        if sd < best_sdist:
-                            best_sdist = sd
-                            best_mimt = mimt
-        mimt = best_mimt
-        self.log_fail((best_sdist < 99999),'no workposition on minerals found.')
-        return mimt        
 
     def get_near_cct_wanted(self,point) -> int:
         best_sdist = 80000
@@ -4281,6 +4263,8 @@ class Chaosbot(sc2.BotAI):
     def proxy(self, point) -> bool:
         return self.near(point,self.enemy_pos,63)
 
+    def hoxy(self,point) -> bool:
+        return self.near(point,self.loved_pos,63)
 
     def init_basekind(self, derived,normal):
         self.basekind_of_kind[derived] = normal
@@ -4460,7 +4444,8 @@ class Chaosbot(sc2.BotAI):
         self.all_future_basepos = afb
         
 
-    def find_tobuildwalk_a_place(self, building) -> bool:
+    def find_tobuildwalk_a_place(self, building, actual) -> bool:
+        # actual: 'plan'/'now'
         self.log_placing('find a place for '+building.name)
         #  Get a random place
         #  If no place could be found, return False
@@ -4544,31 +4529,36 @@ class Chaosbot(sc2.BotAI):
                 found = True
             # Then with future bases.
             if not found:
-                self.get_all_future_basepos()
-                places = []
-                for gey in self.vespene_geyser:
-                    place = gey.position
-                    if self.check_layout(building, place):
-                        if not self.we_started_at(building, place):
-                            if place not in [pl for (th, pl) in self.buildorder]:
-                                seen = False
-                                for ccpos in self.all_future_basepos:
-                                    if self.near(place, ccpos, self.miner_bound):
-                                        seen = True
-                                if seen:
-                                    places.append(place)
+                if actual == 'plan':
+                    self.get_all_future_basepos()
+                    places = []
+                    for gey in self.vespene_geyser:
+                        place = gey.position
+                        if self.check_layout(building, place):
+                            if not self.we_started_at(building, place):
+                                if place not in [pl for (th, pl) in self.buildorder]:
+                                    seen = False
+                                    for ccpos in self.all_future_basepos:
+                                        if self.near(place, ccpos, self.miner_bound):
+                                            seen = True
+                                    if seen:
+                                        places.append(place)
                 if len(places) > 0:
                     place = random.choice(places)
                     found = True
         elif (building in self.all_structures_tobuildwalk) and (not found):
             # normal building
             if len(self.all_mine_bases) > 0:
-                # chosen not to build near future bases
-                cc = random.choice(self.all_mine_bases)
+                if actual == 'plan':
+                    self.get_all_future_basepos()
+                    ccpos = random.choice(tuple(self.all_future_basepos))
+                else:
+                    cc = random.choice(self.all_mine_bases)
+                    ccpos = cc.position
                 dist = 6
                 if building == MISSILETURRET:
                     dist = random.randrange(-10, 10)
-                fixplace = cc.position.towards(self.game_info.map_center, dist)
+                fixplace = ccpos.towards(self.game_info.map_center, dist)
                 place = self.place_around(building, fixplace)
                 found = True
             else:
@@ -4883,7 +4873,7 @@ class Chaosbot(sc2.BotAI):
                 place = self.nowhere
                 if thing in self.all_structures_tobuildwalk:
                     if place == self.nowhere:
-                        if self.find_tobuildwalk_a_place(infathing):
+                        if self.find_tobuildwalk_a_place(infathing,'plan'):
                             place = self.function_result_Point2
                     if place == self.nowhere:
                         self.log_success('skipping a '+infathing.name+' because I found no position!')
@@ -5767,8 +5757,6 @@ class Chaosbot(sc2.BotAI):
 
     async def gamestate(self):
         #
-        #   All existing refineries
-        self.all_refineries = self.structures(REFINERY).ready+self.structures(REFINERYRICH).ready
         #
         #   All existing not-flying ready commandcenters and orbitalcommands and all planetary fortresses
         #       pf and oc morphing from cc are included
@@ -5806,6 +5794,7 @@ class Chaosbot(sc2.BotAI):
         self.all_structuretags = {struc.tag for struc in self.structures}
         self.all_bunkertags = {bun.tag for bun in self.structures(BUNKER)}
         self.init_all_minerals()
+        self.init_all_vespene()
         #
         #   All idle structures
         self.idle_structure_tags = []
@@ -5932,23 +5921,24 @@ class Chaosbot(sc2.BotAI):
                     self.log_workers('we have a new scv: '+self.name_of_scvt[scvt])
         #
         #   The tag of existing refineries where we want to mine from, in this frame
-        self.all_gast = []
-        for tow in self.all_mine_bases:
-            expo = self.expo_of_pos(tow.position)
-            if self.ground_strength_of_expo[expo] >= 0:
-                for gas in self.all_refineries:
-                    gast = gas.tag
-                    if gas.vespene_contents > 0:
-                        if self.near(gas.position,tow.position,self.miner_bound):
-                            self.all_gast.append(gast)
+        self.all_gas_to_mine = set()
+        for ref in self.structures(REFINERY).ready+self.structures(REFINERYRICH).ready:
+            gaspos = ref.position
+            gast = self.postag(gaspos)
+            gas = (gaspos,gast)
+            for tow in self.all_mine_bases:
+                expo = self.expo_of_pos(tow.position)
+                if self.ground_strength_of_expo[expo] >= 0:
+                    if self.near(gaspos, tow.position, self.miner_bound):
+                        if ref.vespene_contents > 0:
+                            self.all_gas_to_mine.add(gas)
         #   The tag of existing minerals where we want to mine from, in this frame
-        self.all_mimt = []
+        self.all_mim_to_mine = set()
         for tow in self.all_mine_bases:
             expo = self.expo_of_pos(tow.position)
             if self.ground_strength_of_expo[expo] >= 0:
                 for mim in self.minerals_of_expo[expo]:
-                    (mimpos,mimt) = mim
-                    self.all_mimt.append(mimt)
+                    self.all_mim_to_mine.add(mim)
         #   job_of_scvt contains the tag of all living scvs
         new_job_of_scvt = {}
         for scvt in self.all_scvt:
@@ -5964,39 +5954,39 @@ class Chaosbot(sc2.BotAI):
         #   count_of_job
         self.fix_count_of_job()
         self.log_population()
-        #   restrict mimt_of_minert to existing worker and mineral
-        new_mimt_of_minert = {}
-        for scvt in self.mimt_of_minert:
+        #   restrict mim_of_minert to existing worker and mineral
+        new_mim_of_minert = {}
+        for scvt in self.mim_of_minert:
             if scvt in self.all_scvt:
-                mimt = self.mimt_of_minert[scvt]
-                if mimt in self.all_mimt:
-                    new_mimt_of_minert[scvt] = mimt
-        for scvt in set(self.mimt_of_minert) - set(new_mimt_of_minert):
-            self.log_workers('from mimt_of_minert gone is mimt_of_'+str(scvt))
-        self.mimt_of_minert = new_mimt_of_minert
-        self.fix_count_of_mimt()
-        #   restrict gast_of_scvt to existing worker and mineral
-        new_gast_of_scvt = {}
-        for scvt in self.gast_of_scvt:
+                mim = self.mim_of_minert[scvt]
+                if mim in self.all_mim_to_mine:
+                    new_mim_of_minert[scvt] = mim
+        for scvt in set(self.mim_of_minert) - set(new_mim_of_minert):
+            self.log_workers('from mim_of_minert gone is mim_of_'+str(scvt))
+        self.mim_of_minert = new_mim_of_minert
+        self.fix_nminers_of_mimt()
+        #   restrict gas_of_minert to existing worker and mineral
+        new_gas_of_minert = {}
+        for scvt in self.gas_of_minert:
             if scvt in self.all_scvt:
-                gast = self.gast_of_scvt[scvt]
-                if gast in self.all_gast:
-                    new_gast_of_scvt[scvt] = gast
-        for scvt in set(self.gast_of_scvt) - set(new_gast_of_scvt):
-            self.log_workers('from gast_of_scvt gone is gast_of_'+str(scvt))
-        self.gast_of_scvt = new_gast_of_scvt
-        self.fix_count_of_gast()
+                gas = self.gas_of_minert[scvt]
+                if gas in self.all_gas_to_mine:
+                    new_gas_of_minert[scvt] = gas
+        for scvt in set(self.gas_of_minert) - set(new_gas_of_minert):
+            self.log_workers('from gas_of_minert gone is gast_of_'+str(scvt))
+        self.gas_of_minert = new_gas_of_minert
+        self.fix_nminers_of_gast()
         #   check consistency
-        for scvt in self.mimt_of_minert:
+        for scvt in self.mim_of_minert:
             job = self.job_of_scvt[scvt]
             name = self.name(scvt)
             if (job != 'mimminer'):
-                self.log_success('not a mimminer, yet in mimt_of_minert '+job+' '+name)
-        for scvt in self.gast_of_scvt:
+                self.log_success('not a mimminer, yet in mim_of_minert '+job+' '+name)
+        for scvt in self.gas_of_minert:
             job = self.job_of_scvt[scvt]
             name = self.name(scvt)
             if (job != 'gasminer'):
-                self.log_success('not a gasminer, yet in gast_of_scvt ' + job + ' ' + name)
+                self.log_success('not a gasminer, yet in gas_of_minert ' + job + ' ' + name)
         for scv in self.units(SCV):
             if scv.tag in self.all_scvt:
                 job = self.job_of_scvt[scv.tag]
@@ -6007,7 +5997,7 @@ class Chaosbot(sc2.BotAI):
                 else: # not collecting
                     if (job in ['gasminer','volunteer']):
                         self.log_success('not collecting but job ' + job + ' ' + name)
-        #   vision_of_scvt contains the tag of living applicants/candidates/carriers and existing bases
+        # vision_of_scvt contains the tag of living applicants/candidates/carriers and existing bases
         new_vision_of_scvt = {}
         for scvt in self.all_scvt:
             if self.job_of_scvt[scvt] in {'applicant','candidate','carrier'}:
@@ -7123,7 +7113,7 @@ class Chaosbot(sc2.BotAI):
             foundplace = False
             place = self.nowhere
             if thing in self.all_structures_tobuildwalk:
-                if self.find_tobuildwalk_a_place(thing):
+                if self.find_tobuildwalk_a_place(thing,'now'):
                     place = self.function_result_Point2
                     if (thing,place) not in self.unthinkable:
                         foundplace = True
@@ -8083,7 +8073,7 @@ class Chaosbot(sc2.BotAI):
                 self.log_command('scv.move(goal)')
                 scv.move(goal)
             else:
-                self.go_gather(scv,bestmim)
+                self.go_gather_mim(scv,bestmim)
 
     def build_building(self,scvt,building,goal,owner) -> bool:
         # for tobuildwalk buildings except COMMANDCENTER
@@ -8343,7 +8333,7 @@ class Chaosbot(sc2.BotAI):
         hash = 0
         for tpa in self.enemy_structureinfo_plus:
             (typ, pos, tag, finish) = tpa
-            if type in self.antiair_detector:
+            if typ in self.antiair_detector:
                 if finish < self.frame + 200: # finished, or within 8 sec
                     detectors.add(pos)
                     hash += pos.x
@@ -9567,14 +9557,14 @@ class Chaosbot(sc2.BotAI):
                 scvt = scv.tag
                 if scvt in self.all_scvt:
                     if self.job_of_scvt[scvt] == 'suicider':
-                        (place,tag) = random.choice(tuple(self.all_minerals)) # mined out
+                        place = self.random_mappoint()
                         self.log_command('scv.attack(place)')
                         scv.attack(place)
         # marines individual move
         for mar in self.units(MARINE):
             if mar.tag not in self.speciality_of_tag:
                 if mar.tag not in bunker_if.marinetags:
-                    (tp, tag) = random.choice(tuple(self.all_minerals))  # mined out
+                    tp = self.random_mappoint()
                     if (STIMPACK, self.nowhere) in self.birds:
                         if (mar.weapon_cooldown > 0):
                             if mar.health > 30: # 1.5(x-10)=x
@@ -9659,7 +9649,7 @@ class Chaosbot(sc2.BotAI):
                     else:
                         bun(AbilityId.EFFECT_SALVAGE)
             if (reached >= 5):
-                (self.marauder_goal, tag) = random.choice(tuple(self.all_minerals))  # mined out
+                self.marauder_goal = self.random_mappoint()
                 allloc = []
                 for tpa in self.enemy_structureinfo:
                     (typ, pos, tag) = tpa
@@ -9673,7 +9663,7 @@ class Chaosbot(sc2.BotAI):
                     self.go_attack(mar, self.marauder_goal)
         else:
             if reached * 4 > 3 * len(self.units(MARAUDER)):
-                (self.marauder_goal, tag) = random.choice(tuple(self.all_minerals))  # mined out
+                self.marauder_goal = self.random_mappoint()
                 if (self.random_chance(5)):
                     allloc = []
                     for tpa in self.enemy_structureinfo:
@@ -10013,8 +10003,8 @@ class Chaosbot(sc2.BotAI):
                 todel.add(tnktag)
         self.cleaning_tank_tags -= todel # leave shotframe, siegepos, emotion
         # get a tank
-        if len(self.cleaning_tank_tags) == 0:
-            if tanks > 1:
+        if len(self.cleaning_tank_tags) < 2:
+            if tanks > len(self.cleaning_tank_tags) + 1: # reserve 1 tank for other plans
                 todo = 1
                 for tnk in self.units(SIEGETANK):
                     tnkt = tnk.tag
@@ -10404,7 +10394,7 @@ class Chaosbot(sc2.BotAI):
                 self.log_success('Move tank around blockade')
                 self.log_command('tnk(AbilityId.UNSIEGE_UNSIEGE)')
                 tnk(AbilityId.UNSIEGE_UNSIEGE)
-                if self.find_tobuildwalk_a_place(MISSILETURRET):
+                if self.find_tobuildwalk_a_place(MISSILETURRET,'now'):
                     goal = self.function_result_Point2
                     self.go_move(tnk, goal)
                     self.emotion_of_unittag[tnk.tag] = 'moving'
@@ -10780,7 +10770,7 @@ class Chaosbot(sc2.BotAI):
             if fac.tag == self.lib_factory_tag:
                 if not self.proxy(fac.position):
                     if self.goal_of_flying_struct[fac.tag] == self.cheese1_factory_pos:
-                        if self.find_tobuildwalk_a_place(FACTORY):
+                        if self.find_tobuildwalk_a_place(FACTORY,'now'):
                             spot = self.function_result_Point2
                             self.goal_of_flying_struct[fac.tag] = spot
                             self.write_layout(FACTORY,spot)
@@ -10793,7 +10783,6 @@ class Chaosbot(sc2.BotAI):
             seen = seen or (pos == goal)
         if not seen:
             self.set_rally.add((goal, rally))
-
 
     def do_rally(self):
         # effect the rallys planned in set_rally as soon as the rallying building is ready
@@ -10941,23 +10930,23 @@ class Chaosbot(sc2.BotAI):
                         # get new fighters
                         toget = wished_fighters - len(fighters)
                         if toget > 0:
-                            recruits = set()
+                            candidates = set()
                             for myscv in self.scvs_of_expo[expo]:
                                 if myscv.health >= 12:
                                     scvt = myscv.tag
                                     job = self.job_of_scvt[scvt]
                                     if job in (self.bad_jobs + self.no_jobs):
-                                        recruits.add(myscv)
-                            while (toget > 0) and (len(recruits) > 0):
+                                        candidates.add(myscv)
+                            while (toget > 0) and (len(candidates) > 0):
                                 bestsd = 99999
-                                for myscv in recruits:
+                                for myscv in candidates:
                                     sd = self.sdist(myscv.position,next_center_enemies)
                                     if sd < bestsd:
                                         bestscv = myscv
                                         bestsd = sd
                                 myscv = bestscv
                                 scvt = myscv.tag
-                                recruits.remove(myscv)
+                                candidates.remove(myscv)
                                 # promote to fighter and let idle
                                 toget -= 1
                                 self.promote(myscv,'fighter')
@@ -11052,43 +11041,32 @@ class Chaosbot(sc2.BotAI):
                 homeexpos.add(homeexpo)
         if len(homeexpos) > 0:
             # minerals to move towards: hismim, homemim
-            hisminerals = True
+            hismim_exists = False
+            hismim = (self.nowhere,self.notag)
             hisexpo = self.expo_of_pos(self.enemy_pos)
             minsd = 99999
-            for (mimpos, mimt) in self.minerals_of_expo[hisexpo]:
+            for mim in self.minerals_of_expo[hisexpo]:
+                (mimpos,mimt) = mim
                 if self.near(mimpos, self.enemy_pos, 8):
+                    hismim_exists = True
                     sd = self.sdist(mimpos, self.hisleft)
                     if sd < minsd:
                         minsd = sd
-                        hismimt = mimt
-                        hismimpos = mimpos
-            if minsd == 99999:
-                hisminerals = False
-            else:
-                for patch in self.mineral_field:
-                    if self.mineraltag(patch) == hismimt:
-                        hismim = patch
+                        hismim = mim
             # homemim
-            homeminerals = {} # per expo with fighters: does it have minerals?
-            homemimt = {} # per expo with fighters: a mineraltag (positiontag)
-            homemimpos = {} # per expo with fighters: a mineraltag position
-            homemim = {} # per expo with fighters: a mineralfield patch
+            homemim_exists = {} # per expo with fighters: does it have minerals?
+            homemim = {} # per expo with fighters: a (mimpos,postag)
             for homeexpo in homeexpos:
-                homeminerals[homeexpo] = True
+                homemim_exists[homeexpo] = False
                 minsd = 99999
-                for (mimpos, mimt) in self.minerals_of_expo[homeexpo]:
+                for mim in self.minerals_of_expo[homeexpo]:
+                    (mimpos,mimt) = mim
                     if self.near(mimpos, self.pos_of_expo[homeexpo], 8):
+                        homemim_exists[homeexpo] = True
                         sd = self.sdist(mimpos, self.hisleft)
                         if sd < minsd:
                             minsd = sd
-                            homemimt[homeexpo] = mimt
-                            homemimpos[homeexpo] = mimpos
-                if minsd == 99999:
-                    homeminerals[homeexpo] = False
-                else:
-                    for patch in self.mineral_field:
-                        if self.mineraltag(patch) == homemimt[homeexpo]:
-                            homemim[homeexpo] = patch
+                            homemim[homeexpo] = mim
             # fighter_phase, goal_of_scvt should exist
             for scv in self.units(SCV):
                 scvt = scv.tag
@@ -11228,8 +11206,9 @@ class Chaosbot(sc2.BotAI):
                     #    
                     # metaphases 'away' and 'towards'
                     if newphase == 'away':
-                        if (hisminerals and homeminerals[homeexpo]):
-                            hmp = homemimpos[homeexpo]
+                        if (hismim_exists and homemim_exists[homeexpo]):
+                            hm = homemim[homeexpo]
+                            (hmp,hmt) = hm
                             if awaywalk:
                                 newphase = 'walkaway'
                             elif self.sdist(enecenter, hmp) > self.sdist(mypos, hmp):
@@ -11242,15 +11221,17 @@ class Chaosbot(sc2.BotAI):
                         # go towards enecenter
                         newphase = 'walktowards'
                         # we use an angle of 60 degrees max to use mineralwalking
-                        if homeminerals[homeexpo]:
-                            hmp = homemimpos[homeexpo]
+                        if homemim_exists[homeexpo]:
+                            hm = homemim[homeexpo]
+                            (hmp,hmt) = hm
                             a = self.circledist(mypos,enecenter) / 2
                             c = self.circledist(mypos,hmp) - a
                             b = self.circledist(enecenter, hmp)
                             if b*b < 3*a*a + c*c:
                                 newphase = 'homemim'
-                        if hisminerals:
-                            hmp = hismimpos
+                        if hismim_exists:
+                            hm = hismim
+                            (hmp,hmt) = hm
                             a = self.circledist(mypos,enecenter) / 2
                             c = self.circledist(mypos,hmp) - a
                             b = self.circledist(enecenter, hmp)
@@ -11279,14 +11260,17 @@ class Chaosbot(sc2.BotAI):
                     # action
                     if do_action:
                         if newphase == 'hismim':
-                            # must check hisminerals, as this phase can be a left-over.
-                            if hisminerals:
-                                scv.gather(hismim)
-                                self.goal_of_unittag[scvt] = hismimpos
+                            # must check hismim_exists, as this phase can be a left-over.
+                            if hismim_exists:
+                                (hmp, hmt) = hismim
+                                self.go_gather_mim(scv,hismim)
+                                self.goal_of_unittag[scvt] = hmp
                         elif newphase == 'homemim':
-                            if homeminerals[homeexpo]:
-                                scv.gather(homemim[homeexpo])
-                                self.goal_of_unittag[scvt] = homemimpos[homeexpo]
+                            if homemim_exists[homeexpo]:
+                                hm = homemim[homeexpo]
+                                (hmp, hmt) = hm
+                                self.go_gather_mim(scv,hm)
+                                self.goal_of_unittag[scvt] = hmp
                         elif newphase == 'walkaway':
                             scv.move(awaypos)
                             self.goal_of_unittag[scvt] = awaypos
@@ -11318,6 +11302,39 @@ class Chaosbot(sc2.BotAI):
                         pass
                     else:
                         self.victimtag_of_unittag[scv.tag] = nearenemy.tag
+
+    def housecleaning(self):
+        # an enemy placed a turret at my natural!
+        if self.frame < 4000: # 3 minutes
+            if self.count_of_job['mimminer'] > 7:
+                for tpa in self.enemy_structureinfo:
+                    (typ, itspos, tag) = tpa
+                    if self.hoxy(itspos):
+                        if typ not in {BARRACKSFLYING}:
+                            cleaners = 0
+                            for (scvt,cleanpos) in self.cleaners:
+                                if cleanpos == itspos:
+                                    cleaners += 1
+                            if cleaners < 4:
+                                scvt = self.get_near_scvt_to_goodjob(itspos)
+                                for scv in self.units(SCV):
+                                    if scv.tag == scvt:
+                                        self.promote(scv,'escorter')
+                                        scv.attack(itspos)
+                                        self.cleaners.add((scvt,itspos))
+        # cleaners administration check
+        todel = set()
+        for (scvt,cleanpos) in self.cleaners:
+            seen = False
+            for scv in self.units(SCV):
+                if scv.tag == scvt:
+                    if self.job_of_scvt[scvt] == 'escorter':
+                        seen = True
+            if not seen:
+                todel.add((scvt,cleanpos))
+        self.cleaners -= todel
+        # dismiss cleaners?
+
 
 
     async def cheese1_army(self):
@@ -11670,7 +11687,8 @@ class Chaosbot(sc2.BotAI):
                         self.mine_shot[wmt] = 0
                         found = False
                         while not found:
-                            (mimpos, tag) = random.choice(tuple(self.all_minerals))  # mined out
+                            # cheese1 is expected to finish before the map is mined out.
+                            (mimpos, tag) = random.choice(tuple(self.all_minerals))
                             if self.near(mimpos, self.enemy_pos, self.miner_bound):
                                 goal = mimpos.towards(self.loved_pos,-2)
                                 found = True
@@ -12007,7 +12025,7 @@ class Chaosbot(sc2.BotAI):
                             self.log_command('ba(AbilityId.CANCEL_BUILDINPROGRESS)')
                             ba(AbilityId.CANCEL_BUILDINPROGRESS)
                         if ba in self.structures(BARRACKS).ready:
-                            if self.find_tobuildwalk_a_place(BARRACKS):
+                            if self.find_tobuildwalk_a_place(BARRACKS,'now'):
                                 goal = self.function_result_Point2
                                 self.write_layout(BARRACKS, goal)
                                 if not ba.is_idle:
@@ -12020,7 +12038,7 @@ class Chaosbot(sc2.BotAI):
                                 ba(AbilityId.LIFT)
                 for ba in self.structures(BARRACKSFLYING):
                     if ba.tag == self.cheese3_barracks_tag:
-                        if self.find_tobuildwalk_a_place(BARRACKS):
+                        if self.find_tobuildwalk_a_place(BARRACKS,'now'):
                             goal = self.function_result_Point2
                             self.write_layout(BARRACKS, goal)
                             self.goal_of_flying_struct[ba.tag] = goal
@@ -12032,7 +12050,7 @@ class Chaosbot(sc2.BotAI):
                             self.log_command('cc(AbilityId.CANCEL_BUILDINPROGRESS)')
                             cc(AbilityId.CANCEL_BUILDINPROGRESS)
                         if cc in self.structures(COMMANDCENTER).ready:
-                            if self.find_tobuildwalk_a_place(COMMANDCENTER):
+                            if self.find_tobuildwalk_a_place(COMMANDCENTER,'now'):
                                 goal = self.function_result_Point2
                                 self.write_layout(COMMANDCENTER, goal)
                                 if not cc.is_idle:
@@ -12045,7 +12063,7 @@ class Chaosbot(sc2.BotAI):
                                 cc(AbilityId.LIFT)
                 for cc in self.structures(COMMANDCENTERFLYING):
                     if cc.tag == self.cheese3_cc_tag:
-                        if self.find_tobuildwalk_a_place(COMMANDCENTER):
+                        if self.find_tobuildwalk_a_place(COMMANDCENTER,'now'):
                             goal = self.function_result_Point2
                             self.write_layout(COMMANDCENTER, goal)
                             self.goal_of_flying_struct[cc.tag] = goal
@@ -12988,7 +13006,7 @@ class Chaosbot(sc2.BotAI):
                                 todo -= 1
                                 self.promote(scv,'cheeser')
                                 self.speciality_of_tag[scv.tag] = 'workerrush'
-                                self.go_gather(scv,self.hisrampmim)
+                                self.go_gather_mim(scv,self.hisrampmim)
                                 self.emotion_of_unittag[scv.tag] = 'ingoing'
                                 self.wait_of_scv[scv.tag] = 0 # for emotions
                                 self.last_sd_of_scv[scv.tag] = 99999
@@ -13064,7 +13082,7 @@ class Chaosbot(sc2.BotAI):
                         if self.speciality_of_tag[scv.tag] == 'workerrush':
                             dist = self.circledist(scv.position, backpos)
                             if dist > mindist + self.turndistance:
-                                self.go_gather(scv,back)
+                                self.go_gather_mim(scv,back)
                                 self.workerback.add(scv.tag)
                 self.stackphase = 'D'
             elif self.stackphase == 'D':
@@ -13077,7 +13095,7 @@ class Chaosbot(sc2.BotAI):
                         if scv.tag in self.workerback:
                             dist = self.circledist(scv.position, backpos)
                             if dist < mindist + self.turndistance:
-                                self.go_gather(scv,forward)
+                                self.go_gather_mim(scv,forward)
                                 self.workerback.remove(scv.tag)
                 if len(self.workerback) == 0:
                     self.stackphase = 'E'
@@ -13113,7 +13131,7 @@ class Chaosbot(sc2.BotAI):
                         if self.speciality_of_tag[scv.tag] == 'workerrush':
                             dist = self.circledist(scv.position, backpos)
                             if dist > mindist + self.turndistance2:
-                                self.go_gather(scv,back)
+                                self.go_gather_mim(scv,back)
                                 self.workerback.add(scv.tag)
                 self.stackphase = 'G'
             elif self.stackphase == 'G':
@@ -13121,7 +13139,7 @@ class Chaosbot(sc2.BotAI):
                 if len(self.workerback) > 0:
                     for scv in self.units(SCV):
                         if scv.tag in self.workerback:
-                            self.go_gather(scv,forward)
+                            self.go_gather_mim(scv,forward)
                             self.workerback.remove(scv.tag)
                 if len(self.workerback) == 0:
                     self.stackphase = 'E'
@@ -13519,7 +13537,7 @@ class Chaosbot(sc2.BotAI):
                                         maxcool = cool
                                         bestmim = mim
                                 if maxcool > 0.8 * self.circledist(scv.position, self.rushvictim.position):
-                                    self.go_gather(scv,bestmim)
+                                    self.go_gather_mim(scv,bestmim)
                                 else:
                                     scv.attack(self.rushvictim)
                             elif emotion == 'brave':
@@ -13529,30 +13547,30 @@ class Chaosbot(sc2.BotAI):
                                     self.towardsmineral[scv.tag] = self.hisfarmim
                                 if self.towardsmineral[scv.tag] not in {self.hisrampmim,self.hisfarmim}:
                                     self.towardsmineral[scv.tag] = self.hisfarmim
-                                self.go_gather(scv,self.towardsmineral[scv.tag])
+                                self.go_gather_mim(scv,self.towardsmineral[scv.tag])
                             elif emotion == 'bouncing':
-                                self.go_gather(scv,awaymim)
+                                self.go_gather_mim(scv,awaymim)
                             elif emotion in {'fleeing','teasing'}:
                                 if self.near(scv.position, self.hisfarmim[0], 2):
                                     self.towardsmineral[scv.tag] = self.homemim
                                     scv.move(self.turningpoint)
                                 elif self.near(scv.position,self.turningpoint,2):
                                     self.towardsmineral[scv.tag] = self.homemim
-                                    self.go_gather(scv,self.towardsmineral[scv.tag])
+                                    self.go_gather_mim(scv,self.towardsmineral[scv.tag])
                                 elif self.near(scv.position, self.hisrampmim[0], 2):
                                     self.towardsmineral[scv.tag] = self.homemim
-                                    self.go_gather(scv,self.towardsmineral[scv.tag])
+                                    self.go_gather_mim(scv,self.towardsmineral[scv.tag])
                                 else:
-                                    self.go_gather(scv,self.towardsmineral[scv.tag])
+                                    self.go_gather_mim(scv,self.towardsmineral[scv.tag])
                             elif emotion == 'firstaid':
                                 scv.move(scv.position.towards(self.loved_pos,0.1)) # is it a bug to go to own position?
                             elif emotion == 'circling':
                                 self.fleecirclemove(scv)
                             elif emotion == 'afraid':
                                 if self.near(scv.position, self.hisrampmim[0], 2):
-                                    self.go_gather(scv,self.homemim)
+                                    self.go_gather_mim(scv,self.homemim)
                                 else:
-                                    self.go_gather(scv,self.hisrampmim)
+                                    self.go_gather_mim(scv,self.hisrampmim)
                             elif emotion == 'inrepair':
                                 itisarepairer = False
                                 itisarepairee = False
@@ -13580,7 +13598,7 @@ class Chaosbot(sc2.BotAI):
                                     scv.move(halfway)
                             elif emotion == 'ingoing':
                                 tomim = self.towardsmineral[scv.tag]
-                                self.go_gather(scv,tomim)
+                                self.go_gather_mim(scv,tomim)
                             elif emotion == 'looting':
                                 minh = 99999
                                 for stru in self.enemy_real_structures:
@@ -13681,7 +13699,7 @@ class Chaosbot(sc2.BotAI):
                 # continue
                 for ba in self.structures(BARRACKS).ready.idle:
                     if ba.tag in {self.cheese3_barracks_tag, self.cheese3_barracks2_tag}:
-                        if self.find_tobuildwalk_a_place(BARRACKS):
+                        if self.find_tobuildwalk_a_place(BARRACKS,'now'):
                             goal = self.function_result_Point2
                             self.write_layout(BARRACKS, goal)
                             self.goal_of_flying_struct[ba.tag] = goal
@@ -13771,7 +13789,7 @@ class Chaosbot(sc2.BotAI):
                             self.log_command('ba(AbilityId.CANCEL_BUILDINPROGRESS)')
                             ba(AbilityId.CANCEL_BUILDINPROGRESS)
                         if ba in self.structures(BARRACKS).ready:
-                            if self.find_tobuildwalk_a_place(BARRACKS):
+                            if self.find_tobuildwalk_a_place(BARRACKS,'now'):
                                 goal = self.function_result_Point2
                                 self.write_layout(BARRACKS, goal)
                                 if not ba.is_idle:
@@ -13784,7 +13802,7 @@ class Chaosbot(sc2.BotAI):
                                 ba(AbilityId.LIFT)
                 for ba in self.structures(BARRACKSFLYING):
                     if ba.tag in [self.cheese3_barracks_tag,self.cheese3_barracks2_tag]:
-                        if self.find_tobuildwalk_a_place(BARRACKS):
+                        if self.find_tobuildwalk_a_place(BARRACKS,'now'):
                             goal = self.function_result_Point2
                             self.write_layout(BARRACKS, goal)
                             self.goal_of_flying_struct[ba.tag] = goal
@@ -14141,6 +14159,67 @@ class Chaosbot(sc2.BotAI):
             ha = True
         return ha
 
+    def maxout_sacrifice(self):
+        # sacrifice some mimminers to make an extra bc
+        # turn idle sacrifices against eachother
+        if self.count_of_job['sacrifice'] > 1:
+            victimtag = self.notag
+            victim = None
+            for scv in self.units(SCV).idle:
+                scvt = scv.tag
+                job = self.job_of_scvt[scvt]
+                if job == 'sacrifice':
+                    if victimtag == self.notag:
+                        victimtag = scvt
+                        victim = scv
+                    else:
+                        scv.attack(victim)
+        # turn lone sacrifice to suicider
+        if self.count_of_job['sacrifice'] == 1:
+            for scv in self.units(SCV):
+                scvt = scv.tag
+                job = self.job_of_scvt[scvt]
+                if job == 'sacrifice':
+                    self.promote(scv,'suicider')
+        # sacrifice 8 mimminers.
+        if self.supply_used - self.count_of_job['sacrifice'] >= 194:
+            if (self.minerals >= 500) and (self.vespene >= 400):
+                if self.count_of_job['mimminer'] >= 16:
+                    if len(self.units(BATTLECRUISER)) > 0:
+                        # sacrifice 8 workers (one will remain)
+                        self.sacrificed = True
+                        for pair in range(0,4):
+                            onescv = None
+                            onescvtag = self.notag
+                            otherscv = None
+                            otherscvtag = self.notag
+                            for scv in self.units(SCV):
+                                scvt = scv.tag
+                                if self.job_of_scvt[scvt] == 'mimminer':
+                                    if onescvtag == self.notag:
+                                        onescvtag = scvt
+                                        onescv = scv
+                                    elif otherscvtag == self.notag:
+                                        otherscvtag = scvt
+                                        otherscv = scv
+                                        bestsd = self.sdist(onescv.position,otherscv.position)
+                                    else:
+                                        onesd = self.sdist(scv.position,onescv.position)
+                                        if onesd < bestsd:
+                                            bestsd = onesd
+                                            otherscvtag = scvt
+                                            otherscv = scv
+                                        else:
+                                            othersd = self.sdist(scv.position,otherscv.position)
+                                            if othersd < bestsd:
+                                                bestsd = othersd
+                                                onescvtag = scvt
+                                                onescv = scv
+                            self.promote(onescv,'sacrifice')
+                            self.promote(otherscv,'sacrifice')
+                            onescv.attack(otherscv)
+                            otherscv.attack(onescv)
+
     def reserve_for_orbitals(self) -> bool:
         toreserve = 0
         orbitals_first = True
@@ -14168,6 +14247,8 @@ class Chaosbot(sc2.BotAI):
         # new scv
         todo = amount - self.units(SCV).amount
         todo = min(todo,self.supply_left)
+        if self.sacrificed:
+            todo = 0
         if todo > 0:
             todo = 1 # max 1 per frame
             if self.wantscv():
@@ -14187,7 +14268,7 @@ class Chaosbot(sc2.BotAI):
                                                                 todo -= 1
                                                                 self.log_workers('training a new scv')
                                                                 self.log_command('cc.train(SCV)')
-                                                                dummy = cc.train(SCV)
+                                                                cc.train(SCV)
                                                                 self.idle_structure_tags.remove(cc.tag)
 
 
@@ -14216,31 +14297,34 @@ class Chaosbot(sc2.BotAI):
 
 
     def be_gasminer(self,scv,gas):
-        self.log_command('scv.gather(gas)')
-        dummy = scv.gather(gas)
-        self.gast_of_scvt[scv.tag] = gas.tag
-        self.count_of_gast[gas.tag] += 1
+        (gaspos,gast) = gas
+        self.go_gather_gas(scv,gas)
+        self.gas_of_minert[scv.tag] = gas
+        self.nminers_of_gast[gast] += 1
 
     def be_mimminer(self,scv,mim):
         (mimpos,mimt) = mim
-        if self.count_of_mimt[mimt] == 0: # first miner
-            self.go_gather(scv,mim)
-        self.mimt_of_minert[scv.tag] = mimt
-        self.count_of_mimt[mimt] += 1
+        if self.nminers_of_mimt[mimt] == 0: # first miner
+            self.go_gather_mim(scv,mim)
+        self.mim_of_minert[scv.tag] = mim
+        (mimpos,mimt) = mim
+        self.nminers_of_mimt[mimt] += 1
 
     def promote(self, scv,new_job):
         scvt = scv.tag
         old_job = self.job_of_scvt[scvt]
         if old_job == 'gasminer':
-            if scvt in self.gast_of_scvt:
-                gast = self.gast_of_scvt[scvt]
-                self.count_of_gast[gast] -= 1
-                del self.gast_of_scvt[scvt]
+            if scvt in self.gas_of_minert:
+                gas = self.gas_of_minert[scvt]
+                (gaspos,gast) = gas 
+                self.nminers_of_gast[gast] -= 1
+                del self.gas_of_minert[scvt]
         elif old_job == 'mimminer':
-            if scvt in self.mimt_of_minert:
-                mimt = self.mimt_of_minert[scvt]
-                self.count_of_mimt[mimt] -= 1
-                del self.mimt_of_minert[scvt]
+            if scvt in self.mim_of_minert:
+                mim = self.mim_of_minert[scvt]
+                (mimpos, mimt) = mim
+                self.nminers_of_mimt[mimt] -= 1
+                del self.mim_of_minert[scvt]
         self.count_of_job[old_job] -= 1
         self.count_of_job[new_job] += 1
         self.job_of_scvt[scvt] = new_job
@@ -14431,11 +14515,21 @@ class Chaosbot(sc2.BotAI):
                     self.log_success('a miner in panic!')
                     self.promote(scv,'fleeer') # includes move
             # builders start to mine after building a geyser
+            # sometimes we can fit him in.
             if job == 'builder':
                 if scv.is_collecting:
-                    gast = self.get_near_gast_free(scv.position)
-                    for gas in self.all_refineries:
-                        if gas.tag == gast:
+                    best_sdist = 99999
+                    best_gas = (self.nowhere, self.notag)
+                    for gas in self.all_gas_to_mine:
+                        (gaspos, gast) = gas
+                        sd = self.sdist(gaspos, scv.position)
+                        if sd < best_sdist:
+                            best_sdist = sd
+                            best_gas = gas
+                    gas = best_gas
+                    (gaspos,gast) = gas
+                    if gast in self.nminers_of_gast:
+                        if self.nminers_of_gast[gast] < 3:
                             self.promote(scv,'gasminer')
                             self.be_gasminer(scv,gas)
             # not lazy
@@ -14476,7 +14570,7 @@ class Chaosbot(sc2.BotAI):
                     self.solve_blockade(scv.position)
             if job == 'applicant':
                 cct = self.vision_of_scvt[scvt]
-                for cc in self.all_bases:
+                for cc in self.all_mine_bases:
                     if cc.tag == cct:
                         expo = self.expo_of_pos(cc.position)
                         employment = self.employment_of_expo[expo]
@@ -14598,102 +14692,92 @@ class Chaosbot(sc2.BotAI):
                         self.promote(scv,'idler')
                 self.fleecirclers = set()
 
-    def search_applicants(self):
-        recruits = set()
-        for scv in self.units(SCV):
-            scvt = scv.tag
-            job = self.job_of_scvt[scvt]
-            if (job in self.no_jobs):
-                recruits.add(scv)
-        total_wish = 0
-        for cc in self.all_bases:
-            total_wish = total_wish + self.wanted_of_cct[cc.tag]
-        if total_wish < len(recruits):
-            for cc in self.all_bases:
+    async def get_applicants(self):
+        # after we tried local miner hiring, want applicants
+        if self.mimminer_vacatures()+self.gasminer_vacatures() > len(self.vision_of_scvt):
+            self.wanted_of_cct = {}
+            for cc in self.all_mine_bases:
+                cct = cc.tag
+                self.wanted_of_cct[cct] = 0
                 expo = self.expo_of_pos(cc.position)
-                employment = self.employment_of_expo[expo]
-                while self.wanted_of_cct[cc.tag] > 0:
-                    self.wanted_of_cct[cc.tag] -= 1
-                    scvt = self.get_near_scvt_nojob(employment)
-                    for scv in self.units(SCV):
-                        if scv.tag == scvt:
+                # per mimt: 2 - existing workers
+                for mim in self.minerals_of_expo[expo]:
+                    if mim in self.all_mim_to_mine:
+                        (mimpos, mimt) = mim
+                        self.wanted_of_cct[cct] += (2 - self.nminers_of_mimt[mimt])
+                # per gast: 3 - existing workers
+                for gas in self.vespene_of_expo[expo]:
+                    if gas in self.all_gas_to_mine:
+                        (gaspos,gast) = gas
+                        self.wanted_of_cct[cct] += (3 - self.nminers_of_gast[gast])
+            # decrease self.wanted_of_cct for walking applicants,carriers,candidates
+            for scvt in self.vision_of_scvt:
+                cct = self.vision_of_scvt[scvt]
+                self.wanted_of_cct[cct] -= 1
+            # search applicants
+            candidates = set()
+            for scv in self.units(SCV):
+                scvt = scv.tag
+                job = self.job_of_scvt[scvt]
+                if (job in self.no_jobs) and (job != 'suicider'):
+                    candidates.add(scv)
+            total_wish = 0
+            for cc in self.all_mine_bases:
+                total_wish += self.wanted_of_cct[cc.tag]
+            if total_wish < len(candidates):
+                for cc in self.all_mine_bases:
+                    expo = self.expo_of_pos(cc.position)
+                    employment = self.employment_of_expo[expo]
+                    while self.wanted_of_cct[cc.tag] > 0:
+                        self.wanted_of_cct[cc.tag] -= 1
+                        scvt = self.get_near_scvt_nojob(employment)
+                        for scv in self.units(SCV):
+                            if scv.tag == scvt:
+                                self.promote(scv,'applicant')
+                                self.log_command('scv(AbilityId.MOVE_MOVE,employment)')
+                                scv(AbilityId.MOVE_MOVE,employment)
+                                self.vision_of_scvt[scvt] = cc.tag
+            else:
+                for scv in candidates:
+                    scvt = scv.tag
+                    cct = self.get_near_cct_wanted(scv.position)
+                    for cc in self.all_mine_bases:
+                        if cc.tag == cct:
+                            expo = self.expo_of_pos(cc.position)
+                            employment = self.employment_of_expo[expo]
+                            self.wanted_of_cct[cc.tag] -= 1
                             self.promote(scv,'applicant')
                             self.log_command('scv(AbilityId.MOVE_MOVE,employment)')
                             scv(AbilityId.MOVE_MOVE,employment)
                             self.vision_of_scvt[scvt] = cc.tag
-        else:
-            for scv in recruits:
-                scvt = scv.tag
-                cct = self.get_near_cct_wanted(scv.position)
-                for cc in self.all_bases:
-                    if cc.tag == cct:
-                        expo = self.expo_of_pos(cc.position)
-                        employment = self.employment_of_expo[expo]
-                        self.wanted_of_cct[cc.tag] -= 1
-                        self.promote(scv,'applicant')
-                        self.log_command('scv(AbilityId.MOVE_MOVE,employment)')
-                        scv(AbilityId.MOVE_MOVE,employment)
-                        self.vision_of_scvt[scvt] = cc.tag
-
-
 
     async def manage_gas(self):
         self.log_gasminer()
+        # not mining any more
         for scvt in self.all_scvt:
             if self.job_of_scvt[scvt] == 'gasminer':
-                if scvt not in self.gast_of_scvt:
+                if scvt not in self.gas_of_minert:
                     for scv in self.units(SCV):
                         if scv.tag == scvt:
                             self.promote(scv,'idler')
         self.fix_count_of_job()
-        vacatures = self.gasminer_vacatures()
-        if vacatures > 0:
-            # new gas-mineral connections
-            recruits = set()
+        # candidate to gasminer
+        if self.count_of_job['candidate'] > 0:
             for scv in self.units(SCV):
                 scvt = scv.tag
                 job = self.job_of_scvt[scvt]
                 if (job == 'candidate'):
-                    recruits.add(scv)
-            if vacatures < len(recruits):
-                for gas in self.all_refineries:
-                    gast = gas.tag
-                    if gast in self.all_gast:
-                        todo = 3 - self.count_of_gast[gast]
-                        for scv in recruits:
-                            if self.job_of_scvt[scv.tag] == 'candidate': # scv not used
-                                if todo > 0:
-                                    if self.near(scv.position,gas.position,self.miner_bound):
-                                        todo -= 1
+                    cct = self.vision_of_scvt[scvt]
+                    for cc in self.all_mine_bases:
+                        if cc.tag == cct:
+                            expo = self.expo_of_pos(cc.position)
+                            for gas in self.vespene_of_expo[expo]:
+                                if gas in self.all_gas_to_mine:
+                                    (gaspos,gast) = gas
+                                    if self.nminers_of_gast[gast] < 3:
                                         self.promote(scv, 'gasminer')
                                         self.be_gasminer(scv,gas)
-            else:
-                for scv in recruits:
-                    gast = self.get_near_gast_free(scv.position)
-                    for gas in self.all_refineries:
-                        if gas.tag == gast:
-                            if self.near(scv.position,gas.position,self.miner_bound):
-                                self.promote(scv,'gasminer')
-                                self.be_gasminer(scv,gas)
         self.log_gasminer()
-        # after we tried local miner hiring, want applicants
-        if self.mimminer_vacatures()+self.gasminer_vacatures() > len(self.vision_of_scvt):
-            self.wanted_of_cct = {}
-            for cc in self.all_bases:
-                cct = cc.tag
-                self.wanted_of_cct[cct] = 0
-                expo = self.expo_of_pos(cc.position)
-                # per gast: 3 - existing workers
-                for gas in self.vespene_of_expo[expo]:
-                    gast = gas.tag
-                    if gast in self.all_gast:
-                        self.wanted_of_cct[cct] += (3 - self.count_of_gast[gast])
-            # decrease self.wanted_of_cct for walking applicants and candidates
-            for scvt in self.vision_of_scvt:
-                cct = self.vision_of_scvt[scvt]
-                self.wanted_of_cct[cct] -= 1
-            self.search_applicants()
-
 
     async def manage_minerals(self):
         # carriers are carrying
@@ -14706,87 +14790,58 @@ class Chaosbot(sc2.BotAI):
         # not mining any more
         for scvt in self.all_scvt:
             if self.job_of_scvt[scvt] == 'mimminer':
-                if scvt not in self.mimt_of_minert:
+                if scvt not in self.mim_of_minert:
                     for scv in self.units(SCV):
                         if scv.tag == scvt:
                             self.promote(scv,'idler')
         self.fix_count_of_job()
-        vacatures = self.mimminer_vacatures()
-        if vacatures > 0:
-            # new mim-mineral connections
-            recruits = set()
+        # candidate to mimminer
+        if self.count_of_job['candidate'] > 0:
             for scv in self.units(SCV):
                 scvt = scv.tag
                 job = self.job_of_scvt[scvt]
                 if (job == 'candidate'):
-                    recruits.add(scv)
-            if vacatures < len(recruits):
-                for mim in self.all_minerals:
-                    (mimpos,mimt) = mim
-                    if mimt in self.all_mimt:
-                        todo = self.count_of_mimt[mimt] - 2
-                        for scv in recruits:
-                            if self.job_of_scvt[scv.tag] == 'candidate': # scv not assigned
-                                if todo > 0:
-                                    if self.near(scv.position,mimpos,self.miner_bound):
-                                        todo -= 1
+                    cct = self.vision_of_scvt[scvt]
+                    for cc in self.all_mine_bases:
+                        if cc.tag == cct:
+                            expo = self.expo_of_pos(cc.position)
+                            for mim in self.minerals_of_expo[expo]:
+                                if mim in self.all_mim_to_mine:
+                                    (mimpos,mimt) = mim
+                                    if self.nminers_of_mimt[mimt] < 2:
                                         self.promote(scv, 'mimminer')
                                         self.be_mimminer(scv,mim)
-            else:
-                for scv in recruits:
-                    scvt = scv.tag
-                    freemimt = self.get_near_mimt_free(scv.position)
-                    for mim in self.all_minerals:
-                        (mimpos,mimt) = mim
-                        if mimt == freemimt:
-                            if self.near(scv.position,mimpos,self.miner_bound):
-                                self.promote(scv,'mimminer')
-                                self.be_mimminer(scv,mim)
-        # after we tried local miner hiring, we want applicants
-        if self.mimminer_vacatures()+self.gasminer_vacatures() > len(self.vision_of_scvt):
-            self.wanted_of_cct = {}
-            for cc in self.all_bases:
-                cct = cc.tag
-                self.wanted_of_cct[cct] = 0
-                expo = self.expo_of_pos(cc.position)
-                # per mimt: 2 - existing workers
-                for (mimpos,mimt) in self.minerals_of_expo[expo]:
-                    if mimt in self.all_mimt:
-                        self.wanted_of_cct[cct] += (2 - self.count_of_mimt[mimt])
-            # decrease self.wanted_of_cct for walking applicants and candidates
-            for scvt in self.vision_of_scvt:
-                cct = self.vision_of_scvt[scvt]
-                self.wanted_of_cct[cct] -= 1
-            self.search_applicants()
+
 
     async def more_gas(self):
         # try to swap a mimminer to gasminer
         todo = 1
-        self.fix_count_of_gast()
+        self.fix_nminers_of_gast()
         if self.gasminer_vacatures() > 0:
-            thisgast = self.notag
-            for gast in self.all_gast:
-                if self.count_of_gast[gast] < 3:
-                    thisgast = gast
-            for gas in self.all_refineries:
-                if gas.tag == thisgast:
-                    for scv in self.units(SCV):
-                        scvt = scv.tag
-                        if self.job_of_scvt[scvt] == 'mimminer':
-                            if self.near(scv.position, gas.position, self.miner_bound):
-                                if todo>0:
-                                    todo -= 1
-                                    self.promote(scv,'gasminer')
-                                    self.be_gasminer(scv,gas)
+            gas = (self.nowhere,self.notag)
+            for maybegas in self.all_gas_to_mine:
+                (gaspos, gast) = maybegas
+                if self.nminers_of_gast[gast] < 3:
+                    gas = maybegas
+            (gaspos, gast) = gas
+            for scv in self.units(SCV):
+                scvt = scv.tag
+                if self.job_of_scvt[scvt] == 'mimminer':
+                    if self.near(scv.position, gaspos, self.miner_bound):
+                        if todo>0:
+                            todo -= 1
+                            self.promote(scv,'gasminer')
+                            self.be_gasminer(scv,gas)
 
     async def more_minerals(self):
         # try to swap a gasminer to mimminer
         todo = 1
-        self.fix_count_of_mimt()
+        self.fix_nminers_of_mimt()
         if self.mimminer_vacatures() > 0:
             thismimt = self.notag
-            for mimt in self.all_mimt:
-                if self.count_of_mimt[mimt] < 2:
+            for mim in self.all_mim_to_mine:
+                (mimpos, mimt) = mim
+                if self.nminers_of_mimt[mimt] < 2:
                     thismimt = mimt
             for mim in self.all_minerals:
                 (mimpos,mimt) = mim
@@ -14862,11 +14917,10 @@ class Chaosbot(sc2.BotAI):
             scvt = scv.tag
             if self.job_of_scvt[scvt] == 'idler':
                 # get a point, not too far
-                sd = 99999
-                while sd > 70 * 70:
+                tp = self.random_mappoint()
+                while not self.hoxy(tp):
                     tp = self.random_mappoint()
-                    sd = self.sdist(tp, self.loved_pos)
-                if self.near(scv.position,self.loved_pos,80):
+                if self.hoxy(scv.position):
                     if scv in self.units(SCV).idle:
                         self.log_command('scv.attack(tp)')
                         scv.attack(tp)
@@ -14881,53 +14935,57 @@ class Chaosbot(sc2.BotAI):
         for scv in self.units(SCV):
             scvt = scv.tag
             if self.job_of_scvt[scvt] == 'gasminer':
-                assigned_gast = self.gast_of_scvt[scvt]
-                for gas in self.all_refineries:
-                    if gas.tag == assigned_gast:
-                        if scvt in self.minedirection_of_scvt:
-                            if scv.is_returning and (self.minedirection_of_scvt[scvt] == 'G'):
-                                # it is turning round towards the base
-                                if not self.near(gas.position, scv.position, 6):
-                                    self.log_boss('Hey a shifted gasminer ' + self.name(scvt) + ' should mine ' + str(
-                                        assigned_gast))
-                                    # find closest vespenepatch. In equal cases promote one with less miners.
-                                    best_sdist = 80000
-                                    best_gast = self.notag
-                                    for gas in self.all_refineries:
-                                        gast = gas.tag
-                                        if gast in self.all_gast:
-                                            sd = self.sdist(gas.position, scv.position)
-                                            sd = sd + self.count_of_gast[gast]
-                                            if sd < best_sdist:
-                                                best_sdist = sd
-                                                best_gast = gast
-                                    gast = best_gast
-                                    if best_sdist == 8000:
-                                        self.log_boss('Hey no vespene found.')
-                                    else:
-                                        self.log_boss('He appears to mine ' + str(gast))
-                                        self.gast_of_scvt[scvt] = gast
-                                        self.count_of_gast[gast] += 1
-                                        self.count_of_gast[assigned_gast] -= 1
-                                        if self.count_of_gast[gast] > 3:
-                                            self.log_boss('Now I have a patch with ' + str(self.count_of_gast[gast]))
-                            if scv.is_gathering and (self.minedirection_of_scvt[scvt] == 'R'):
-                                # miner just starts from base to patch
-                                gast = scv.order_target
-                                if gast != assigned_gast:
-                                    self.log_boss((self.name(scvt) + ' he says ' + str(gast) + ' but administrated is ' + str(assigned_gast)))
-                                    if gast in self.count_of_gast:
-                                        self.log_boss('I reassign him.')
-                                        self.gast_of_scvt[scvt] = gast
-                                        self.count_of_gast[gast] += 1
-                                        self.count_of_gast[assigned_gast] -= 1
-                                        if self.count_of_gast[gast] > 3:
-                                            self.log_boss('Now I have a patch with ' + str(self.count_of_gast[gast]))
-                        # correct the minedirection administration for the next look.
-                        if scv.is_returning:
-                            self.minedirection_of_scvt[scvt] = 'R'
-                        if scv.is_gathering:
-                            self.minedirection_of_scvt[scvt] = 'G'
+                assigned_gas = self.gas_of_minert[scvt]
+                (assigned_gaspos, assigned_gast) = assigned_gas
+                if scvt in self.minedirection_of_scvt:
+                    if scv.is_returning and (self.minedirection_of_scvt[scvt] == 'G'):
+                        # it is turning round towards the base
+                        if not self.near(assigned_gaspos, scv.position, 6):
+                            self.log_boss('Hey a shifted gasminer ' + self.name(scvt) + ' should mine ' + str(assigned_gast))
+                            # find closest vespenepatch. In equal cases promote one with less miners.
+                            best_sdist = 99999
+                            best_gas = (self.nowhere,self.notag)
+                            for gas in self.all_gas_to_mine:
+                                (gaspos, gast) = gas
+                                sd = self.sdist(gaspos, scv.position)
+                                sd = sd + self.nminers_of_gast[gast]
+                                if sd < best_sdist:
+                                    best_sdist = sd
+                                    best_gas = gas
+                            gas = best_gas
+                            (gaspos, gast) = gas
+                            if best_sdist == 99999:
+                                self.log_boss('Hey no vespene found.')
+                            else:
+                                self.log_boss('He appears to mine ' + str(gast))
+                                self.gas_of_minert[scvt] = gas
+                                self.nminers_of_gast[gast] += 1
+                                self.nminers_of_gast[assigned_gast] -= 1
+                                if self.nminers_of_gast[gast] > 3:
+                                    self.log_boss('Now I have a patch with ' + str(self.nminers_of_gast[gast]))
+                    if scv.is_gathering and (self.minedirection_of_scvt[scvt] == 'R'):
+                        # miner just starts from base to patch
+                        gas = (self.nowhere,self.notag)
+                        for ref in self.structures(REFINERY).ready + self.structures(REFINERYRICH).ready:
+                            if ref.tag == scv.order_target:
+                                gaspos = ref.position
+                                gast = self.postag(gaspos)
+                                gas = (gaspos, gast)
+                        if gas != assigned_gas:
+                            (gaspos,gast) = gas
+                            self.log_boss((self.name(scvt) + ' he says ' + str(gast) + ' but administrated is ' + str(assigned_gast)))
+                            if gast in self.nminers_of_gast:
+                                self.log_boss('I reassign him.')
+                                self.gas_of_minert[scvt] = gas
+                                self.nminers_of_gast[gast] += 1
+                                self.nminers_of_gast[assigned_gast] -= 1
+                                if self.nminers_of_gast[gast] > 3:
+                                    self.log_boss('Now I have a patch with ' + str(self.nminers_of_gast[gast]))
+                # correct the minedirection administration for the next look.
+                if scv.is_returning:
+                    self.minedirection_of_scvt[scvt] = 'R'
+                if scv.is_gathering:
+                    self.minedirection_of_scvt[scvt] = 'G'
 
     # speedmining
 
@@ -14980,22 +15038,20 @@ class Chaosbot(sc2.BotAI):
             # idle miners should mine
             for miner in self.units(SCV).idle:  # this is rare
                 minert = miner.tag
-                if minert in self.mimt_of_minert:
-                    thismimt = self.mimt_of_minert[minert]
-                    for mim in self.all_minerals:
-                        (mimpos, mimt) = mim
-                        if mimt == thismimt:
-                            self.go_gather(miner, mim)
+                if minert in self.mim_of_minert:
+                    mim = self.mim_of_minert[minert]
+                    self.go_gather_mim(miner, mim)
         if self.supply_used < 100:
             # init phase_of_minert
-            for minert in self.mimt_of_minert:
+            for minert in self.mim_of_minert:
                 if minert not in self.phase_of_minert:
                     self.phase_of_minert[minert] = 'G'
             # log
             for miner in self.units(SCV):
                 minert = miner.tag
-                if minert in self.mimt_of_minert:
-                    mimt = self.mimt_of_minert[minert]
+                if minert in self.mim_of_minert:
+                    mim = self.mim_of_minert[minert]
+                    (mimpos, mimt) = mim
                     patchpoint = self.patchpoint_of_mimt[mimt]
                     ppdist = self.circledist(patchpoint, miner.position)
                     if minert not in self.lastppdist_of_minert:
@@ -15014,15 +15070,16 @@ class Chaosbot(sc2.BotAI):
             # idle miners should mine
             for miner in self.units(SCV).idle:  # this is rare
                 minert = miner.tag
-                if minert in self.mimt_of_minert:
+                if minert in self.mim_of_minert:
                     # move to waitpoint, start gather when other is at miningframe start_to_speed
-                    thismimt = self.mimt_of_minert[minert]
+                    thismim = self.mim_of_minert[minert]
+                    (thismimpos, thismimt) = thismim
                     patchpoint = self.patchpoint_of_mimt[thismimt]
                     basepos = self.basepos_of_mimt[thismimt]
                     waitpoint = patchpoint.towards(basepos, 2)
                     wait = False
-                    for otherminert in self.mimt_of_minert:
-                        if self.mimt_of_minert[otherminert] == thismimt:
+                    for otherminert in self.mim_of_minert:
+                        if self.mim_of_minert[otherminert] == thismim:
                             if otherminert < minert:  # smallest first
                                 wait = True
                                 if otherminert in self.miningframe_of_minert:
@@ -15038,12 +15095,13 @@ class Chaosbot(sc2.BotAI):
                         for mim in self.all_minerals:
                             (mimpos, mimt) = mim
                             if mimt == thismimt:
-                                self.go_gather(miner, mim)
+                                self.go_gather_mim(miner, mim)
             # miningframe_of_minert
             for miner in self.units(SCV):
                 minert = miner.tag
-                if minert in self.mimt_of_minert:
-                    mimt = self.mimt_of_minert[minert]
+                if minert in self.mim_of_minert:
+                    mim = self.mim_of_minert[minert]
+                    (mimpos, mimt) = mim
                     patchpoint = self.patchpoint_of_mimt[mimt]
                     if minert not in self.miningframe_of_minert:
                         self.miningframe_of_minert[minert] = -99999
@@ -15057,8 +15115,9 @@ class Chaosbot(sc2.BotAI):
             # calibrating miningframe on ppdist
             for miner in self.units(SCV):
                 minert = miner.tag
-                if minert in self.mimt_of_minert:
-                    mimt = self.mimt_of_minert[minert]
+                if minert in self.mim_of_minert:
+                    mim = self.mim_of_minert[minert]
+                    (mimpos, mimt) = mim
                     phase = self.phase_of_minert[minert]
                     patchpoint = self.patchpoint_of_mimt[mimt]
                     ppdist = self.circledist(patchpoint, miner.position)
@@ -15075,8 +15134,9 @@ class Chaosbot(sc2.BotAI):
             # speedmining
             for miner in self.units(SCV):
                 minert = miner.tag
-                if minert in self.mimt_of_minert:
-                    mimt = self.mimt_of_minert[minert]
+                if minert in self.mim_of_minert:
+                    mim = self.mim_of_minert[minert]
+                    (mimpos, mimt) = mim
                     phase = self.phase_of_minert[minert]
                     patchpoint = self.patchpoint_of_mimt[mimt]
                     ppdist = self.circledist(patchpoint, miner.position)
@@ -15091,10 +15151,9 @@ class Chaosbot(sc2.BotAI):
                     if phase == 'G':
                         if self.near(miner.position, patchpoint, 3):
                             phase = 'I'
-                            for othert in self.mimt_of_minert:
+                            for othert in self.mim_of_minert:
                                 if othert != minert:
-                                    othermimt = self.mimt_of_minert[othert]
-                                    if mimt == othermimt:
+                                    if mim == self.mim_of_minert[othert]:
                                         basepos = self.basepos_of_mimt[mimt]
                                         waitpoint = patchpoint.towards(basepos, 2)
                                         if othert in self.miningframe_of_minert:
@@ -15108,10 +15167,9 @@ class Chaosbot(sc2.BotAI):
                                                 miner.move(waitpoint)
                     if phase == 'W':
                         wait = False
-                        for othert in self.mimt_of_minert:
+                        for othert in self.mim_of_minert:
                             if othert != minert:
-                                othermimt = self.mimt_of_minert[othert]
-                                if mimt == othermimt:
+                                if mim == self.mim_of_minert[othert]:
                                     if othert in self.miningframe_of_minert:
                                         wait = True
                                         othertime = self.frame - self.miningframe_of_minert[othert]
@@ -15124,12 +15182,12 @@ class Chaosbot(sc2.BotAI):
                             phase = 'I'
                             for mim in self.all_minerals:
                                 if mim[1] == mimt:
-                                    self.go_gather(miner,mim)
+                                    self.go_gather_mim(miner,mim)
                     if phase == 'I':
                         if self.near(miner.position, patchpoint, 1.5):
                             phase = 'H'
                             for patch in self.mineral_field:
-                                if self.mineraltag(patch) == mimt:
+                                if self.postag_of_patch(patch) == mimt:
                                     miner.move(patchpoint)
                                     miner(AbilityId.HARVEST_GATHER_SCV,patch,queue=True)
                     if phase == 'H':
@@ -15137,7 +15195,7 @@ class Chaosbot(sc2.BotAI):
                         if ppdist > self.lastppdist_of_minert[minert] + 0.2:
                             # Should be rare. When this happens, the order has shifted.
                             for patch in self.mineral_field:
-                                if self.mineraltag(patch) == mimt:
+                                if self.postag_of_patch(patch) == mimt:
                                     miner(AbilityId.HARVEST_GATHER_SCV, patch)
                     self.phase_of_minert[minert] = phase
                     self.lastppdist_of_minert[minert] = ppdist # do not use beyond this point
@@ -15157,16 +15215,14 @@ class Chaosbot(sc2.BotAI):
                 if self.job_of_scvt[scvt] == 'idler':
                     if len(self.all_minerals) > 0:
                         mim = random.choice(tuple(self.all_minerals))
-                        (mimpos,mimt) = mim
                         tries = 0
-                        while (mimt in self.all_mimt) and (tries<100):
+                        while (mim in self.all_mim_to_mine) and (tries<100):
                             tries += 1
                             mim = random.choice(tuple(self.all_minerals))
-                            (mimpos,mimt) = mim
                         for scv in self.units(SCV):
                             if scv.tag == scvt:
                                 self.promote(scv,'volunteer')
-                                self.go_gather(scv,mim)
+                                self.go_gather_mim(scv,mim)
 
     def hop_cc(self):
         # there are in-between ccs, so expo cannot be used.
