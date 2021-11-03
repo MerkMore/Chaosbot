@@ -179,6 +179,7 @@ class Chaosbot(sc2.BotAI):
     do_slowdown = False
     slowdown_frames = 0 # 5*60*22
     slowness = 0.05 # realtime is around 0.05
+    do_funchat = True
     do_log_success = False
     do_log_bird_history = False
     do_log_fail = False
@@ -523,6 +524,8 @@ class Chaosbot(sc2.BotAI):
     marauder_goal = Point2((100,100))
     marauder_restpoint = Point2((100,100))
     marauder_retreat = True
+    marauder_pf_phase = 0
+    marauder_pf_point = nowhere
     mine_shot = {} # the frame a cheese1_mine did shoot
     mine_burried = {} # the frame a mine burried
     #
@@ -552,6 +555,9 @@ class Chaosbot(sc2.BotAI):
     wall_depot0_pos = None
     wall_depot1_pos = None
     wall = set() # ((SUPPLYDEPOT, point), ...)
+    #
+    funchat_linenr = 0
+    funchat_lines = []
     #
     reaper_status = {}
     reaper_focus = nowhere
@@ -887,7 +893,9 @@ class Chaosbot(sc2.BotAI):
         bunker_if.init_step(self)
         #
         self.slowed_down()
-        self.act_on_errors()
+        if self.frame % 23 == 22:
+            await self.funchat()
+        await self.act_on_errors()
         self.init_step_expo()
         self.init_enemies_of_tile()
         self.init_goodguys_of_tile()
@@ -972,7 +980,7 @@ class Chaosbot(sc2.BotAI):
             await self.gasminer_boss()
             self.count_enemy()
         if (self.frame % 31 == 30):
-            self.clean_layout()
+            self.manage_layout()
             self.clean_doubling()
             self.lower_some_depots()
             self.hop_cc()
@@ -2036,6 +2044,9 @@ class Chaosbot(sc2.BotAI):
                                         BARRACKSTECHLAB,BARRACKSTECHLAB,BARRACKSTECHLAB,BARRACKSTECHLAB,
                                         BARRACKSTECHLAB,BARRACKSTECHLAB,BARRACKSTECHLAB,BARRACKSTECHLAB,
                                         BARRACKSTECHLAB]
+            # marauder_restpoint, marauder_goal
+            self.marauder_restpoint = self.game_info.map_center
+            self.marauder_goal = self.game_info.map_center
             # natchoke bunker
             bunkerplace = self.homenaturalchoke_pos.towards(self.homenatural_pos,2)
             bunkerplace = self.place_around(BUNKER,bunkerplace)
@@ -2050,7 +2061,7 @@ class Chaosbot(sc2.BotAI):
             self.production_pause_finish.add((SUPPLYDEPOT, 1, ORBITALCOMMAND, 1))
             self.production_pause_finish.add((SCV, 19, ORBITALCOMMAND, 1))
             self.production_pause_finish.add((REFINERY, 0, FACTORY, 1))
-            self.opening_create_units = 9*7  # 9 barracks * 7 marauders/barracks
+            self.opening_create_units = 50 # 3base+50mara=166 supply
             self.opening_create_kind = MARAUDER
             self.supply_rate = 0.26
             # radio_choices = 44
@@ -2368,7 +2379,7 @@ class Chaosbot(sc2.BotAI):
         'CantFindCancelOrder', # 214;
         ]
         # chat
-        await self._client.chat_send('Chaosbot version 1 nov 2021, made by MerkMore', team_only=False)
+        await self._client.chat_send('Chaosbot version 3 nov 2021, made by MerkMore', team_only=False)
         await self._client.chat_send('Good luck and have fun, '+self.opponent, team_only=False)
         #
         #layout_if.photo_layout()
@@ -2850,8 +2861,19 @@ class Chaosbot(sc2.BotAI):
                 self.slowdown_frames -= self.chosen_game_step
                 time.sleep(self.slowness)
 
+    async def funchat(self):
+        if self.do_funchat:
+            if len(self.funchat_lines) == 0:
+                pl = open('data/funchat.txt', 'r')
+                self.funchat_lines = pl.read().splitlines()
+                pl.close()
+                self.funchat_linenr = random.randrange(0, len(self.funchat_lines))
+            if self.funchat_linenr < len(self.funchat_lines):
+                line = self.funchat_lines[self.funchat_linenr]
+                await self._client.chat_send(line, team_only=False)
+                self.funchat_linenr = (self.funchat_linenr + 1) % len(self.funchat_lines)
 
-    def act_on_errors(self):
+    async def act_on_errors(self):
         for err in self.state.action_errors:
             abiid = err.ability_id
             unittag = err.unit_tag
@@ -2867,6 +2889,7 @@ class Chaosbot(sc2.BotAI):
                         turpos = goal.towards(self.game_info.map_center,-3)
                         turpos = self.place_around(MISSILETURRET,turpos)
                         self.throw_at_spot(MISSILETURRET,turpos,'act_on_errors')
+            await self._client.chat_send('on_error '+abiname+' '+self.errortexts[res], team_only=False)
 
 
     def position_of_building(self, bui) -> Point2:
@@ -6738,56 +6761,60 @@ class Chaosbot(sc2.BotAI):
                                 if self.check_techtree(thing):
                                     if self.check_supply(thing):
                                         if self.check_cradleidle(thing):
-                                            if thing == SCV:
-                                                for cradle_type in {COMMANDCENTER, ORBITALCOMMAND, PLANETARYFORTRESS}:
-                                                    for dock in self.structures(cradle_type).ready.idle:
-                                                        if todo > 0:
-                                                            todo -= 1
-                                                            self.idiot_busy.add((thing, self.frame + 100))
-                                                            dock.train(SCV)
-                                            elif thing == COMMANDCENTER:
-                                                todo -= 1
-                                                self.idiot_busy.add((thing, self.frame + 500))
-                                                place = random.choice(self.expansion_locations)
-                                                scvt = self.get_near_scvt_to_goodjob(place)
-                                                self.thoughts.append((thing, place, 'idiot'))
-                                                self.build_thing_tobuildwalk(scvt,thing,place,'idiot')
-                                            elif thing == REFINERY:
-                                                todo -= 1
-                                                self.idiot_busy.add((thing, self.frame + 500))
-                                                # closest empty geyser, and close geysers
-                                                geysers = set()
-                                                minsd = 99999
-                                                closest = self.nowhere
-                                                for cradle_type in {COMMANDCENTER, ORBITALCOMMAND, PLANETARYFORTRESS}:
-                                                    for dock in self.structures(cradle_type):
-                                                        for gey in self.vespene_geyser:
-                                                            if self.near(dock.position,gey.position,10):
-                                                                geysers.add(gey.position)
-                                                            sd = self.sdist(dock.position,gey.position)
-                                                            if sd < minsd:
-                                                                closest = gey.position
-                                                                minsd = sd
-                                                geysers.add(closest)
-                                                place = random.choice(tuple(geysers))
-                                                scvt = self.get_near_scvt_to_goodjob(place)
-                                                self.thoughts.append((thing, place, 'idiot'))
-                                                self.build_thing_tobuildwalk(scvt, thing, place, 'idiot')
-                                            elif thing in self.all_structures_tobuildwalk:
-                                                todo -= 1
-                                                self.idiot_busy.add((thing, self.frame + 500))
-                                                place = self.random_mappoint()
-                                                while self.proxy(place):
-                                                    place = self.random_mappoint()
-                                                place = self.place_around(thing,place)
-                                                scvt = self.get_near_scvt_to_goodjob(place)
-                                                self.thoughts.append((thing, place, 'idiot'))
-                                                self.build_thing_tobuildwalk(scvt,thing,place,'idiot')
-                                            else:
-                                                todo -= 1
-                                                self.idiot_busy.add((thing, self.frame + 100))
-                                                self.thoughts.append((thing, self.somewhere, 'idiot'))
-                                                self.build_thing(thing,self.somewhere,'idiot')
+                                            self.oknowbuildthething(thing)
+                                            todo -= 1
+
+    def oknowbuildthething(self,thing):
+        if thing == SCV:
+            for cradle_type in {COMMANDCENTER, ORBITALCOMMAND, PLANETARYFORTRESS}:
+                for dock in self.structures(cradle_type).ready.idle:
+                    self.idiot_busy.add((thing, self.frame + 100))
+                    dock.train(SCV)
+        elif thing == COMMANDCENTER:
+            place = random.choice(self.expansion_locations)
+            if self.check_layout(thing,place):
+                self.write_layout(thing,place)
+                self.idiot_busy.add((thing, self.frame + 500))
+                scvt = self.get_near_scvt_to_goodjob(place)
+                self.thoughts.append((thing, place, 'idiot'))
+                self.build_thing_tobuildwalk(scvt,thing,place,'idiot')
+        elif thing == REFINERY:
+            # closest empty geyser, and close geysers
+            geysers = set()
+            minsd = 99999
+            closest = self.nowhere
+            for cradle_type in {COMMANDCENTER, ORBITALCOMMAND, PLANETARYFORTRESS}:
+                for dock in self.structures(cradle_type):
+                    for gey in self.vespene_geyser:
+                        if self.near(dock.position,gey.position,10):
+                            geysers.add(gey.position)
+                        sd = self.sdist(dock.position,gey.position)
+                        if sd < minsd:
+                            closest = gey.position
+                            minsd = sd
+            geysers.add(closest)
+            place = random.choice(tuple(geysers))
+            if self.check_layout(thing,place):
+                self.write_layout(thing,place)
+                self.idiot_busy.add((thing, self.frame + 500))
+                scvt = self.get_near_scvt_to_goodjob(place)
+                self.thoughts.append((thing, place, 'idiot'))
+                self.build_thing_tobuildwalk(scvt, thing, place, 'idiot')
+        elif thing in self.all_structures_tobuildwalk:
+            place = self.random_mappoint()
+            while self.proxy(place):
+                place = self.random_mappoint()
+            place = self.place_around(thing,place)
+            if self.check_layout(thing,place):
+                self.write_layout(thing,place)
+                self.idiot_busy.add((thing, self.frame + 500))
+                scvt = self.get_near_scvt_to_goodjob(place)
+                self.thoughts.append((thing, place, 'idiot'))
+                self.build_thing_tobuildwalk(scvt,thing,place,'idiot')
+        else:
+            self.idiot_busy.add((thing, self.frame + 100))
+            self.thoughts.append((thing, self.somewhere, 'idiot'))
+            self.build_thing(thing,self.somewhere,'idiot')
                         
     
     def remove_from_planning_etc(self, thing, place):
@@ -8607,7 +8634,6 @@ class Chaosbot(sc2.BotAI):
             techsequence = [ENGINEERINGBAY,TERRANINFANTRYARMORSLEVEL1,STIMPACK,
                             PUNISHERGRENADES,TERRANINFANTRYWEAPONSLEVEL1,
                             ENGINEERINGBAY,ARMORY,TERRANINFANTRYARMORSLEVEL2,
-                            TERRANINFANTRYWEAPONSLEVEL2,
                             FACTORY,STARPORT,FUSIONCORE]
             former = ORBITALCOMMAND
             had = []
@@ -8639,7 +8665,25 @@ class Chaosbot(sc2.BotAI):
                         self.log_success('up BARRACKS')
                         self.log_command('bar(AbilityId.LIFT')
                         bar(AbilityId.LIFT)
-
+            # a pf in the middle
+            if self.we_started_a(PUNISHERGRENADES):
+                if self.marauder_pf_phase == 0:
+                    place = self.place_around(COMMANDCENTER,self.marauder_restpoint)
+                    self.marauder_pf_spot = place
+                    self.throw_at_spot(COMMANDCENTER,place,'marauder_fun')
+                    self.marauder_pf_phase += 1
+                elif self.marauder_pf_phase == 1:
+                    for cc in self.structures(COMMANDCENTER):
+                        if cc.position == self.marauder_pf_spot:
+                            self.speciality_of_tag[cc.tag] = 'marauder_fun'
+                            self.cc_destiny[cc.position] = 'pf'
+                            self.marauder_pf_phase += 1
+                elif self.marauder_pf_phase == 2:
+                    for cc in self.structures(COMMANDCENTER).ready:
+                        if cc.position == self.marauder_pf_spot:
+                            if self.allow_throw(PLANETARYFORTRESS):
+                                self.throw_at_spot(PLANETARYFORTRESS, cc.position, 'marauder_fun')
+                                self.marauder_pf_phase += 1
 
     def random_mappoint(self) -> Point2:
         return Point2((random.randrange(self.map_left, self.map_right), random.randrange(self.map_bottom, self.map_top)))
@@ -9785,8 +9829,8 @@ class Chaosbot(sc2.BotAI):
                     self.go_attack(mar, self.marauder_goal)
                 for mar in self.units(MARINE):
                     self.go_attack(mar, self.marauder_goal)
-        else:
-            if reached * 4 > 3 * len(self.units(MARAUDER)):
+        else: # general marauder action
+            if reached * 4 > 3 * self.we_preppedetc_amount(MARAUDER):
                 # new goal
                 self.marauder_retreat = not self.marauder_retreat
                 if self.marauder_retreat:
@@ -14674,30 +14718,30 @@ class Chaosbot(sc2.BotAI):
                             if wreck in self.units:
                                 if wreck.type_id != SCV:
                                     wreck.move(scv.position)
-            # sometimes a cheeser or repairer forgets he was repairing, e.g. when no minerals
-            for scvt in self.thingtag_of_repairertag:
-                for scv in self.units(SCV):
-                    if scv.tag == scvt:
-                        seen = False
-                        for order in scv.orders:
-                            if order.ability.id == AbilityId.EFFECT_REPAIR:
-                                seen = True
-                        if not seen:
-                            if self.no_doubling(scvt):
-                                for s in self.structures.ready + self.units:
-                                    if s.tag == self.thingtag_of_repairertag[scvt]:
-                                        scv(AbilityId.EFFECT_REPAIR_SCV,s)
-            # logging
-            count_of_thing = {}
-            for reptag in self.thingtag_of_repairertag:
-                thitag = self.thingtag_of_repairertag[reptag]
-                if thitag in count_of_thing:
-                    count_of_thing[thitag] += 1
-                else:
-                    count_of_thing[thitag] = 1
-            for s in self.structures.ready + self.units:
-                if s.tag in count_of_thing:
-                    self.log_success('repairing a '+s.type_id.name+' with '+str(count_of_thing[s.tag]))
+                # sometimes a cheeser or repairer forgets he was repairing, e.g. when no minerals
+                for scvt in self.thingtag_of_repairertag:
+                    for scv in self.units(SCV):
+                        if scv.tag == scvt:
+                            seen = False
+                            for order in scv.orders:
+                                if order.ability.id == AbilityId.EFFECT_REPAIR:
+                                    seen = True
+                            if not seen:
+                                if self.no_doubling(scvt):
+                                    for s in self.structures.ready + self.units:
+                                        if s.tag == self.thingtag_of_repairertag[scvt]:
+                                            scv(AbilityId.EFFECT_REPAIR_SCV,s)
+                # logging
+                count_of_thing = {}
+                for reptag in self.thingtag_of_repairertag:
+                    thitag = self.thingtag_of_repairertag[reptag]
+                    if thitag in count_of_thing:
+                        count_of_thing[thitag] += 1
+                    else:
+                        count_of_thing[thitag] = 1
+                for s in self.structures.ready + self.units:
+                    if s.tag in count_of_thing:
+                        self.log_success('repairing a '+s.type_id.name+' with '+str(count_of_thing[s.tag]))
 
     async def manage_workers(self):
         # heaven
@@ -15536,9 +15580,23 @@ class Chaosbot(sc2.BotAI):
 
     #*********************************************************************************************************************
 
-    def clean_layout(self):
+    def manage_layout(self):
+        # add existing own buildings to layout
+        for struc in self.structures:
+            structype = struc.type_id
+            place = self.position_of_building(struc)
+            tag = struc.tag
+            spt = (structype, place, tag)
+            if spt not in self.designs:
+                if structype not in self.landable:
+                    if structype != AUTOTURRET:
+                        placed = False
+                        for (st1,pl1,ta1) in self.designs:
+                            if pl1 == place:
+                                placed = True
+                        self.log_fail(placed,'Wild structure '+struc.name)
+                        self.designs.add(spt)
         # erase layout buildings that are in designs, but neither existing there nor thought
-        #
         # if vision, delete from enemy_structureinfo
         todel = set()
         for tp in self.enemy_structureinfo:
@@ -15565,17 +15623,16 @@ class Chaosbot(sc2.BotAI):
         self.enemy_structureinfo_plus -= todel
         # designs: add tag to realized plans
         newdesigns = set()
-        for (struc,place,tag) in self.designs:
+        for (structype,place,tag) in self.designs:
             if tag == self.notag:
-                for astruc in self.structures:
-                    # the cc could have become a pf already, accept flying
+                for astruc in self.structures(structype):
                     if self.position_of_building(astruc) == place:
                         tag = astruc.tag
-            newdesigns.add((struc,place,tag))
+            newdesigns.add((structype,place,tag))
         self.designs = newdesigns.copy()
         # designs: erase if neither tag nor plan is found
         erase = set()
-        for (struc,place,tag) in self.designs:
+        for (structype,place,tag) in self.designs:
             seen = False
             if tag in self.all_structuretags:
                 seen = True
@@ -15589,7 +15646,7 @@ class Chaosbot(sc2.BotAI):
                 if place == exeplace:
                     seen = True
             if place in self.possible_cc_positions:
-                if struc == MAINCELLBLOCK:
+                if structype == MAINCELLBLOCK:
                     seen = True
             if place in self.tankplaces:
                 seen = True
@@ -15608,10 +15665,10 @@ class Chaosbot(sc2.BotAI):
                 if place == po:
                     seen = True
             if not seen:
-                erase.add((struc,place,tag))
-        for (struc,place,tag) in erase:
-            self.log_success('(clean_layout of a '+struc.name+')')
-            self.erase_layout(struc,place)
+                erase.add((structype,place,tag))
+        for (structype,place,tag) in erase:
+            self.log_success('(manage_layout clean of a '+structype.name+')')
+            self.erase_layout(structype,place)
 
 # *********************************************************************************************************************
 
@@ -15845,7 +15902,7 @@ class Chaosbot(sc2.BotAI):
                 radio_numbers.add(nr)
         radio_nr = random.choice(tuple(radio_numbers))
         # TO TEST use next line
-        #radio_nr = 9
+        #radio_nr = 43
         for nr in range(0,self.radio_choices):
             self.game_choice.append(nr == radio_nr)
         for nr in range(self.radio_choices,self.game_choices):
