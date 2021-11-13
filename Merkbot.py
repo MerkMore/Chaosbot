@@ -109,6 +109,7 @@ from sc2.ids.unit_typeid import INFESTEDCOCOON
 # mark possible expansions:
 from sc2.ids.unit_typeid import MAINCELLBLOCK
 # protoss
+from sc2.ids.unit_typeid import MOTHERSHIP
 from sc2.ids.unit_typeid import PROBE
 from sc2.ids.unit_typeid import STALKER
 from sc2.ids.unit_typeid import PHOENIX
@@ -679,6 +680,14 @@ class Chaosbot(sc2.BotAI):
     wait_of_scv = {} # for cooling some frames
     nuke_ghosts = set()
     army_ghosts = set()
+    ghostmove_last_energy = {} # per ghosttag a number
+    ghostmove_snipeend = {} # per ghosttag the frame a snipe will end
+    ghostmove_state = {} # per ghosttag a text
+    ghostmove_fightgoal = {} # per ghosttag a position
+    ghostmove_goal = {} # per ghosttag a position
+    ghostmove_goalreached = {} # per ghosttag a bool
+    ghostmove_goaltried = {} # count move commandos
+    ghostmove_hangout = {} # tolerance after reaching goal
     platoons = [] # of set of scvtag
     platooncenters = [] # of Point2
     platoonenemies = [] # of set of workertag
@@ -958,6 +967,7 @@ class Chaosbot(sc2.BotAI):
         self.focusfire()
         self.calc_fightpos()
         self.do_attackmove()
+        self.do_ghostmove()
         if (self.frame % 5 == 4):
             await self.siege_tanks()
         self.use_cluster()
@@ -1025,7 +1035,6 @@ class Chaosbot(sc2.BotAI):
         self.vulture()
         await self.marine_fun()
         await self.marauder_fun()
-        self.ghost_fun()
         await self.win_loss()
         #
         # preparation for next step
@@ -2040,12 +2049,8 @@ class Chaosbot(sc2.BotAI):
                                         STARPORT, STARPORT, STARPORT, MARINE,
                                         STARPORTTECHLAB,STARPORTTECHLAB,STARPORTTECHLAB,BANSHEECLOAK]
             self.chosenplaces.append((COMMANDCENTER, self.homenatural_pos))
-            # natchoke bunker
-            bunkerplace = self.homenaturalchoke_pos.towards(self.homenatural_pos,2)
-            bunkerplace = self.place_around(BUNKER,bunkerplace)
-            self.chosenplaces.append((BUNKER,bunkerplace))
+            self.natural_numker()
             self.opening_create_kinds = {(BANSHEE,6)}
-            bunker_if.hiding_spot = bunkerplace.towards(self.homenatural_pos,3)
         elif self.game_choice[43]:
             self.opening_name = 'marauder-3'
             self.rushopening = True
@@ -2053,27 +2058,24 @@ class Chaosbot(sc2.BotAI):
             self.buildseries_opening = [SUPPLYDEPOT, COMMANDCENTER, BARRACKS,COMMANDCENTER,REFINERY,
                                         BUNKER, ENGINEERINGBAY, REFINERY,
                                         BARRACKS,BARRACKS,BARRACKS,BARRACKS,BARRACKS,BARRACKS,BARRACKS,
-                                        BARRACKS,BARRACKS, REFINERY,
+                                        BARRACKS, REFINERY,
                                         BARRACKSTECHLAB,BARRACKSTECHLAB,BARRACKSTECHLAB,BARRACKSTECHLAB,
                                         BARRACKSTECHLAB,BARRACKSTECHLAB,BARRACKSTECHLAB,BARRACKSTECHLAB,
-                                        BARRACKSTECHLAB,GHOSTACADEMY,REFINERY]
+                                        GHOSTACADEMY,REFINERY]
             # marauder_restpoint, marauder_goal
             self.marauder_restpoint = self.game_info.map_center
             self.marauder_goal = self.game_info.map_center
-            # natchoke bunker
-            bunkerplace = self.homenaturalchoke_pos.towards(self.homenatural_pos,2)
-            bunkerplace = self.place_around(BUNKER,bunkerplace)
-            self.chosenplaces.append((BUNKER,bunkerplace))
+            self.natural_bunker()
             # barracks random placing
             bars = 1
-            while bars < 10:
+            while bars < 8:
                 barpos = self.choose_place_random()
                 self.chosenplaces.append((BARRACKS, barpos))
                 self.write_layout(BARRACKS, barpos)
                 bars += 1
             self.production_pause_finish.add((SUPPLYDEPOT, 1, ORBITALCOMMAND, 1))
             self.production_pause_finish.add((REFINERY, 0, FACTORY, 1))
-            self.opening_create = {(MARAUDER,50),(GHOST,5)}
+            self.opening_create = {(MARAUDER,48),(GHOST,5)}
             self.supply_rate = 0.26
             # radio_choices = 44
         self.log_success('OPENING: '+self.opening_name)
@@ -2394,7 +2396,7 @@ class Chaosbot(sc2.BotAI):
         'CantFindCancelOrder', # 214;
         ]
         # chat
-        await self._client.chat_send('Chaosbot version 10 nov 2021, made by MerkMore', team_only=False)
+        await self._client.chat_send('Chaosbot version 13 nov 2021, made by MerkMore', team_only=False)
         await self._client.chat_send('Good luck and have fun, '+self.opponent, team_only=False)
         #
         #layout_if.photo_layout()
@@ -2536,6 +2538,12 @@ class Chaosbot(sc2.BotAI):
                     ok = False
         return place
 
+    def natural_bunker(self):
+        bunkerplace = self.homenaturalchoke_pos.towards(self.homenatural_pos, 2)
+        bunkerplace = self.place_around(BUNKER, bunkerplace)
+        bunker_if.hiding_spot = bunkerplace.towards(self.homenatural_pos, 3)
+        self.chosenplaces.append((BUNKER, bunkerplace))
+
     def init_marine_opening(self, nbases):
         # 1 <= nbases <= 6
         # can also be the second part of an opening
@@ -2665,7 +2673,6 @@ class Chaosbot(sc2.BotAI):
                         phase = self.fighter_phase[scvt]
                     else:
                         phase = 'free'
-                    # log for debugging
                     print('fighter ' + self.name(scvt) + ' '+ phase + ' ' + str(nearenemydist))
                     if scvt in self.fighternurse:
                         otherscvt = self.fighternurse[scvt]
@@ -8540,7 +8547,7 @@ class Chaosbot(sc2.BotAI):
         damagemax = {}
         couldfocus = {}
         for ene in self.enemy_units | self.enemy_real_structures:
-            if ene.type_id not in {EGG, LARVA}:
+            if ene.type_id not in {EGG, LARVA, AUTOTURRET}:
                 damagemax[ene.tag] = 0
         for myn in self.units:
             couldfocus[myn.tag] = []
@@ -8548,7 +8555,7 @@ class Chaosbot(sc2.BotAI):
             mytile = self.maptile_of_pos(mypos)
             for tile in self.nine[mytile]:
                 for ene in self.enemies_of_tile[tile]:
-                    if ene.type_id not in {EGG,LARVA}:
+                    if ene.type_id not in {EGG,LARVA, AUTOTURRET}:
                         enepos = ene.position
                         armor = ene.armor + ene.armor_upgrade_level
                         if ene.is_flying:
@@ -8567,7 +8574,7 @@ class Chaosbot(sc2.BotAI):
                                     damagemax[ene.tag] += (grounddamage[myn.tag] - armor) * groundattacks[myn.tag]
         focusplus = []
         for ene in self.enemy_units | self.enemy_real_structures:
-            if ene.type_id not in {EGG, LARVA}:
+            if ene.type_id not in {EGG, LARVA, AUTOTURRET}:
                 if damagemax[ene.tag] > ene.health+ene.shield:
                     focusplus.append((0,ene.health+ene.shield,ene.tag))
                 else:
@@ -8582,13 +8589,6 @@ class Chaosbot(sc2.BotAI):
             minix = 99999
             bestenetag = self.notag
             for enetag in couldfocus[myntag]:
-                ###debug
-                if enetag not in focussolo:
-                    print(enetag)
-                    for ene in self.enemy_units | self.enemy_real_structures:
-                        if ene.tag == enetag:
-                            print(ene.name)
-                ###debug
                 ix = focussolo.index(enetag)
                 if ix < minix:
                     minix = ix
@@ -8613,7 +8613,7 @@ class Chaosbot(sc2.BotAI):
         for myn in self.units:
             self.fightpos[myn.tag] = self.nowhere
             mypos = myn.position
-            minsd = 99999
+            minsd = 10*10 # do not react on enemies further away
             i_can_hit_air = False
             i_can_hit_ground = False
             for weapon in myn._weapons:
@@ -8624,7 +8624,7 @@ class Chaosbot(sc2.BotAI):
             mytile = self.maptile_of_pos(mypos)
             for tile in self.nine[mytile]:
                 for ene in self.enemies_of_tile[tile]:
-                    if ene.type_id not in {EGG,LARVA}:
+                    if ene.type_id not in {EGG,LARVA,AUTOTURRET}:
                         enepos = ene.position
                         sd = self.sdist(mypos,enepos)
                         if sd < minsd:
@@ -8747,13 +8747,13 @@ class Chaosbot(sc2.BotAI):
                 if state != 'attack':
                     fpos = self.fightpos[martag]
                     if fpos == self.nowhere:
-                        if state == 'dance':
+                        if state == 'approach':
                             state = 'rest'
                     else: # take fightpos
                         if not self.near(fpos,fightgoal,0.5):
                             mar.move(fpos)
                             self.attackmove_fightgoal[martag] = fpos
-                        state = 'dance'
+                        state = 'approach'
                 if state == 'rest':
                     if self.near(mar.position, goal, tolerance):
                         self.attackmove_goalreached[martag] = True
@@ -8767,7 +8767,7 @@ class Chaosbot(sc2.BotAI):
                         self.attackmove_goaltried[martag] += 1
                         if self.attackmove_goaltried[martag] >= 4:
                             self.attackmove_goalreached[martag] = True
-                if state != 'dance':
+                if state != 'approach':
                     self.attackmove_fightgoal[martag] = self.nowhere
                 self.attackmove_state[martag] = state
 
@@ -8956,7 +8956,7 @@ class Chaosbot(sc2.BotAI):
             techsequence = [ENGINEERINGBAY,TERRANINFANTRYARMORSLEVEL1,STIMPACK,
                             PUNISHERGRENADES,TERRANINFANTRYWEAPONSLEVEL1,
                             ENGINEERINGBAY,ARMORY,TERRANINFANTRYARMORSLEVEL2,
-                            FACTORY,STARPORT,FUSIONCORE]
+                            FACTORY,TERRANINFANTRYWEAPONSLEVEL2,STARPORT,FUSIONCORE]
             former = ORBITALCOMMAND
             had = []
             myturn = self.we_started_a(former)
@@ -10135,13 +10135,13 @@ class Chaosbot(sc2.BotAI):
                     if mar.health > 60: # 1.5(x-20)=x
                         if not mar.has_buff(BuffId.STIMPACKMARAUDER):
                             mar(AbilityId.EFFECT_STIM_MARAUDER)
-        for mar in self.units(GHOST): # added army_ghosts
+        for mar in self.units(GHOST):
             if mar.tag in self.army_ghosts:
-                if mar.tag not in self.attackmove_state:
-                    self.attackmove(mar.tag, self.marauder_goal, wantradius)
+                if mar.tag not in self.ghostmove_state: # new army_ghost
+                    self.ghostmove(mar.tag, self.marauder_goal, wantradius)
         reached = 0
         for mar in self.units(MARAUDER):
-            if mar.tag not in self.attackmove_state:
+            if mar.tag not in self.attackmove_state: # new marauder
                 self.attackmove(mar.tag,self.marauder_goal,wantradius)
             if self.near(mar.position,self.marauder_goal,wantradius):
                 reached += 1
@@ -10186,7 +10186,7 @@ class Chaosbot(sc2.BotAI):
                     self.attackmove(mar.tag, self.marauder_goal,wantradius)
                 for mar in self.units(GHOST):
                     if mar.tag in self.army_ghosts:
-                        self.attackmove(mar.tag, self.marauder_goal, wantradius)
+                        self.ghostmove(mar.tag, self.marauder_goal, wantradius)
         # cyclones
         # NOT ACTION-MINIMIZED
         for cyc in self.units(CYCLONE):
@@ -13027,23 +13027,179 @@ class Chaosbot(sc2.BotAI):
                     self.throw_treeno(upg, 'do_banshees')
                 self.log_swaps()
 
-    def ghost_fun(self):
+    def ghostmove(self,tag,goal,hangout):
+        # makes my ghost unit move to goal, sniping enemies in range.
+        # tag must be of an army_ghost.
+        # hangout is the size of the area it can hang out after the goal is reached.
+        self.ghostmove_state[tag] = 'rest'
+        self.ghostmove_goal[tag] = goal
+        self.ghostmove_goalreached[tag] = False
+        self.ghostmove_hangout[tag] = hangout
+        self.ghostmove_fightgoal[tag] = self.nowhere
+        self.ghostmove_goaltried[tag] = 0
+        self.ghostmove_last_energy[tag] = 0
+        self.ghostmove_snipeend[tag] = 0
+
+    def do_ghostmove(self):
+        # states:
+        #    rest       Not moving, e.g. goal reached
+        #    approach   Seeing a target, going to snipe
+        #    snipe      Carefully aiming
+        #    move       Going in the direction of the goal
+        #    role       Retreat on low energy
+        #    home       Retreated
+        #    host       Halted on seeing a threat
+        # make new ghosts army_ghost
         nukereserve = 0
         if self.ghost_phase > 'A':
             nukereserve = 1
         if len(self.units(GHOST)) > len(self.nuke_ghosts) + len(self.army_ghosts) + nukereserve:
             for ghost in self.units(GHOST):
-                if ghost.tag not in self.nuke_ghosts:
-                    self.army_ghosts.add(ghost.tag)
+                tag = ghost.tag
+                if tag not in self.nuke_ghosts:
+                    self.army_ghosts.add(tag)
         if len(self.army_ghosts) > 0:
-            # lost ghosts
-            if self.frame % 11 == 10:
-                alives = set()
-                for ghost in self.units(GHOST):
-                    alives.add(ghost.tag)
-                deads = self.army_ghosts - alives
-                self.army_ghosts -= deads
-            #
+            # cleanup
+            if self.frame % 29 == 28:
+                todel = set()
+                for tag in self.army_ghosts:
+                    if tag not in self.all_unittags:
+                        todel.add(tag)
+                for tag in todel:
+                    self.army_ghosts.remove(tag)
+            # init ghostmove_* is done by the caller via ghostmove()
+            if self.opponent_species == 'zerg':
+                min_energy = 50 # snipe
+            else:
+                min_energy = 75 # emp
+            # snipe biological, range 10, 32 frames, me no damage, do 170 damage
+            for ghost in self.units(GHOST):
+                tag = ghost.tag
+                if tag in self.ghostmove_state: # implies army_ghosts
+                    mypos = ghost.position
+                    state = self.ghostmove_state[tag]
+                    goal = self.ghostmove_goal[tag]
+                    goalreached = self.ghostmove_goalreached[tag]
+                    goaltried = self.ghostmove_goaltried[tag]
+                    hangout = self.ghostmove_hangout[tag]
+                    snipeend = self.ghostmove_snipeend[tag]
+                    last_energy = self.ghostmove_last_energy[tag]
+                    fightgoal = self.ghostmove_fightgoal[tag]
+                    if goalreached:
+                        tolerance = hangout
+                    else:
+                        tolerance = 1
+                    if state in {'move','role','host'}:
+                        it_can_hit_me = False
+                        minsd = 10*10
+                        mytile = self.maptile_of_pos(mypos)
+                        for tile in self.nine[mytile]:
+                            for ene in self.enemies_of_tile[tile]:
+                                enepos = ene.position
+                                sd = self.sdist(mypos, enepos)
+                                if sd < minsd:
+                                    for weapon in ene._weapons:
+                                        if weapon.type in TARGET_GROUND:
+                                            it_can_hit_me = True
+                        if it_can_hit_me:
+                            if state in {'move','role'}:
+                                state = 'host'
+                                ghost(AbilityId.STOP)
+                        else:
+                            if state == 'host':
+                                state = 'rest'
+                    if ghost.energy < min_energy:
+                        if state in {'rest','move'}:
+                            state = 'role' # retreat on low energy
+                            ghost.move(self.loved_pos)
+                    else: # enough energy
+                        if state in {'role','home'}:
+                            state = 'move'
+                            ghost.move(goal)
+                            goalreached = False
+                            goaltried = 0
+                            tolerance = 1
+                        if state in {'rest','move','approach'}:
+                            moveplan = self.nowhere
+                            mytile = self.maptile_of_pos(mypos)
+                            for tile in self.nine[mytile]:
+                                for ene in self.enemies_of_tile[tile]:
+                                    if ene.type_id not in {EGG, LARVA, AUTOTURRET}:
+                                        enepos = ene.position
+                                        if ene.health > 85:  # avoid workers, zerglings
+                                            if ene.type_id in {SENTRY, HIGHTEMPLAR, PHOENIX, ORACLE, MOTHERSHIP,
+                                                               SHIELDBATTERY, GHOST, MEDIVAC, RAVEN, BANSHEE, ORBITALCOMMAND}:
+                                                if self.near(mypos, enepos, 10):  # demanded for emp
+                                                    ghost(AbilityId.EMP_EMP, ene)
+                                                    state = 'snipe'
+                                                    snipeend = self.frame + 4
+                                                    last_energy = ghost.energy
+                                                else:
+                                                    moveplan = enepos.towards(mypos, 9.5)
+                                            elif ene.is_biological: # demanded for snipe
+                                                if self.near(mypos,enepos,10): # demanded for snipe
+                                                    ghost(AbilityId.EFFECT_GHOSTSNIPE,ene)
+                                                    state = 'snipe'
+                                                    snipeend = self.frame + 32
+                                                    last_energy = ghost.energy
+                                                else:
+                                                    moveplan = enepos.towards(mypos,9.5)
+                            if moveplan != self.nowhere:
+                                if state in {'rest','move'}:
+                                    state = 'approach'
+                                    ghost.move(moveplan)
+                                    fightgoal = moveplan
+                    # interrupted snipe
+                    if state == 'snipe': # implies last_energy
+                        if ghost.energy > last_energy + 10:
+                            # interrupted snipe
+                            state = 'rest'
+                        last_energy = ghost.energy
+                    # succeeded snipe
+                    if state == 'snipe': # implies snipeend
+                        if self.frame > snipeend:
+                            # ended snipe
+                            state = 'rest'
+                    # end approach
+                    if state == 'approach': # implies fightgoal
+                        if self.near(mypos,fightgoal,0.5):
+                            state = 'rest'
+                        if tag in self.idles:
+                            state = 'rest'
+                    #                 
+                    if state == 'rest':
+                        if self.near(mypos, goal, tolerance):
+                            goalreached = True
+                        else:
+                            state = 'move'
+                    if state == 'home':
+                        if not self.near(mypos, self.loved_pos, 10):
+                            state = 'role'
+                    if state == 'move':
+                        if self.near(mypos, goal, tolerance):
+                            state = 'rest'
+                        elif tag in self.idles:
+                            ghost.move(goal)
+                            goaltried += 1
+                            if goaltried >= 4:
+                                goalreached = True
+                    if state == 'role': # retreat on low energy
+                        if self.near(mypos, self.loved_pos, 10):
+                            state = 'home'
+                        elif tag in self.idles:
+                            ghost.move(self.loved_pos)
+                    #
+                    #print('debug '+str(tag)+' '+state+' '+str(ghost.weapon_cooldown))
+                    #
+                    self.ghostmove_state[tag] = state
+                    self.ghostmove_goal[tag] = goal
+                    self.ghostmove_goalreached[tag] = goalreached
+                    self.ghostmove_goaltried[tag] = goaltried
+                    self.ghostmove_hangout[tag] = hangout
+                    self.ghostmove_snipeend[tag] = snipeend
+                    self.ghostmove_last_energy[tag] = last_energy
+                    self.ghostmove_fightgoal[tag] = fightgoal
+                    #
 
     def get_nuke_target(self, ghostpos):
         # -> self.nuke_target
@@ -16293,7 +16449,7 @@ class Chaosbot(sc2.BotAI):
                 radio_numbers.add(nr)
         radio_nr = random.choice(tuple(radio_numbers))
         # TO TEST use next line
-        #radio_nr = 22
+        #radio_nr = 43
         for nr in range(0,self.radio_choices):
             self.game_choice.append(nr == radio_nr)
         for nr in range(self.radio_choices,self.game_choices):
