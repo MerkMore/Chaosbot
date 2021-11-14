@@ -181,7 +181,7 @@ class Chaosbot(sc2.BotAI):
     do_slowdown = False
     slowdown_frames = 0 # 5*60*22.4
     slowness = 0.05 # realtime is around 0.05
-    do_funchat = False
+    do_funchat = True
     do_log_success = False
     do_log_bird_history = False
     do_log_fail = False
@@ -538,7 +538,7 @@ class Chaosbot(sc2.BotAI):
     marauder_restpoint = Point2((100,100))
     marauder_retreat = True
     marauder_pf_phase = 0
-    marauder_pf_point = nowhere
+    marauder_pf_spot = nowhere
     mine_shot = {} # the frame a cheese1_mine did shoot
     mine_burried = {} # the frame a mine burried
     #
@@ -842,6 +842,7 @@ class Chaosbot(sc2.BotAI):
     buildandretry = set() # (scvt, building, goal, frame) for tobuildwalk buildings
     trainandretry = set() # (oldbuildingtag, newbuilding, frame) for labs and pfoc
     purse = Cost(0,0) # to reserve the cost for the retry.
+    commandgiven = {} # to distinguish idles -> ordergiven -> orderaccepted
     #
     missing = '' # a string to explain a wait situation
     #
@@ -1021,7 +1022,7 @@ class Chaosbot(sc2.BotAI):
         await self.mules()
         if (self.frame % 3 == 2):
             await self.do_buildandretry()
-            await self.do_trainandretry()
+        await self.do_trainandretry()
         await self.do_pf_rush()
         self.do_cocoon()
         self.do_workerrush()
@@ -1886,8 +1887,8 @@ class Chaosbot(sc2.BotAI):
             self.opening_name = 'stimmed-marauders'
             self.rushopening = True
             self.buildseries_opening = [SUPPLYDEPOT, BARRACKS, REFINERY, SUPPLYDEPOT,
-                                        INFESTEDBARRACKS, INFESTEDBUNKER, INFESTEDBARRACKS, ORBITALCOMMAND,
-                                        BARRACKSTECHLAB, BARRACKSTECHLAB, BARRACKSTECHLAB,
+                                        INFESTEDBARRACKS, INFESTEDBUNKER, INFESTEDBARRACKS, MARINE,
+                                        ORBITALCOMMAND, BARRACKSTECHLAB, BARRACKSTECHLAB, BARRACKSTECHLAB,
                                         STIMPACK, MARAUDER, MARAUDER, MARAUDER, PUNISHERGRENADES]
             for (lab,pos) in self.unthinkable:
                 if lab == BARRACKSTECHLAB:
@@ -2063,8 +2064,9 @@ class Chaosbot(sc2.BotAI):
                                         BARRACKSTECHLAB,BARRACKSTECHLAB,BARRACKSTECHLAB,BARRACKSTECHLAB,
                                         GHOSTACADEMY,REFINERY]
             # marauder_restpoint, marauder_goal
-            self.marauder_restpoint = self.game_info.map_center
-            self.marauder_goal = self.game_info.map_center
+            self.marauder_pf_spot = self.place_around(COMMANDCENTER, self.game_info.map_center)
+            self.marauder_restpoint = self.marauder_pf_spot.towards(self.loved_pos,3)
+            self.marauder_goal = self.marauder_restpoint
             self.natural_bunker()
             # barracks random placing
             bars = 1
@@ -2396,7 +2398,7 @@ class Chaosbot(sc2.BotAI):
         'CantFindCancelOrder', # 214;
         ]
         # chat
-        await self._client.chat_send('Chaosbot version 13 nov 2021, made by MerkMore', team_only=False)
+        await self._client.chat_send('Chaosbot version 14 nov 2021, made by MerkMore', team_only=False)
         await self._client.chat_send('Good luck and have fun, '+self.opponent, team_only=False)
         #
         #layout_if.photo_layout()
@@ -8103,16 +8105,24 @@ class Chaosbot(sc2.BotAI):
         todel = set()
         for items in self.trainandretry:
             (oldbuildingtag, newbuilding, startframe) = items
+            if oldbuildingtag not in self.commandgiven: # init
+                self.commandgiven[oldbuildingtag] = 0
             if (self.frame<startframe+self.patience):
                 for oldbuilding in self.structures:
                     if oldbuilding.tag == oldbuildingtag:
                         if oldbuildingtag in self.idles:
-                            # there we go (or go again)
-                            place = oldbuilding.position
-                            self.log_command(oldbuilding.name + '.train(' + newbuilding.name + ')')
-                            if oldbuilding.train(newbuilding):
-                                self.prepped_to_egg(newbuilding, oldbuilding.type_id, place)
-                                todel.add(items)
+                            if self.frame >= self.commandgiven[oldbuilding.tag] + 6:
+                                # there we go (or go again)
+                                self.log_command(oldbuilding.name + '.train(' + newbuilding.name + ')')
+                                oldbuilding.train(newbuilding)
+                                self.commandgiven[oldbuilding.tag] = self.frame
+                        else: # it does something
+                            if self.frame >= self.commandgiven[oldbuilding.tag] + 6:
+                                if self.frame < self.commandgiven[oldbuilding.tag] + 99:
+                                    # believe it is doing the right thing
+                                    place = oldbuilding.position
+                                    self.prepped_to_egg(newbuilding, oldbuilding.type_id, place)
+                                    todel.add(items)
             else:
                 todel.add(items)
                 self.log_success('In trainandretry we discarded a ' + newbuilding.name)
@@ -8210,7 +8220,7 @@ class Chaosbot(sc2.BotAI):
                             if self.can_pay(newbuilding):
                                 inretry = False
                                 for (obt,bui,fra) in self.trainandretry:
-                                    if bui == newbuilding:
+                                    if (bui == newbuilding) and (obt == oldbuilding.tag):
                                         inretry = True
                                 if not inretry:
                                     cost = self.get_added_cost(newbuilding)
@@ -8996,9 +9006,7 @@ class Chaosbot(sc2.BotAI):
             # a pf in the middle
             if self.we_started_a(PUNISHERGRENADES):
                 if self.marauder_pf_phase == 0:
-                    place = self.place_around(COMMANDCENTER,self.marauder_restpoint)
-                    self.marauder_pf_spot = place
-                    self.throw_at_spot(COMMANDCENTER,place,'marauder_fun')
+                    self.throw_at_spot(COMMANDCENTER,self.marauder_pf_spot,'marauder_fun')
                     self.marauder_pf_phase += 1
                 elif self.marauder_pf_phase == 1:
                     for cc in self.structures(COMMANDCENTER):
@@ -16449,7 +16457,7 @@ class Chaosbot(sc2.BotAI):
                 radio_numbers.add(nr)
         radio_nr = random.choice(tuple(radio_numbers))
         # TO TEST use next line
-        #radio_nr = 43
+        #radio_nr = 19
         for nr in range(0,self.radio_choices):
             self.game_choice.append(nr == radio_nr)
         for nr in range(self.radio_choices,self.game_choices):
