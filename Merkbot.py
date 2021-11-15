@@ -2398,7 +2398,7 @@ class Chaosbot(sc2.BotAI):
         'CantFindCancelOrder', # 214;
         ]
         # chat
-        await self._client.chat_send('Chaosbot version 14 nov 2021, made by MerkMore', team_only=False)
+        await self._client.chat_send('Chaosbot version 15 nov 2021, made by MerkMore', team_only=False)
         await self._client.chat_send('Good luck and have fun, '+self.opponent, team_only=False)
         #
         #layout_if.photo_layout()
@@ -4510,6 +4510,15 @@ class Chaosbot(sc2.BotAI):
                 if (otherbartype == bar.type_id) and (otherpos == pos):
                     dura = otherdura
             self.preps.add((martype, bar.type_id, pos, dura, owner))
+        # prevent double with eggs
+        # de code die bv ambition_of_strt corrigeert is elders.
+        todel = set()
+        for mbpdo in self.preps:
+            (martype,bartype,pos,dura,owner) = mbpdo
+            for (othermartype,otherbartype,otherpos,otherdura) in self.eggs: # calc eggs first
+                if (martype == othermartype) and (pos == otherpos) and (otherdura > self.ambitiondura):
+                    todel.add(mbpdo)
+        self.preps -= todel
         self.log_preps()
 
     # *********************************************************************************************************************
@@ -8107,7 +8116,7 @@ class Chaosbot(sc2.BotAI):
             (oldbuildingtag, newbuilding, startframe) = items
             if oldbuildingtag not in self.commandgiven: # init
                 self.commandgiven[oldbuildingtag] = 0
-            if (self.frame<startframe+self.patience):
+            if (self.frame < startframe + self.patience):
                 for oldbuilding in self.structures:
                     if oldbuilding.tag == oldbuildingtag:
                         if oldbuildingtag in self.idles:
@@ -13138,7 +13147,7 @@ class Chaosbot(sc2.BotAI):
                                             if ene.type_id in {SENTRY, HIGHTEMPLAR, PHOENIX, ORACLE, MOTHERSHIP,
                                                                SHIELDBATTERY, GHOST, MEDIVAC, RAVEN, BANSHEE, ORBITALCOMMAND}:
                                                 if self.near(mypos, enepos, 10):  # demanded for emp
-                                                    ghost(AbilityId.EMP_EMP, ene)
+                                                    ghost(AbilityId.EMP_EMP, ene.position)
                                                     state = 'snipe'
                                                     snipeend = self.frame + 4
                                                     last_energy = ghost.energy
