@@ -182,6 +182,7 @@ class Chaosbot(sc2.BotAI):
     slowdown_frames = 0 # 5*60*22.4
     slowness = 0.05 # realtime is around 0.05
     do_funchat = False
+    do_selfhate = True
     do_log_success = False
     do_log_bird_history = False
     do_log_fail = False
@@ -571,6 +572,8 @@ class Chaosbot(sc2.BotAI):
     #
     funchat_linenr = 0
     funchat_lines = []
+    #
+    selfhate_frame = 99999
     #
     reaper_status = {}
     reaper_focus = nowhere
@@ -1051,6 +1054,7 @@ class Chaosbot(sc2.BotAI):
         self.vulture()
         await self.marine_fun()
         await self.marauder_fun()
+        await self.selfhate()
         await self.win_loss()
         #
         # preparation for next step
@@ -16659,6 +16663,19 @@ class Chaosbot(sc2.BotAI):
                 straight = straight and not tooclose
         return straight
 
+#**************************************
+
+    async def selfhate(self):
+        if self.do_selfhate:
+            if len(self.units) + len(self.structures) < 10:
+                if self.frame >= 22 * 60 * 5:
+                    if self.selfhate_frame == 99999:
+                        await self._client.chat_send('I surrender voluntary under social pressure', team_only=False)
+                        self.selfhate_frame = self.frame + 7 * 22
+                    elif self.frame >= self.selfhate_frame:
+                        zero = 0
+                        quit_game = 1 / zero
+
 #*********************************************************************************************************************
 #   strategy system
 #   a strategy is, per game_choice, a probability to choose "yes".
@@ -16693,6 +16710,9 @@ class Chaosbot(sc2.BotAI):
                         my_max_hea = stru.health
                 if my_max_hea < 456:
                     self.game_result = 'loss'
+            #
+            if self.selfhate_frame < 99999:
+                self.game_result = 'loss'
             # tune strategy
             if self.game_result == 'win':
                 for nr in range(0,self.game_choices):
