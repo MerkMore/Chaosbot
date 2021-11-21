@@ -2,7 +2,7 @@
 # Makes text for building placement
 # appends the output to file "data\placement.txt"
 # author: MerkMore
-# version 19 oct 2021
+# version 16 nov 2021
 from layout_if_py import layout_if
 import random
 from math import sqrt, sin, cos, acos, pi
@@ -73,8 +73,8 @@ class prog:
                 #layout_if.photo_layout() # debug
                 #layout_if.photo_height() # debug
                 self.appendthemap()
-                #layout_if.photo_layout() # debug
-                #layout_if.photo_height() # debug
+                layout_if.photo_layout() # debug
+                layout_if.photo_height() # debug
         if not didsomething:
             self.testing = True
             # using the last self.mapplace
@@ -581,40 +581,29 @@ class prog:
                     text.write('position STARPORT * '+str(alt[0]+1.5)+' '+str(alt[1]+1.5)+'\n')
         #
         # scout
-        # make scout positions just inside the enemy base
+        # make scout positions inside the enemy base
         self.logg('enemybasearea '+str(len(self.enemybasearea)))
-        self.get_edge(self.enemybasearea)
-        outside = self.edgeresult.copy()
-        self.logg('outside '+str(len(outside)))
-        green = set()
-        for square in outside:
-            if self.get_color(square) == 1:
-                green.add(square)
-        outeroutside = outside - green
-        self.logg('outeroutside '+str(len(outeroutside)))
-        self.get_edge(outeroutside)
-        inside = self.edgeresult.copy()
-        inside = inside & self.enemybasearea
-        self.logg('inside '+str(len(inside)))
+        # make alfa, angle of enemyramp relating enemystartsquare
         ramptopsquare = enemyramptop_tobeusedlater
-        radius = self.circledist(ramptopsquare,self.enemystartsquare)
-        self.logg('radius '+str(radius))
-        thecos = (ramptopsquare[0]-self.enemystartsquare[0])/radius
-        thesin = (ramptopsquare[1]-self.enemystartsquare[1])/radius
+        tsdist = self.circledist(ramptopsquare,self.enemystartsquare)
+        thecos = (ramptopsquare[0]-self.enemystartsquare[0])/tsdist
+        thesin = (ramptopsquare[1]-self.enemystartsquare[1])/tsdist
         if thesin > 0:
             alfa = acos(thecos)
         else:
             alfa = 2*pi - acos(thecos)
         # make 15 points around enemystartsquare
+        radius = 12
         for nr in range(0,15):
             beta = alfa + nr * 2*pi/15
-            circlepoint = (self.enemystartsquare[0] + cos(beta)*radius*1.3 , self.enemystartsquare[1] + sin(beta)*radius*1.3)
+            circlepoint = (self.enemystartsquare[0] + cos(beta)*radius , self.enemystartsquare[1] + sin(beta)*radius)
             bestsdist = 99999
-            for square in inside:
+            for square in self.enemybasearea:
                 sd = self.sdist(square,circlepoint)
                 if sd < bestsdist:
                     bestsquare = square
                     bestsdist = sd
+            self.logg('circledeviation ' + str(bestsdist))
             text.write('position SCOUT '+str(bestsquare[0]+0.5)+' '+str(bestsquare[1]+0.5)+'\n')
         # reapers
         # find reaperjumpspots near the self.enemybasearea

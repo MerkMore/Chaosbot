@@ -181,7 +181,7 @@ class Chaosbot(sc2.BotAI):
     do_slowdown = False
     slowdown_frames = 0 # 5*60*22.4
     slowness = 0.05 # realtime is around 0.05
-    do_funchat = True
+    do_funchat = False
     do_log_success = False
     do_log_bird_history = False
     do_log_fail = False
@@ -310,8 +310,8 @@ class Chaosbot(sc2.BotAI):
     map_top = 0
     #
     flee_circle = []
-    opponent = '' # opponent_id on ladder, else opponent_species
-    opponent_species = '' # Zerg/Terran/Protoss/Random
+    opponent = '' # opponent_id on ladder, else enemy_species
+    enemy_species = '' # Zerg/Terran/Protoss/Random
     #
     maxhealth = {}  # per unittype the health_max
     #
@@ -661,7 +661,8 @@ class Chaosbot(sc2.BotAI):
     workerrushmayfleeframe = 1800 # 1800
     workerrushstopframe = 4500 # 4500
     healthybound = 40.5
-    rushrepairs = set()  # of (repairer_tag,reparee_tag)
+    rushrepairs = set()  # of (repairer_tag,reparee_tag) No double repairer_tag.
+    rushrepairers = set()  # of repairer_tag
     workerrushstate = 'tobe' # tobe/busy/ended
     workerback = set() # of tag of worker moving back, trying to stack.
     stackphase = 'A'
@@ -680,6 +681,8 @@ class Chaosbot(sc2.BotAI):
     wait_of_scv = {} # for cooling some frames
     nuke_ghosts = set()
     army_ghosts = set()
+    rush_ghosts = set()
+    ghost_requests = [] # 'nuke_ghost'/'army_ghost'/'rush_ghost'  if you want one
     ghostmove_last_energy = {} # per ghosttag a number
     ghostmove_snipeend = {} # per ghosttag the frame a snipe will end
     ghostmove_state = {} # per ghosttag a text
@@ -688,6 +691,14 @@ class Chaosbot(sc2.BotAI):
     ghostmove_goalreached = {} # per ghosttag a bool
     ghostmove_goaltried = {} # count move commandos
     ghostmove_hangout = {} # tolerance after reaching goal
+    rushghost_phase = 'A'
+    rushghost_sp = nowhere # the starport position
+    rushghost_frame = 0 # to timeseparate phases
+    rushghost_toemp = notag # one of the ghosts
+    rushghost_tonuke = notag # one of the ghosts
+    rushghost_bunker = True
+    rushghost_scvs = set() # the nukerush scvs
+    rushghost_retired = set() # some ghosts
     platoons = [] # of set of scvtag
     platooncenters = [] # of Point2
     platoonenemies = [] # of set of workertag
@@ -840,7 +851,8 @@ class Chaosbot(sc2.BotAI):
     #
     # next structures are to retry when stopped by mappart occupied
     buildandretry = set() # (scvt, building, goal, frame) for tobuildwalk buildings
-    trainandretry = set() # (oldbuildingtag, newbuilding, frame) for labs and pfoc
+    growandretry = set() # (oldbuildingtag, newbuilding, frame) for labs and pfoc
+    trainandretry = set() # (cradletag, unitupgrade, frame) for armyunit, scv or upgrade
     purse = Cost(0,0) # to reserve the cost for the retry.
     commandgiven = {} # to distinguish idles -> ordergiven -> orderaccepted
     #
@@ -873,7 +885,7 @@ class Chaosbot(sc2.BotAI):
     strategy_oppi = [] # opponent_id, to pair on stratline with strategy
     stratline = 0 # which line in strategy 
     game_choice = []
-    radio_choices = 44
+    radio_choices = 45
     game_choices = 62
     game_result = 'doubt'
     opening_name = 'no'
@@ -1022,11 +1034,14 @@ class Chaosbot(sc2.BotAI):
         await self.mules()
         if (self.frame % 3 == 2):
             await self.do_buildandretry()
+        await self.do_growandretry()
         await self.do_trainandretry()
         await self.do_pf_rush()
         self.do_cocoon()
         self.do_workerrush()
         self.do_banshees()
+        self.handle_ghost_requests()
+        await self.do_rush_ghosts()
         self.do_reaper()
         await self.catch_a_bug()
         self.blocker()
@@ -1122,7 +1137,7 @@ class Chaosbot(sc2.BotAI):
         self.init_bcenemy(SPORECRAWLER, 60, 6)
         self.init_bcenemy(PHOTONCANNON, 60, 6)
         self.init_bcenemy(INFESTOR, 40, 6)
-        if self.enemy_race != Race.Zerg:
+        if self.enemy_species != 'zerg':
             self.init_bcenemy(BATTLECRUISER, 50, 3)
             self.init_bcenemy(VIKINGFIGHTER, 35, 5)
             self.init_bcenemy(MISSILETURRET, 60, 6)
@@ -1502,19 +1517,19 @@ class Chaosbot(sc2.BotAI):
         #
         self.init_nine()
         #
-        # opponent_species
+        # enemy_species
         if self.enemy_race == Race.Zerg:
-            self.opponent_species = 'zerg'
+            self.enemy_species = 'zerg'
         elif self.enemy_race == Race.Terran:
-            self.opponent_species = 'terran'
+            self.enemy_species = 'terran'
         elif self.enemy_race == Race.Protoss:
-            self.opponent_species = 'protoss'
+            self.enemy_species = 'protoss'
         else:
-            self.opponent_species = 'someone'
+            self.enemy_species = 'someone'
         # opponent
         self.opponent = self.opponent_id
         if self.opponent is None:
-            self.opponent = self.opponent_species
+            self.opponent = self.enemy_species
         #
         self.enemy_pos = self.enemy_start_locations[0].position
         self.lefttarget = self.enemy_pos
@@ -1532,10 +1547,10 @@ class Chaosbot(sc2.BotAI):
         self.air_strength_hist.add((MISSILETURRET, 83.49))
         self.ground_strength_hist.add((PLANETARYFORTRESS, 173.21))
         #
-        if self.enemy_race == Race.Zerg:
+        if self.enemy_species == 'zerg':
             self.enemy_structureinfo.add((HATCHERY,self.enemy_pos))
             self.enemy_structureinfo_plus.add((HATCHERY,self.enemy_pos,0))
-        elif self.enemy_race == Race.Protoss:
+        elif self.enemy_species == 'protoss':
             self.enemy_structureinfo.add((NEXUS, self.enemy_pos))
             self.enemy_structureinfo_plus.add((NEXUS, self.enemy_pos,0))
         else: # random or terran
@@ -1710,7 +1725,7 @@ class Chaosbot(sc2.BotAI):
         self.chosenplaces.append((SUPPLYDEPOT,self.wall_depot1_pos))
         # INFESTEDCOCOON is sometimes not in placement.txt, init it here
         if self.cheese3_cocoon_pos == self.nowhere:
-            self.cheese3_cocoon_pos = self.init_cheese_position(self.enemynaturalchoke_pos,35,INFESTEDCOCOON)
+            self.cheese3_cocoon_pos = self.init_cheese_position(self.enemynaturalchoke_pos,35,45,INFESTEDCOCOON)
         self.erase_layout(INFESTEDCOCOON,self.cheese3_cocoon_pos)
         # nobuild a tankpath to the center
         for tile in self.nobuild_path:
@@ -1980,12 +1995,12 @@ class Chaosbot(sc2.BotAI):
             self.rushopening = True
             self.startworkerrushers = 9 # 9
             self.buildseries_opening = [SUPPLYDEPOT, BARRACKS, MARINE, BUNKER, MARINE]
-            if (self.enemy_race == Race.Zerg):
+            if (self.enemy_species == 'zerg'):
                 bunker_raw_pos = self.cheese3_cocoon_pos
             else:
                 bunker_raw_pos = self.enemynatural_pos.towards(self.enemynaturalchoke_pos,3)
-            bunker_pos = self.init_cheese_position(bunker_raw_pos, 0, BUNKER)
-            barracks_pos = self.init_cheese_position(self.enemythird_pos, 7, BARRACKS)
+            bunker_pos = self.init_cheese_position(bunker_raw_pos, 0, 20, BUNKER)
+            barracks_pos = self.init_cheese_position(self.enemythird_pos, 7, 17, BARRACKS)
             self.chosenplaces.insert(0, (BARRACKS, barracks_pos))
             self.chosenplaces.append((BUNKER, bunker_pos))
             self.wished_marines_per_bunker = 3
@@ -2038,10 +2053,10 @@ class Chaosbot(sc2.BotAI):
             self.opening_name = 'immediate_fight'
             self.rushopening = True
             self.buildseries_opening = [SUPPLYDEPOT, BARRACKS, MARINE, BUNKER]
-            if self.enemy_race == Race.Zerg:
-                bunkerpos = self.init_cheese_position(self.enemyramp_pos, 7, BUNKER)
+            if self.enemy_species == 'zerg':
+                bunkerpos = self.init_cheese_position(self.enemyramp_pos, 7, 17, BUNKER)
             else:
-                bunkerpos = self.init_cheese_position(self.enemy_pos, 79, BUNKER)
+                bunkerpos = self.init_cheese_position(self.enemy_pos, 79, 79, BUNKER)
             self.chosenplaces.append((BUNKER, bunkerpos))
         elif self.game_choice[42]:
             self.opening_name = 'banshee_flock'
@@ -2078,8 +2093,29 @@ class Chaosbot(sc2.BotAI):
             self.production_pause_finish.add((SUPPLYDEPOT, 1, ORBITALCOMMAND, 1))
             self.production_pause_finish.add((REFINERY, 0, FACTORY, 1))
             self.opening_create = {(MARAUDER,48),(GHOST,5)}
+            self.ghost_requests.append('army_ghost')
+            self.ghost_requests.append('army_ghost')
+            self.ghost_requests.append('army_ghost')
+            self.ghost_requests.append('army_ghost')
+            self.ghost_requests.append('army_ghost')
             self.supply_rate = 0.26
-            # radio_choices = 44
+        elif self.game_choice[44]:
+            self.opening_name = 'nukerush'
+            self.rushopening = True
+            self.buildseries_opening = [SUPPLYDEPOT, REFINERY, BARRACKS, ORBITALCOMMAND,
+                                    MARINE, BUNKER, GHOSTACADEMY, REFINERY, FACTORY, BARRACKSTECHLAB,
+                                    PERSONALCLOAKING, GHOST,
+                                    STARPORT,GHOST, NUKESILONOVA,MEDIVAC]
+            self.natural_bunker()
+            self.ghost_requests.append('rush_ghost')
+            self.ghost_requests.append('rush_ghost')
+            for (lab,pos) in self.unthinkable:
+                if lab == BARRACKSTECHLAB:
+                    barpos = self.homenaturalchoke_pos
+                    barpos = self.place_around(BARRACKS, barpos)
+                    self.chosenplaces.insert(0,(BARRACKS, barpos))
+                    self.write_layout(BARRACKS, barpos)
+            # radio_choices = 45
         self.log_success('OPENING: '+self.opening_name)
         #
         for (kind,am) in self.opening_create:
@@ -2398,7 +2434,7 @@ class Chaosbot(sc2.BotAI):
         'CantFindCancelOrder', # 214;
         ]
         # chat
-        await self._client.chat_send('Chaosbot version 15 nov 2021, made by MerkMore', team_only=False)
+        await self._client.chat_send('Chaosbot version 21 nov 2021, made by MerkMore', team_only=False)
         await self._client.chat_send('Good luck and have fun, '+self.opponent, team_only=False)
         #
         #layout_if.photo_layout()
@@ -2545,6 +2581,8 @@ class Chaosbot(sc2.BotAI):
         bunkerplace = self.place_around(BUNKER, bunkerplace)
         bunker_if.hiding_spot = bunkerplace.towards(self.homenatural_pos, 3)
         self.chosenplaces.append((BUNKER, bunkerplace))
+        self.write_layout(BUNKER, bunkerplace)
+
 
     def init_marine_opening(self, nbases):
         # 1 <= nbases <= 6
@@ -2926,20 +2964,25 @@ class Chaosbot(sc2.BotAI):
     def init_expected_order(self, job, abil):
         self.expected_orders.add((job,abil))
 
-    def init_cheese_position(self, anchor,good_sdist,building) -> Point2:
+    def init_cheese_position(self, anchor,good_sdist,max_sdist,building) -> Point2:
+        # to prevent some bugged placement: do not place higher than anchor.
+        maxheight = self.get_height(anchor)
         besttry = 99999
         found_spot = self.nowhere
-        estimate = anchor.towards(self.loved_pos,sqrt(good_sdist))
+        estimate = anchor.towards(self.game_info.map_center,sqrt(good_sdist))
         estimate = self.put_on_the_grid(building, estimate)
         for dx in range(-20, 20):
             for dy in range(-20, 20):
                 maypos = Point2((estimate.x + dx, estimate.y + dy))
                 if self.check_layout(building, maypos):
-                    sd = self.sdist(anchor, maypos)
-                    try0 = (sd - good_sdist)*(sd-good_sdist) + self.circledist(maypos,self.loved_pos)
-                    if try0 < besttry:
-                        found_spot = maypos
-                        besttry = try0
+                    mayheight = self.get_height(maypos)
+                    if mayheight <= maxheight:
+                        sd = self.sdist(anchor, maypos)
+                        if sd < max_sdist:
+                            try0 = (sd - good_sdist)*(sd-good_sdist) + self.circledist(maypos,self.game_info.map_center)
+                            if try0 < besttry:
+                                found_spot = maypos
+                                besttry = try0
         if found_spot != self.nowhere:
             self.write_layout(building,found_spot)
         return found_spot
@@ -2956,16 +2999,12 @@ class Chaosbot(sc2.BotAI):
         # fun placement of barracks, bunker, commandcenter, planetaryfortress
         self.write_layout(COMMANDCENTER,self.enemynatural_pos)
         planpos = self.enemynatural_pos.towards(self.enemynaturalchoke_pos,10)
-        self.cheese3_landing_pos = self.init_cheese_position(planpos,1,COMMANDCENTER)
-        sd = 38
-        self.cheese3_bunker_pos = self.init_cheese_position(self.cheese3_landing_pos,sd,BUNKER)
-        while self.near(self.cheese3_bunker_pos,self.enemynatural_pos,12):
-            sd += 30
-            self.cheese3_bunker_pos = self.init_cheese_position(self.cheese3_landing_pos, sd, BUNKER)
-        self.cheese3_barracks_pos = self.init_cheese_position(self.cheese3_bunker_pos,11,ARMORY) # 11 BARRACKS nolab
-        self.cheese3_cc_pos = self.init_cheese_position(self.cheese3_barracks_pos,28,COMMANDCENTER) # 28
-        self.cheese3_prison_pos = self.init_cheese_position(self.cheese3_bunker_pos,12,MISSILETURRET) # 12
-        bunker_if.hiding_spot = self.init_cheese_position(self.cheese3_bunker_pos,70,MISSILETURRET) # 12
+        self.cheese3_landing_pos = self.init_cheese_position(planpos,1,20,COMMANDCENTER)
+        self.cheese3_bunker_pos = self.init_cheese_position(self.cheese3_landing_pos,66,66,BUNKER)
+        self.cheese3_barracks_pos = self.init_cheese_position(self.enemynaturalchoke_pos,21,41,ARMORY) # BARRACKS nolab
+        self.cheese3_cc_pos = self.init_cheese_position(self.cheese3_barracks_pos,28,28,COMMANDCENTER)
+        self.cheese3_prison_pos = self.init_cheese_position(self.cheese3_bunker_pos,12,22,MISSILETURRET)
+        bunker_if.hiding_spot = self.init_cheese_position(self.cheese3_bunker_pos,50,50,MISSILETURRET)
         # erase
         self.erase_layout(COMMANDCENTER,self.enemynatural_pos)
         self.erase_layout(COMMANDCENTER,self.cheese3_landing_pos)
@@ -3040,9 +3079,9 @@ class Chaosbot(sc2.BotAI):
         facpos = self.max25_around(around)
         self.chosenplaces.append((FACTORY, facpos))
         self.write_layout(FACTORY, facpos)
-        pos = self.init_cheese_position(barpos, 3, STARPORT)
+        pos = self.init_cheese_position(barpos, 3, 20, STARPORT)
         self.chosenplaces.append((STARPORT, pos))
-        pos = self.init_cheese_position(facpos, 3, STARPORT)
+        pos = self.init_cheese_position(facpos, 3, 20, STARPORT)
         self.chosenplaces.append((STARPORT, pos))
 
     def init_liberator_spots(self):
@@ -3055,9 +3094,9 @@ class Chaosbot(sc2.BotAI):
 
     def init_reapers(self):
         if self.reaper_bunker1_pos == self.nowhere:
-            self.reaper_bunker1_pos = self.init_cheese_position(self.enemynatural_pos, 79, BUNKER)
+            self.reaper_bunker1_pos = self.init_cheese_position(self.enemynatural_pos, 79, 99, BUNKER)
         if self.reaper_bunker2_pos == self.nowhere:
-            self.reaper_bunker2_pos = self.init_cheese_position(self.enemynatural_pos, 200, BUNKER)
+            self.reaper_bunker2_pos = self.init_cheese_position(self.enemynatural_pos, 200, 300, BUNKER)
         self.chosenplaces.append((BUNKER,self.reaper_bunker1_pos))
         self.chosenplaces.append((BUNKER,self.reaper_bunker2_pos))
         self.chosenplaces.insert(0,(BARRACKS,self.reaper_barracks_pos))
@@ -3083,9 +3122,9 @@ class Chaosbot(sc2.BotAI):
 
 
     def init_marauders(self):
-        bar1_pos = self.init_cheese_position(self.enemythird_pos,200,BARRACKS)
-        bar2_pos = self.init_cheese_position(bar1_pos,1,BARRACKS)
-        bun_pos = self.init_cheese_position(bar1_pos,1,BUNKER)
+        bar1_pos = self.init_cheese_position(self.enemythird_pos,200,300,BARRACKS)
+        bar2_pos = self.init_cheese_position(bar1_pos,1,30,BARRACKS)
+        bun_pos = self.init_cheese_position(bar1_pos,1,30,BUNKER)
         self.chosenplaces.append((INFESTEDBARRACKS,bar1_pos))
         self.chosenplaces.append((INFESTEDBARRACKS,bar2_pos))
         self.chosenplaces.append((INFESTEDBUNKER,bun_pos))
@@ -3286,6 +3325,9 @@ class Chaosbot(sc2.BotAI):
         else:
             return 99999
 
+    def get_height(self,point) -> int:
+        return self.read_height(round(point.x),round(point.y))
+
     def put_on_the_grid(self,struc,place) -> Point2:
         if struc in self.all_structures:
             siz = self.size_of_structure[struc]
@@ -3408,12 +3450,22 @@ class Chaosbot(sc2.BotAI):
                 for vakx in range(round(x-siz/2),round(x+siz/2)):
                     for vaky in range(round(y-siz/2),round(y+siz/2)):
                         placable = placable and (self.read_layout(vakx,vaky) == mustbecolor)
-            if struc in [COMMANDCENTER,ORBITALCOMMAND]:
+            if struc in [COMMANDCENTER,ORBITALCOMMAND,MAINCELLBLOCK]:
                 # can not be placed close to a geyser or mineral
                 siz = 9
                 for vakx in range(round(x - siz / 2), round(x + siz / 2)):
                     for vaky in range(round(y - siz / 2), round(y + siz / 2)):
                         placable = placable and (self.read_layout(vakx,vaky) != 1)
+                sizx = 11
+                sizy = 5
+                for vakx in range(round(x - sizx / 2), round(x + sizx / 2)):
+                    for vaky in range(round(y - sizy / 2), round(y + sizy / 2)):
+                        placable = placable and (self.read_layout(vakx, vaky) != 1)
+                sizx = 5
+                sizy = 11
+                for vakx in range(round(x - sizx / 2), round(x + sizx / 2)):
+                    for vaky in range(round(y - sizy / 2), round(y + sizy / 2)):
+                        placable = placable and (self.read_layout(vakx, vaky) != 1)
         return placable
 
     def nobuild_tile(self,sq):
@@ -3969,13 +4021,34 @@ class Chaosbot(sc2.BotAI):
                 else:
                     allow = (parallel < 2)
                 # waitfree throws:
-                if thing not in self.all_structures_tobuildwalk:
+                if thing in self.all_structures_tobuildwalk:
+                    if self.can_pay(thing):
+                        allow = True
+                        # please do not ask for more than you want
+                else: # lab, army etc
                     if self.can_pay(thing):
                         crad = self.cradle_of_thing(thing)
                         for stru in self.structures(crad).ready:
                             if stru.tag in self.idles:
                                 allow = True
         return allow
+
+    def add_purse(self,thing):
+        cost = self.get_added_cost(thing)
+        self.purse.minerals += cost.minerals
+        self.purse.vespene += cost.vespene
+
+    def del_purse(self,thing):
+        cost = self.get_added_cost(thing)
+        self.purse.minerals -= cost.minerals
+        self.purse.vespene -= cost.vespene
+
+    def in_purse(self,thing) -> bool:
+        ok = True
+        cost = self.get_added_cost(thing)
+        ok = ok and (self.purse.minerals >= cost.minerals)
+        ok = ok and (self.purse.vespene >= cost.vespene)
+        return ok
 
     def can_pay(self,thing) -> bool:
         # purse contains a small amount for max self.patience frames
@@ -4387,11 +4460,11 @@ class Chaosbot(sc2.BotAI):
         for unt in self.units(SCV):
             pos = unt.position
             self.birds.add((SCV,pos))
-        # lowerbound for the amount of nukes-in-silo, misses if academy is upgrading
+        # lowerbound for the amount of nukes-in-silo, misses e.g. if academy is upgrading
         for ga in self.structures(GHOSTACADEMY).ready:
             if ga.tag in self.idles:
                 if self.can_pay(NUKESILONOVA):
-                    if self.we_finished_a(FACTORY):
+                    if self.check_techtree(NUKESILONOVA):
                         abilities = (await self.get_available_abilities([ga]))[0]
                         if AbilityId.BUILD_NUKE not in abilities:
                             self.birds.add((NUKESILONOVA,ga.position))
@@ -6105,7 +6178,7 @@ class Chaosbot(sc2.BotAI):
                 new_job_of_scvt[scvt] = self.job_of_scvt[scvt]
             elif scvt == self.cheese1_scv_tag:
                 new_job_of_scvt[scvt] = 'cheeser'
-                self.log_workers('cheeser came out of the bunker '+self.name(scvt))
+                self.log_workers('cheeser came out of bunker'+self.name(scvt))
             else:
                 new_job_of_scvt[scvt] = 'idler'
                 self.log_workers('had no job, now is idler '+self.name(scvt))
@@ -6322,7 +6395,7 @@ class Chaosbot(sc2.BotAI):
                 self.throw_anywhere(BARRACKS,'build_minima')
         if self.allow_throw(REFINERY):
             if (not self.we_started_a(REFINERY)):
-                if self.workerrushstate != 'busy':
+                if self.workerrushstate != 'busy': # exception
                     if self.opening_name.find('marine-1') < 0: # exception
                         self.throw_anywhere(REFINERY,'build_minima')
         if self.allow_throw(ENGINEERINGBAY):
@@ -6937,23 +7010,23 @@ class Chaosbot(sc2.BotAI):
                         donow = False
                         self.log_success('In thoughts ' + ow + ' already put a ' + thing.name + ' ' + self.txt(place))
                 # delay walking to a buildingsite during workerrush
-                if self.opening_name == 'immediate_fight':
-                    if (self.workerrushstate != 'ended'):
+                if (self.workerrushstate == 'tobe'):
+                    if self.opening_name.find('workerrush') >= 0:
+                        donow = False
+                        self.log_success('buildorder delay because of workerrush')
+                elif (self.workerrushstate == 'busy'):
+                    if (self.opening_name == 'immediate_fight'):
+                        donow = False
+                        self.log_success('buildorder delay because of workerrush')
+                    elif (self.opening_name == 'workerrush-trans'):
+                        pass
+                    elif (self.opening_name == 'workerrush-late'):
                         if thing != SUPPLYDEPOT:
                             donow = False
                             self.log_success('buildorder delay because of workerrush')
-                if self.opening_name.find('workerrush') >= 0:
-                    if (self.workerrushstate != 'ended'):
-                        if (self.opening_name == 'workerrush-trans'):
-                            pass
-                        elif (thing == SUPPLYDEPOT) and (self.opening_name == 'workerrush-late'):
-                            pass
-                        else:
-                            donow = False
-                            self.log_success('buildorder delay because of workerrush')
-                if (self.workerrushstate == 'busy'):
-                    donow = False
-                    self.log_success('buildorder delay because of workerrush')
+                    elif self.opening_name.find('workerrush') >= 0:
+                        donow = False
+                        self.log_success('buildorder delay because of workerrush')
                 # delay on low miners
                 if self.count_of_job['mimminer'] < 5:
                     donow = False
@@ -7322,7 +7395,6 @@ class Chaosbot(sc2.BotAI):
             if foundplace:
                 self.throw_at_spot(thing,place,owner)
 
-
     async def throw_advance(self):
         # push throwspots into thought
         nr = 0
@@ -7386,7 +7458,7 @@ class Chaosbot(sc2.BotAI):
                     if (thing == kind) and (self.game_phase == 'opening'):
                         doitnow = True
                 if (ow in {'marine_fun','do_cocoon','do_banshees','urgent_ocs','bunkercheese1',
-                           'marauder_fun','do_pf_rush','cheese3_internals'}):
+                           'marauder_fun','do_pf_rush','cheese3_internals','do_rush_ghosts'}):
                     doitnow = True
                 if doitnow:
                     if thing in self.all_structures_tobuildwalk:
@@ -7657,52 +7729,60 @@ class Chaosbot(sc2.BotAI):
                                                     units_todo -= 1
         else: # normal
             if ('army' in self.good_plans):
-                # supply ghost+raven = 4; fill to 196
-                if self.supply_used < 190:
-                    vikings = 0
-                    for kind in self.enemy_count:
-                        if (kind in self.viking_targets):
-                            vikings += 1.5 * self.enemy_count[kind]
-                    #
-                    if self.allow_throw(BANSHEE):
-                        if self.we_started_amount(BANSHEE) < 2:
-                            flyingdetector = False
-                            for det in {OVERSEER,OBSERVER,RAVEN}:
-                                if det in self.enemy_count:
-                                    flyingdetector = True
-                            if not flyingdetector:
-                                self.throw_anywhere(BANSHEE, 'army_adlib')
-                    if self.allow_throw(BATTLECRUISER):
-                        self.throw_anywhere(BATTLECRUISER, 'army_adlib')
-                    if self.allow_throw(RAVEN):
-                        if self.we_started_amount(RAVEN) < 3:
-                            self.throw_anywhere(RAVEN, 'army_adlib')
-                    if self.allow_throw(VIKINGFIGHTER):
-                        if self.we_started_amount(VIKINGFIGHTER) < vikings:
-                            self.throw_anywhere(VIKINGFIGHTER, 'army_adlib')
-                    if self.allow_throw(SIEGETANK):
-                        self.throw_anywhere(SIEGETANK, 'army_adlib')
-                    if self.allow_throw(WIDOWMINE):
-                        self.throw_anywhere(WIDOWMINE, 'army_adlib')
-                    if self.allow_throw(MARAUDER):
-                        self.throw_anywhere(MARAUDER, 'army_adlib')
-                    if self.allow_throw(CYCLONE):
-                        if self.we_started_amount(CYCLONE) < 4:
-                            self.throw_anywhere(CYCLONE, 'army_adlib')
-                    if self.allow_throw(MARINE):
-                        self.throw_anywhere(MARINE, 'army_adlib')
-                elif self.supply_used == 190:
-                    # last bc
-                    if self.allow_throw(BATTLECRUISER):
-                        self.throw_anywhere(BATTLECRUISER, 'army_adlib')
-                elif self.supply_used <= 198:
-                    # ghost, raven
-                    if self.allow_throw(RAVEN):
-                        if self.we_started_amount(RAVEN) == 0:
-                            self.throw_anywhere(RAVEN, 'army_adlib')
-                    elif self.allow_throw(GHOST):
-                        if self.we_started_amount(GHOST) == 0:
-                            self.throw_anywhere(GHOST, 'army_adlib')
+                # do not interfere with opening
+                goahead = True
+                if self.game_phase == 'opening':
+                    for (item, goal, status) in self.buildorder_exe:
+                        if item in self.all_army:
+                            goahead = False
+                if goahead:
+                    # supply ghost+raven = 4; fill to 196
+                    if self.supply_used < 190:
+                        vikings = 0
+                        for kind in self.enemy_count:
+                            if (kind in self.viking_targets):
+                                vikings += 1.5 * self.enemy_count[kind]
+                        #
+                        if self.allow_throw(BATTLECRUISER):
+                            self.throw_anywhere(BATTLECRUISER, 'army_adlib')
+                        if self.allow_throw(BANSHEE):
+                            if self.we_started_amount(BANSHEE) < 2:
+                                flyingdetector = False
+                                for det in {OVERSEER,OBSERVER,RAVEN}:
+                                    if det in self.enemy_count:
+                                        flyingdetector = True
+                                if not flyingdetector:
+                                    self.throw_anywhere(BANSHEE, 'army_adlib')
+                        if self.allow_throw(RAVEN):
+                            if self.we_started_amount(RAVEN) < 3:
+                                if self.we_started_amount(BATTLECRUISER) > self.we_started_amount(RAVEN):
+                                    self.throw_anywhere(RAVEN, 'army_adlib')
+                        if self.allow_throw(VIKINGFIGHTER):
+                            if self.we_started_amount(VIKINGFIGHTER) < vikings:
+                                self.throw_anywhere(VIKINGFIGHTER, 'army_adlib')
+                        if self.allow_throw(SIEGETANK):
+                            self.throw_anywhere(SIEGETANK, 'army_adlib')
+                        if self.allow_throw(WIDOWMINE):
+                            self.throw_anywhere(WIDOWMINE, 'army_adlib')
+                        if self.allow_throw(MARAUDER):
+                            self.throw_anywhere(MARAUDER, 'army_adlib')
+                        if self.allow_throw(CYCLONE):
+                            if self.we_started_amount(CYCLONE) < 4:
+                                self.throw_anywhere(CYCLONE, 'army_adlib')
+                        if self.allow_throw(MARINE):
+                            self.throw_anywhere(MARINE, 'army_adlib')
+                    elif self.supply_used == 190:
+                        # last bc
+                        if self.allow_throw(BATTLECRUISER):
+                            self.throw_anywhere(BATTLECRUISER, 'army_adlib')
+                    elif self.supply_used <= 198:
+                        # ghost, raven
+                        if self.allow_throw(RAVEN):
+                            if self.we_started_amount(RAVEN) == 0:
+                                self.throw_anywhere(RAVEN, 'army_adlib')
+                        elif self.allow_throw(GHOST):
+                            if self.we_started_amount(GHOST) == 0:
+                                self.throw_anywhere(GHOST, 'army_adlib')
 
 
     def calc_free_normal_basepositions(self):
@@ -8105,14 +8185,49 @@ class Chaosbot(sc2.BotAI):
                             self.throw_anywhere(building,'do_buildandretry')
         self.buildandretry -= todel
         for (scvt, building, goal, startframe) in todel:
-            cost = self.get_added_cost(building)
-            self.purse -= cost
-
+            self.del_purse(building)
 
     async def do_trainandretry(self):
-        # all is ready to start training a pfoc or lab. But sometimes the lab command fails.
+        # all is ready to start training a armyunit, scv or upgrade. But sometimes the command fails.
         todel = set()
         for items in self.trainandretry:
+            (cradletag, unitupgrade, startframe) = items
+            if cradletag not in self.commandgiven: # init
+                self.commandgiven[cradletag] = 0
+            if (self.frame < startframe + self.patience):
+                for cradle in self.structures:
+                    if cradle.tag == cradletag:
+                        if cradletag in self.idles:
+                            if self.frame >= self.commandgiven[cradle.tag] + 6:
+                                # there we go (or go again)
+                                self.log_command(cradle.name + '.train(' + unitupgrade.name + ')')
+                                if unitupgrade in self.all_upgrades:
+                                    await self.do_upgrade(unitupgrade, cradle.position)
+                                elif unitupgrade == NUKESILONOVA:
+                                    cradle(AbilityId.BUILD_NUKE)
+                                else:
+                                    cradle.train(unitupgrade)
+                                self.commandgiven[cradle.tag] = self.frame
+                        else: # it does something
+                            if self.frame >= self.commandgiven[cradle.tag] + 6:
+                                if self.frame < self.commandgiven[cradle.tag] + 99:
+                                    # believe it is doing the right thing
+                                    place = cradle.position
+                                    self.prepped_to_egg(unitupgrade, cradle.type_id, place)
+                                    todel.add(items)
+            else:
+                todel.add(items)
+                self.log_success('In trainandretry we discarded a ' + unitupgrade.name)
+        self.trainandretry -= todel
+        for (cradletag, unitupgrade, startframe) in todel:
+            self.del_purse(unitupgrade)
+            if cradletag in self.gym_of_strt: # it could e.g. be killed
+                del self.gym_of_strt[cradletag]
+
+    async def do_growandretry(self):
+        # all is ready to start growing a pfoc or lab. But sometimes the lab command fails.
+        todel = set()
+        for items in self.growandretry:
             (oldbuildingtag, newbuilding, startframe) = items
             if oldbuildingtag not in self.commandgiven: # init
                 self.commandgiven[oldbuildingtag] = 0
@@ -8122,7 +8237,7 @@ class Chaosbot(sc2.BotAI):
                         if oldbuildingtag in self.idles:
                             if self.frame >= self.commandgiven[oldbuilding.tag] + 6:
                                 # there we go (or go again)
-                                self.log_command(oldbuilding.name + '.train(' + newbuilding.name + ')')
+                                self.log_command(oldbuilding.name + '.grow(' + newbuilding.name + ')')
                                 oldbuilding.train(newbuilding)
                                 self.commandgiven[oldbuilding.tag] = self.frame
                         else: # it does something
@@ -8134,11 +8249,10 @@ class Chaosbot(sc2.BotAI):
                                     todel.add(items)
             else:
                 todel.add(items)
-                self.log_success('In trainandretry we discarded a ' + newbuilding.name)
-        self.trainandretry -= todel
+                self.log_success('In growandretry we discarded a ' + newbuilding.name)
+        self.growandretry -= todel
         for (oldbuildingtag, newbuilding, startframe) in todel:
-            cost = self.get_added_cost(newbuilding)
-            self.purse -= cost
+            self.del_purse(newbuilding)
             if oldbuildingtag in self.ambition_of_strt: # it could e.g. be killed
                 del self.ambition_of_strt[oldbuildingtag]
 
@@ -8204,8 +8318,7 @@ class Chaosbot(sc2.BotAI):
                                         if self.near(scv.position,goal,3):
                                             self.promote(scv,'fencer') # prevents repeat
                                             self.log_workers('fencing '+building.name+' '+self.name(scvt))
-                                            cost = self.get_added_cost(building)
-                                            self.purse += cost
+                                            self.add_purse(building)
                                             self.buildandretry.add((scv.tag, building, goal, self.frame))
                                         else:
                                             self.log_success('not near')
@@ -8228,35 +8341,34 @@ class Chaosbot(sc2.BotAI):
                         if self.check_techtree(newbuilding):
                             if self.can_pay(newbuilding):
                                 inretry = False
-                                for (obt,bui,fra) in self.trainandretry:
+                                for (obt,bui,fra) in self.growandretry:
                                     if (bui == newbuilding) and (obt == oldbuilding.tag):
                                         inretry = True
                                 if not inretry:
-                                    cost = self.get_added_cost(newbuilding)
-                                    self.purse += cost
-                                    self.trainandretry.add((oldbuilding.tag, newbuilding, self.frame))
+                                    self.add_purse(newbuilding)
+                                    self.growandretry.add((oldbuilding.tag, newbuilding, self.frame))
                             else:
                                 self.log_success('no pay ' + self.missing)
                         else:
                             self.log_success('no techtree ' + self.missing)
         # also, realize a gym: upgr, army
-        for building in self.structures.ready:
-            if building.tag in self.idles:  # not in eggs
-                if building.tag in self.gym_of_strt:
-                    trainee = self.gym_of_strt[building.tag]
-                    pos = self.position_of_building(building)
+        for cradle in self.structures.ready:
+            if cradle.tag in self.idles:  # not in eggs
+                if cradle.tag in self.gym_of_strt:
+                    trainee = self.gym_of_strt[cradle.tag]
+                    pos = self.position_of_building(cradle)
                     if self.may_egg_now(trainee, pos):
                         self.log_success('trying to egg ' + trainee.name)
                         if self.check_techtree(trainee):
                             if self.can_pay(trainee):
                                 if self.check_supply(trainee):
-                                    del self.gym_of_strt[building.tag]
-                                    if trainee in self.all_upgrades:
-                                        await self.do_upgrade(trainee,pos)
-                                    else:
-                                        self.log_command(building.name+'.train('+trainee.name+')')
-                                        building.train(trainee)
-                                    self.prepped_to_egg(trainee, building.type_id, pos)
+                                    inretry = False
+                                    for (obt, uu, fra) in self.trainandretry:
+                                        if (uu == trainee) and (obt == cradle.tag):
+                                            inretry = True
+                                    if not inretry:
+                                        self.add_purse(trainee)
+                                        self.trainandretry.add((cradle.tag, trainee, self.frame))
                                 else:
                                     self.log_success('no supply')
                             else:
@@ -8500,9 +8612,7 @@ class Chaosbot(sc2.BotAI):
                 self.preps.add((trainee, cradle_type, fixplace, dura, owner))
         return didit
 
-
-    async def do_upgrade(self,upg,place) -> bool:
-        didit = False
+    async def do_upgrade(self,upg,place):
         if upg in self.all_upgrades:
             if self.already_pending_upgrade(upg) == 0:
                 if self.check_techtree(upg):
@@ -8510,25 +8620,21 @@ class Chaosbot(sc2.BotAI):
                     for ar in self.structures(cra).ready:
                         if (self.position_of_building(ar) == place):
                             if (ar.tag in self.idles):
-                                if self.can_pay(upg) or self.bug_can_pay(upg):
-                                    if not didit:
-                                        didit = True
-                                        self.log_success(upg.name)
-                                        # circumvent some bugs
-                                        if upg == TERRANVEHICLEANDSHIPARMORSLEVEL1:
-                                            self.log_command('ar(AbilityId.ARMORYRESEARCH_TERRANVEHICLEANDSHIPPLATINGLEVEL1)')
-                                            ar(AbilityId.ARMORYRESEARCH_TERRANVEHICLEANDSHIPPLATINGLEVEL1)
-                                        elif upg == TERRANVEHICLEANDSHIPARMORSLEVEL2:
-                                            self.log_command('ar(AbilityId.ARMORYRESEARCH_TERRANVEHICLEANDSHIPPLATINGLEVEL2)')
-                                            ar(AbilityId.ARMORYRESEARCH_TERRANVEHICLEANDSHIPPLATINGLEVEL2)
-                                        elif upg == TERRANVEHICLEANDSHIPARMORSLEVEL3:
-                                            self.log_command('ar(AbilityId.ARMORYRESEARCH_TERRANVEHICLEANDSHIPPLATINGLEVEL3)')
-                                            ar(AbilityId.ARMORYRESEARCH_TERRANVEHICLEANDSHIPPLATINGLEVEL3)
-                                        else:
-                                            self.log_command('ar.research('+upg.name+')')
-                                            ar.research(upg)
-                                        self.idles.remove(ar.tag) # interesting, helps only during this frame
-        return didit
+                                if self.in_purse(upg):
+                                    self.log_success(upg.name)
+                                    # circumvent some bugs
+                                    if upg == TERRANVEHICLEANDSHIPARMORSLEVEL1:
+                                        self.log_command('ar(AbilityId.ARMORYRESEARCH_TERRANVEHICLEANDSHIPPLATINGLEVEL1)')
+                                        ar(AbilityId.ARMORYRESEARCH_TERRANVEHICLEANDSHIPPLATINGLEVEL1)
+                                    elif upg == TERRANVEHICLEANDSHIPARMORSLEVEL2:
+                                        self.log_command('ar(AbilityId.ARMORYRESEARCH_TERRANVEHICLEANDSHIPPLATINGLEVEL2)')
+                                        ar(AbilityId.ARMORYRESEARCH_TERRANVEHICLEANDSHIPPLATINGLEVEL2)
+                                    elif upg == TERRANVEHICLEANDSHIPARMORSLEVEL3:
+                                        self.log_command('ar(AbilityId.ARMORYRESEARCH_TERRANVEHICLEANDSHIPPLATINGLEVEL3)')
+                                        ar(AbilityId.ARMORYRESEARCH_TERRANVEHICLEANDSHIPPLATINGLEVEL3)
+                                    else:
+                                        self.log_command('ar.research('+upg.name+')')
+                                        ar.research(upg)
 
 
 #*********************************************************************************************************************
@@ -9071,12 +9177,19 @@ class Chaosbot(sc2.BotAI):
         self.last_sd_of_unittag[bct] = 0
         self.shame_of_unittag[bct] = 0
         self.detour_of_unittag[bct] = False
-        close = self.near(bc.position,goal,25)
+        jumping = False
+        close = self.near(bc.position,goal,75)
+        veryclose = self.near(bc.position,goal,25)
         abilities = (await self.get_available_abilities([bc]))[0]
-        if (AbilityId.EFFECT_TACTICALJUMP in abilities) and (not close):
-            self.log_command('bc(AbilityId.EFFECT_TACTICALJUMP,goal)')
-            bc(AbilityId.EFFECT_TACTICALJUMP, goal)
-            self.log_army('jumping a bc')
+        if (AbilityId.EFFECT_TACTICALJUMP in abilities):
+            if not veryclose:
+                if (not close) or (bc.health < 150):
+                    self.log_command('bc(AbilityId.EFFECT_TACTICALJUMP,goal)')
+                    bc(AbilityId.EFFECT_TACTICALJUMP, goal)
+                    jumping = True
+                    self.log_army('jumping a bc')
+        if not jumping:
+            bc.move(goal)
 
     def no_move(self, bc,maxshame) -> bool:
         nomo = False
@@ -10019,11 +10132,11 @@ class Chaosbot(sc2.BotAI):
                             vik.move(movepos)
                             self.movepos_of_viking[vik.tag] = movepos
 
-    def heal_a_marine(self, pos) -> bool:
+    def heal_bio(self, pos) -> bool:
         # self.thechosen will be a marine close to pos
         # only usable this frame
         found = False
-        for kind in {MARINE,MARAUDER,HELLIONTANK}:
+        for kind in {MARINE,MARAUDER,GHOST,HELLIONTANK}:
             if not found:
                 minsd = 99999
                 for mar in self.units(kind):
@@ -10081,21 +10194,22 @@ class Chaosbot(sc2.BotAI):
                             self.lostframe_of_raven[rv.tag] = self.frame
         # medivacs should follow(attack) a marine
         for med in self.units(MEDIVAC):
-            if med.tag in self.idles:
-                if med.tag in self.thingtag_of_repairertag.values():
-                    pass
-                elif med.tag not in self.victim_of_medivac:
-                    if self.heal_a_marine(med.position):
-                        self.victim_of_medivac[med.tag] = self.thechosen.tag
-                        med.attack(self.thechosen)
-                        self.log_army('medivac will follow a marine')
-                else:
-                    problemtag = self.victim_of_medivac[med.tag]
-                    # died? entered a bunker? transformed to hellion? entered a medivac?
-                    if self.heal_a_marine(med.position):
-                        self.victim_of_medivac[med.tag] = self.thechosen.tag
-                        med.attack(self.thechosen)
-                        self.log_army('medivac will follow a marine')
+            if med.tag not in self.speciality_of_tag:
+                if med.tag in self.idles:
+                    if med.tag in self.thingtag_of_repairertag.values():
+                        pass
+                    elif med.tag not in self.victim_of_medivac:
+                        if self.heal_bio(med.position):
+                            self.victim_of_medivac[med.tag] = self.thechosen.tag
+                            med.attack(self.thechosen)
+                            self.log_army('medivac will follow a marine')
+                    else:
+                        problemtag = self.victim_of_medivac[med.tag]
+                        # died? entered a bunker? transformed to hellion? entered a medivac?
+                        if self.heal_bio(med.position):
+                            self.victim_of_medivac[med.tag] = self.thechosen.tag
+                            med.attack(self.thechosen)
+                            self.log_army('medivac will follow a marine')
         # vikings
         self.squadronize_vikings()
         self.fly_viking()
@@ -10871,7 +10985,7 @@ class Chaosbot(sc2.BotAI):
                         back = self.back_first_step(wmt)
                         backpoint = wm.position.towards(back, 3)
                         self.go_move(wm,backpoint)
-                    if self.no_move_or_near(wm, 160, 1):
+                    if self.no_move_or_near(wm, 100, 1):
                         self.log_command('wm(AbilityId.BURROWDOWN_WIDOWMINE)')
                         wm(AbilityId.BURROWDOWN_WIDOWMINE)
                         self.emotion_of_unittag[wmt] = 'settled'
@@ -10882,7 +10996,7 @@ class Chaosbot(sc2.BotAI):
                             self.emotion_of_unittag[wmt] = 'lodging'
                             self.solve_blockade(wm.position)
                 if self.emotion_of_unittag[wmt] == 'scared':
-                    if self.no_move_or_near(wm, 160, 1):
+                    if self.no_move_or_near(wm, 100, 1):
                         self.log_command('wm(AbilityId.BURROWDOWN_WIDOWMINE)')
                         wm(AbilityId.BURROWDOWN_WIDOWMINE)
                         self.emotion_of_unittag[wmt] = 'lodging'
@@ -10906,9 +11020,16 @@ class Chaosbot(sc2.BotAI):
                     if self.frame > self.mine_burried[wmt] + 350: # some 15 sec
                         if wmt in self.idles:
                             if not nearenemies:
-                                self.log_command('wm(AbilityId.BURROWUP_WIDOWMINE)')
-                                wm(AbilityId.BURROWUP_WIDOWMINE)
-                                self.emotion_of_unittag[wmt] = 'lazy'
+                                static_stopper = False
+                                for tp in self.enemy_structureinfo: # remembered info
+                                    (typ, pos) = tp
+                                    if typ in {PLANETARYFORTRESS,PHOTONCANNON,SPINECRAWLER,BUNKER}:
+                                        if self.near(pos,wm.position,11):
+                                            static_stopper = True
+                                if not static_stopper:
+                                   self.log_command('wm(AbilityId.BURROWUP_WIDOWMINE)')
+                                   wm(AbilityId.BURROWUP_WIDOWMINE)
+                                   self.emotion_of_unittag[wmt] = 'lazy'
                 if self.emotion_of_unittag[wmt] == 'settled':
                     # changing clustergoals
                     if wmt in self.cluster_of_mine:
@@ -11192,7 +11313,7 @@ class Chaosbot(sc2.BotAI):
                         bestspot = spot
                 spot = bestspot
                 if self.opening_name.find('liberator-') >= 0:
-                    if (self.enemy_race != Race.Zerg) and (self.firstlib):
+                    if (self.enemy_species != 'zerg') and (self.firstlib):
                         while (spot[0] != 'contain1'):
                             spot = random.choice(tuple(self.liberator_spots))
                 if (self.opening_name == 'two liberators'):
@@ -12466,7 +12587,7 @@ class Chaosbot(sc2.BotAI):
                             if todo > 0:
                                 todo -= 1
                                 self.cheese2_triedexp.add(goal)
-                                pos = self.init_cheese_position(goal,79,BUNKER)
+                                pos = self.init_cheese_position(goal,79,79,BUNKER)
                                 self.throw_at_spot(BUNKER,pos,'bunkercheese2')
                                 self.cheese2_bunkspots.add(pos)
                                 self.throw_anywhere(MARINE,'bunkercheese2')
@@ -12563,7 +12684,7 @@ class Chaosbot(sc2.BotAI):
                 # continue
                 for cc in self.structures(COMMANDCENTER).ready:
                     if cc.tag == self.cheese3_cc_tag:
-                        if self.enemy_race == Race.Zerg:
+                        if self.enemy_species == 'zerg':
                             self.cheese3_phase = 'G1'
                         else:
                             self.cheese3_phase = 'F1'
@@ -13044,6 +13165,236 @@ class Chaosbot(sc2.BotAI):
                     self.throw_treeno(upg, 'do_banshees')
                 self.log_swaps()
 
+    ################################# ghosts #########################################
+
+    # rush_ghosts
+    async def do_rush_ghosts(self):
+        if self.opening_name == 'nukerush':
+            # init new medivac and starportbuilder to get control.
+            if self.rushghost_phase < 'K': # then it starts heal.
+                if len(self.units(MEDIVAC)) == 1:
+                    for med in self.units(MEDIVAC):
+                        self.speciality_of_tag[med.tag] = self.opening_name
+            # get a pilot
+            if self.rushghost_phase < 'F': # then medivac load starts
+                if len(self.rushghost_scvs) == 0:
+                    for sp in self.structures(STARPORT):
+                        for scv in self.units(SCV):
+                            if self.near(scv.position,sp.position,7):
+                                scvt = scv.tag
+                                if self.job_of_scvt[scvt] not in self.good_jobs: # building
+                                    self.promote(scv,'pilot')
+                                    self.rushghost_scvs.add(scvt)
+                                    scv.move(sp.position)
+            # phases
+            if self.frame >= self.rushghost_frame: # separates the phases
+                phase = self.rushghost_phase
+                if phase == 'A':
+                    # store ghosts temporarily in the bunker
+                    if len(self.structures(BUNKER)) > 0:
+                        for bar in self.structures(BARRACKS):
+                            for bun in self.structures(BUNKER):
+                                self.set_rally.add((bar.position,bun.position))
+                                phase = 'B'
+                elif phase == 'B':
+                    for sp in self.structures(STARPORT):
+                        self.rushghost_sp = sp.position
+                        for bun in self.structures(BUNKER):
+                            hasghosts = False
+                            for mar in bun.passengers:
+                                if mar.type_id == GHOST:
+                                    hasghosts = True
+                            if hasghosts:
+                                bun(AbilityId.UNLOADALL_BUNKER)
+                        phase = 'C'
+                        for bar in self.structures(BARRACKS):
+                            door = bar.position.towards(self.game_info.map_center,3)
+                            self.set_rally.add((bar.position,door))
+                elif phase == 'C':
+                    allthere = True
+                    # energy for an emp vs terran
+                    if self.enemy_species == 'terran':
+                        allthere = False
+                        for ghost in self.units(GHOST):
+                            tag = ghost.tag
+                            if tag in self.rush_ghosts:
+                                if ghost.energy >= 150: # cloack+emp+50
+                                    allthere = True
+                    allthere = allthere and (len(self.units(MEDIVAC)) > 0)
+                    allthere = allthere and self.we_nearly_finished_a(PERSONALCLOAKING,9)
+                    allthere = allthere and self.we_nearly_finished_a(NUKESILONOVA,9)
+                    for ghost in self.units(GHOST):
+                        tag = ghost.tag
+                        if tag in self.rush_ghosts:
+                            if not self.near(ghost.position,self.rushghost_sp,5):
+                                allthere = False
+                                if tag in self.idles:
+                                    ghost.move(self.rushghost_sp)
+                    if allthere:
+                        self.rushghost_passengers = set()
+                        for ghost in self.units(GHOST):
+                            tag = ghost.tag
+                            if tag in self.rush_ghosts:
+                                self.rushghost_passengers.add(tag)
+                        todomax = 2
+                        for scv in self.units(SCV):
+                            if self.near(scv.position,self.rushghost_sp,5):
+                                if todomax > 0:
+                                    todomax -= 1
+                                    self.rushghost_passengers.add(scv.tag)
+                        phase = 'D'
+                elif phase == 'D':
+                    for ghost in self.units(GHOST):
+                        tag = ghost.tag
+                        if tag in self.rush_ghosts:
+                            ghost(AbilityId.BEHAVIOR_HOLDFIREON_GHOST)
+                    phase = 'E'
+                elif phase == 'E':
+                    for ghost in self.units(GHOST):
+                        tag = ghost.tag
+                        if tag in self.rush_ghosts:
+                            abilities = (await self.get_available_abilities([ghost]))[0]
+                            if AbilityId.BEHAVIOR_CLOAKON_GHOST in abilities:
+                                ghost(AbilityId.BEHAVIOR_CLOAKON_GHOST)
+                    phase = 'F'
+                elif phase == 'F': # also entered from 'G'
+                    for med in self.units(MEDIVAC):
+                        if med.tag in self.idles:
+                            todo = 1
+                            for unt in self.units:
+                                tag = unt.tag
+                                if tag in self.rushghost_passengers:
+                                    if todo > 0:
+                                        todo -= 1
+                                        med(AbilityId.LOAD_MEDIVAC,unt)
+                                        phase = 'G'
+                elif phase == 'G':
+                    for med in self.units(MEDIVAC):
+                        if med.tag in self.idles:
+                            if len(med.passengers) < len(self.rushghost_passengers):
+                                phase = 'F'
+                            else:
+                                phase = 'H'
+                elif phase == 'H':
+                    tonat = Point2((self.enemynatural_pos.x - self.enemy_pos.x, self.enemynatural_pos.y - self.enemy_pos.y))
+                    vec = Point2((tonat.y,tonat.x)) # mirrorred
+                    topoint = Point2((self.enemy_pos.x + vec.x,self.enemy_pos.y + vec.y))
+                    dropheight = self.get_height(self.enemy_pos)
+                    dd = 0
+                    self.rushghost_droppoint = self.enemy_pos
+                    while self.get_height(self.rushghost_droppoint) == dropheight:
+                        dd += 1
+                        self.rushghost_droppoint = self.enemy_pos.towards(topoint, dd)
+                    dd -= 1
+                    self.rushghost_droppoint = self.enemy_pos.towards(topoint, dd)
+                    self.rushghost_droppoint = self.place_around(AUTOTURRET,self.rushghost_droppoint)
+                    for med in self.units(MEDIVAC):
+                        mid = self.sneakymid(med.position,self.rushghost_droppoint)
+                        self.go_move(med, mid)
+                        phase = 'I'
+                elif phase == 'I':
+                    for med in self.units(MEDIVAC):
+                        goal = self.rushghost_droppoint
+                        if self.no_move_or_near(med, 8, 4):
+                            if self.near(med.position,goal,1):
+                                if med.tag in self.idles:
+                                    med(AbilityId.UNLOADALLAT_MEDIVAC,self.rushghost_droppoint)
+                                    phase = 'J'
+                            elif self.near(med.position,goal,8):
+                                med.move(goal)
+                            else:
+                                mid = self.sneakymid(med.position, goal)
+                                self.go_move(med, mid)
+                elif phase == 'J':
+                    # reclaim dropped scvs. They land as idler and are misused immediately.
+                    for scv in self.units(SCV):
+                        scvt = scv.tag
+                        if scvt in self.rushghost_scvs:
+                            if self.job_of_scvt[scvt] != 'pilot':
+                                self.promote(scv,'pilot')
+                                self.log_command('scv(AbilityId.STOP)')  # stop moving
+                                scv(AbilityId.STOP)
+                    for med in self.units(MEDIVAC):
+                        if len(med.passengers) == 0:
+                            all_at_ease = True
+                            for unt in self.units:
+                                if unt.tag in self.rushghost_passengers:
+                                    if unt.tag not in self.idles:
+                                        all_at_ease = False
+                            if all_at_ease:
+                                phase = 'K'
+                elif phase == 'K':
+                    # allow medivac to heal normal
+                    for med in self.units(MEDIVAC):
+                        if med.tag in self.speciality_of_tag:
+                            del self.speciality_of_tag[med.tag]
+                    # build an offensive distraction bunker
+                    for scv in self.units(SCV):
+                        scvt = scv.tag
+                        if scv.tag in self.rushghost_scvs:
+                            self.promote(scv, 'reporter')
+                            if self.rushghost_bunker:
+                                self.rushghost_bunker = False
+                                nukepos = self.enemy_pos.towards(self.game_info.map_center, -3)
+                                dist = 0
+                                pos = self.enemy_pos
+                                while self.near(pos, nukepos, 10):
+                                    dist += 1
+                                    pos = self.enemy_pos.towards(self.enemyramp_pos, -dist)
+                                pos = self.place_around(BUNKER,pos)
+                                self.throw_at_spot(BUNKER, pos, 'do_rush_ghosts')
+                                scv.move(pos)
+                    # emp townhall
+                    # nuke townhall
+                    for ghost in self.units(GHOST):
+                        tag = ghost.tag
+                        if tag in self.rush_ghosts:
+                            if self.enemy_species == 'terran':
+                                if self.rushghost_toemp == self.notag:
+                                    if tag not in [self.rushghost_toemp,self.rushghost_tonuke]:
+                                        abilities = (await self.get_available_abilities([ghost]))[0]
+                                        if AbilityId.EMP_EMP in abilities:
+                                            pos = self.enemy_pos.towards(self.game_info.map_center,2)
+                                            ghost(AbilityId.EMP_EMP, pos)
+                                            self.rushghost_toemp = tag
+                            if self.rushghost_tonuke == self.notag:
+                                if tag not in [self.rushghost_toemp,self.rushghost_tonuke]:
+                                    abilities = (await self.get_available_abilities([ghost]))[0]
+                                    if AbilityId.TACNUKESTRIKE_NUKECALLDOWN in abilities:
+                                        pos = self.enemy_pos.towards(self.game_info.map_center,-3)
+                                        ghost(AbilityId.TACNUKESTRIKE_NUKECALLDOWN, pos)
+                                        self.rushghost_tonuke = tag
+                    if (self.rushghost_tonuke != self.notag):
+                        phase = 'L'
+                elif phase == 'L':
+                    # reuse ghosts when idle
+                    for ghost in self.units(GHOST):
+                        tag = ghost.tag
+                        if tag in self.rush_ghosts:
+                            if tag in self.rushghost_retired:
+                                if tag in self.idles:
+                                    ghost.move(self.loved_pos)
+                                elif self.near(ghost.position,self.loved_pos,20):
+                                    ghost(AbilityId.BEHAVIOR_HOLDFIREOFF_GHOST) # ought to be superfluous
+                                    self.rush_ghosts.remove(tag)
+                                    self.ghost_requests.append('army_ghost')
+                            else: # there is one more thing we ask you, ghost.
+                                if ghost.energy < 10:
+                                    self.rushghost_retired.add(tag)
+                                    ghost.move(self.loved_pos)
+                                elif tag in self.idles:
+                                    pos = self.enemy_pos.towards(self.game_info.map_center, -10)
+                                    if self.near(pos,ghost.position,2):
+                                        ghost(AbilityId.BEHAVIOR_HOLDFIREOFF_GHOST)
+                                        ghost(AbilityId.HOLDPOSITION,queue=True)
+                                    else:
+                                        ghost.move(pos)
+                # enz
+                if phase != self.rushghost_phase:
+                    self.rushghost_frame = self.frame + 20
+                    self.rushghost_phase = phase
+
+    # army_ghosts
     def ghostmove(self,tag,goal,hangout):
         # makes my ghost unit move to goal, sniping enemies in range.
         # tag must be of an army_ghost.
@@ -13057,6 +13408,29 @@ class Chaosbot(sc2.BotAI):
         self.ghostmove_last_energy[tag] = 0
         self.ghostmove_snipeend[tag] = 0
 
+    def handle_ghost_requests(self):
+        # For a new army_ghost, do:
+        #    produce a ghost
+        #    self.ghost_requests.append('army_ghost')
+        # This procedure may assign it to army_ghosts, and call
+        #    self.new_army_ghost(tag)
+        #
+        if len(self.ghost_requests) > 0:
+            for ghost in self.units(GHOST):
+                tag = ghost.tag
+                if tag not in self.rush_ghosts:
+                    if tag not in self.nuke_ghosts:
+                        if tag not in self.army_ghosts:
+                            # a new one
+                            kind = self.ghost_requests[0]
+                            if kind == 'nuke_ghost':
+                                self.nuke_ghosts.add(tag)
+                            elif kind == 'army_ghost':
+                                self.army_ghosts.add(tag)
+                            elif kind == 'rush_ghost':
+                                self.rush_ghosts.add(tag)
+                            del self.ghost_requests[0]
+
     def do_ghostmove(self):
         # states:
         #    rest       Not moving, e.g. goal reached
@@ -13066,15 +13440,6 @@ class Chaosbot(sc2.BotAI):
         #    role       Retreat on low energy
         #    home       Retreated
         #    host       Halted on seeing a threat
-        # make new ghosts army_ghost
-        nukereserve = 0
-        if self.ghost_phase > 'A':
-            nukereserve = 1
-        if len(self.units(GHOST)) > len(self.nuke_ghosts) + len(self.army_ghosts) + nukereserve:
-            for ghost in self.units(GHOST):
-                tag = ghost.tag
-                if tag not in self.nuke_ghosts:
-                    self.army_ghosts.add(tag)
         if len(self.army_ghosts) > 0:
             # cleanup
             if self.frame % 29 == 28:
@@ -13085,7 +13450,7 @@ class Chaosbot(sc2.BotAI):
                 for tag in todel:
                     self.army_ghosts.remove(tag)
             # init ghostmove_* is done by the caller via ghostmove()
-            if self.opponent_species == 'zerg':
+            if self.enemy_species == 'zerg':
                 min_energy = 50 # snipe
             else:
                 min_energy = 75 # emp
@@ -13218,6 +13583,7 @@ class Chaosbot(sc2.BotAI):
                     self.ghostmove_fightgoal[tag] = fightgoal
                     #
 
+    # nuke_ghosts
     def get_nuke_target(self, ghostpos):
         # -> self.nuke_target
         nuke_targets = set()
@@ -13246,6 +13612,11 @@ class Chaosbot(sc2.BotAI):
                     self.nuke_target = nt
 
     async def nuke_fun(self):
+        # startup
+        if self.ghost_phase == 'A':
+            if (self.supply_used >= 180):
+                self.ghost_phase = 'B'
+        # fallback
         if self.ghost_phase > 'A':
             self.log_success('ghost_phase ' + self.ghost_phase)
             self.ghost_calmdown = max(0, self.ghost_calmdown - self.chosen_game_step)
@@ -13258,7 +13629,7 @@ class Chaosbot(sc2.BotAI):
                 self.ghost_phase = min('B', self.ghost_phase)
             if self.we_started_amount(FACTORY) < 1:
                 self.ghost_phase = min('B', self.ghost_phase)
-            if self.we_started_amount(GHOST) < 1:
+            if len(self.nuke_ghosts) < 1:
                 self.ghost_phase = min('C', self.ghost_phase)
             # nuke_ghosts alive
             todel = set()
@@ -13266,187 +13637,180 @@ class Chaosbot(sc2.BotAI):
                 if ghost.tag not in self.nuke_ghosts:
                     todel.add(ghost.tag)
             self.nuke_ghosts -= todel
-        # phases
-        if self.ghost_phase == 'A':
-            # continue
-            if (self.supply_used >= 180):
-                self.ghost_phase = 'B'
-        elif self.ghost_phase == 'B':
-            # build buildings
-            done = 0
-            if self.we_started_amount(GHOSTACADEMY) < 1:
-                if self.ghost_calmdown == 0:
-                    if self.allow_throw(GHOSTACADEMY):
-                        self.throw_anywhere(GHOSTACADEMY, 'nuke_fun')
-                    self.ghost_calmdown = 80
-            else:
-                done += 1
-            if self.we_started_amount(BARRACKS) < 2:
-                if self.ghost_calmdown == 0:
-                    if self.allow_throw(BARRACKS):
-                        self.throw_anywhere(BARRACKS, 'nuke_fun')
-                    self.ghost_calmdown = 80
-            else:
-                done += 1
-            if self.we_started_amount(BARRACKSTECHLAB) < 1:
-                if self.allow_throw(BARRACKSTECHLAB):
-                    self.throw_anywhere(BARRACKSTECHLAB, 'nuke_fun')
-                self.ghost_calmdown = 80
-            else:
-                done += 1
-            if self.we_started_amount(FACTORY) < 1:
-                if self.ghost_calmdown == 0:
-                    if self.allow_throw(FACTORY):
-                        self.throw_anywhere(FACTORY, 'nuke_fun')
-                    self.ghost_calmdown = 80
-            else:
-                done += 1
-            # continue
-            if done >= 4:
-                self.ghost_phase = 'C'
-        elif self.ghost_phase == 'C':
-            # buildings are started
-            # build cloack, ghosts, nukes
-            done = 0
-            if len(self.nuke_ghosts) > 0:
-                done += 1
-            else:
-                if self.we_started_amount(GHOST) < 1 + len(self.army_ghosts):
-                    if self.ghost_calmdown == 0:
-                        if self.allow_throw(GHOST):
-                            self.throw_anywhere(GHOST, 'nuke_fun')
-                        self.ghost_calmdown = 80
-                else:
-                    done += 1
-            if self.we_started_amount(PERSONALCLOAKING) < 1:
-                if self.ghost_calmdown == 0:
-                    if self.allow_throw(PERSONALCLOAKING):
-                        self.throw_anywhere(PERSONALCLOAKING, 'nuke_fun')
-                    self.ghost_calmdown = 80
-            else:
-                done += 1
-            if self.we_started_amount(NUKESILONOVA) < 1:
-                if self.ghost_calmdown == 0:
-                    if self.allow_throw(NUKESILONOVA):
-                        for ga in self.structures(GHOSTACADEMY).ready:
-                            if ga.tag in self.idles:
-                                ga(AbilityId.BUILD_NUKE)
-                        self.ghost_calmdown = 80
-            else:
-                done += 1
-            if done >= 3:
-                self.ghost_phase = 'D'
-        elif self.ghost_phase == 'D':
-            # wait for ghost some energy, nuke, restdura max 20 sec
-            # continue
-            done = 0
-            for ghost in self.units(GHOST):
-                if ghost.tag not in self.army_ghosts:
-                    done = 1 # there are nuke_ghosts
-                    if len(self.nuke_ghosts) < 1:
-                        self.nuke_ghosts.add(ghost.tag)
-            for ghost in self.units(GHOST):
-                if ghost.tag in self.nuke_ghosts:
-                    if ghost.energy < 100:
-                        done = 0 # there are nuke_ghosts with low energy
-            if self.we_started_amount(NUKESILONOVA) >= 1:
-                done += 1 # there are started nukes
-            for (martype, bartype, pos, dura) in self.eggs:
-                if (martype == NUKESILONOVA) and (dura > 20):
-                    done -= 1 # there are child nukes
-            if done >= 2:
-                self.ghost_phase = 'E'
-                # init
-                for ghost in self.units(GHOST):
-                    if ghost.tag in self.nuke_ghosts:
-                        pos = ghost.position
-                self.get_nuke_target(pos)
-        elif self.ghost_phase == 'E':
-            # there are ghosts and nukes and a target
-            # if none close to nuking place, go there
-            close = False
-            for ghost in self.units(GHOST):
-                if ghost.tag in self.nuke_ghosts:
-                    if self.near(ghost.position, self.nuke_target, 13):
-                        close = True
-            if close:
-                self.ghost_phase = 'G'
-            else:
-                target = self.nuke_target
-                radius = 13
-                tooclose = True
-                tries = 0
-                while (tries < 100) and tooclose:
-                    tries += 1
-                    x = target.x + random.randrange(-radius, radius)
-                    y = target.y + random.randrange(-radius, radius)
-                    goal = Point2((x, y))
-                    tooclose = False
-                    for tp in self.enemy_structureinfo_plus:
-                        (typ, pos, finish) = tp
-                        if typ in self.antiair_detector:
-                            if self.near(goal, pos, self.detection_range):
-                                if finish < self.frame + 200:  # finished or within 8 sec
-                                    tooclose = True
-                for ghost in self.units(GHOST):
-                    if ghost.tag in self.nuke_ghosts:
-                        self.go_move(ghost, goal)
-                self.ghost_phase = 'F'
-        elif self.ghost_phase == 'F':
-            # moving to goals
-            for ghost in self.units(GHOST):
-                if ghost.tag in self.nuke_ghosts:
-                    if self.near(ghost.position, self.nuke_target, 70):
-                        abilities = (await self.get_available_abilities([ghost]))[0]
-                        if AbilityId.BEHAVIOR_CLOAKON_GHOST in abilities:
-                            ghost(AbilityId.BEHAVIOR_CLOAKON_GHOST)
-                    if ghost.tag in self.goal_of_unittag:  # dont ask me, it occurred
-                        if self.no_move(ghost, 64):
-                            self.get_nuke_target(ghost.position)
-                            self.ghost_phase = 'E'
-        elif self.ghost_phase == 'G':
-            # goal reached
-            # call nuke
-            done = 0
-            for ghost in self.units(GHOST):
-                if ghost.tag in self.nuke_ghosts:
-                    if self.near(ghost.position, self.nuke_target, 13):
-                        abilities = (await self.get_available_abilities([ghost]))[0]
-                        if AbilityId.TACNUKESTRIKE_NUKECALLDOWN in abilities:
-                            ghost(AbilityId.TACNUKESTRIKE_NUKECALLDOWN, self.nuke_target)
-                            done += 1
-            # continue
-            if done >= 1:
-                self.ghost_calmdown = 80
-                self.ghost_phase = 'H'
-        elif self.ghost_phase == 'H':
-            # waiting for strike
+            # phases
+            phase = self.ghost_phase
             if self.ghost_calmdown == 0:
-                self.ghost_phase = 'I'
-                # init
-                for ghost in self.units(GHOST):
-                    if ghost.tag in self.nuke_ghosts:
-                        self.go_move(ghost, self.loved_pos)
-        elif self.ghost_phase == 'I':
-            # walking home
-            done = 0
-            for ghost in self.units(GHOST):
-                if ghost.tag in self.nuke_ghosts:
-                    if not self.near(ghost.position, self.nuke_target, 70):
-                        abilities = (await self.get_available_abilities([ghost]))[0]
-                        if AbilityId.BEHAVIOR_CLOAKOFF_GHOST in abilities:
-                            ghost(AbilityId.BEHAVIOR_CLOAKOFF_GHOST)
-                    if not self.no_move(ghost, 64):
-                        done -= 1
-            # continue
-            if done >= 0:
-                self.ghost_phase = 'C'
-                # init
-                for ghost in self.units(GHOST):
-                    if ghost.tag in self.nuke_ghosts:
-                        abilities = (await self.get_available_abilities([ghost]))[0]
-                        if AbilityId.BEHAVIOR_CLOAKOFF_GHOST in abilities:
-                            ghost(AbilityId.BEHAVIOR_CLOAKOFF_GHOST)
+                if phase == 'B':
+                    # build buildings
+                    done = 0
+                    if self.we_started_amount(GHOSTACADEMY) < 1:
+                        if self.allow_throw(GHOSTACADEMY):
+                            self.throw_anywhere(GHOSTACADEMY, 'nuke_fun')
+                    else:
+                        done += 1
+                    if self.we_started_amount(BARRACKS) < 2:
+                        if self.allow_throw(BARRACKS):
+                            self.throw_anywhere(BARRACKS, 'nuke_fun')
+                    else:
+                        done += 1
+                    if self.we_started_amount(BARRACKSTECHLAB) < 1:
+                        if self.allow_throw(BARRACKSTECHLAB):
+                            self.throw_anywhere(BARRACKSTECHLAB, 'nuke_fun')
+                    else:
+                        done += 1
+                    if self.we_started_amount(FACTORY) < 1:
+                        if self.allow_throw(FACTORY):
+                            self.throw_anywhere(FACTORY, 'nuke_fun')
+                    else:
+                        done += 1
+                    # continue
+                    if done >= 4:
+                        phase = 'C'
+                elif phase == 'C':
+                    # buildings are started
+                    # build cloack, ghosts, nukes
+                    done = 0
+                    if len(self.nuke_ghosts) > 0:
+                        done += 1
+                    else:
+                        requested = 0
+                        for req in self.ghost_requests:
+                            if req == 'nuke_ghost':
+                                requested += 1
+                        if requested == 0:
+                            self.ghost_requests.append('nuke_ghost')
+                        if not self.we_started_a(GHOST):
+                            if self.allow_throw(GHOST):
+                                self.throw_anywhere(GHOST, 'nuke_fun')
+                    if self.we_started_amount(PERSONALCLOAKING) < 1:
+                        if self.allow_throw(PERSONALCLOAKING):
+                            self.throw_anywhere(PERSONALCLOAKING, 'nuke_fun')
+                    else:
+                        done += 1
+                    if self.we_started_amount(NUKESILONOVA) < 1:
+                        if self.allow_throw(NUKESILONOVA):
+                            for ga in self.structures(GHOSTACADEMY).ready:
+                                if ga.tag in self.idles:
+                                    ga(AbilityId.BUILD_NUKE)
+                    else:
+                        done += 1
+                    if done >= 3:
+                        phase = 'D'
+                elif phase == 'D':
+                    # wait for ghost some energy, nuke, restdura max 20 sec
+                    # continue
+                    done = 0
+                    for ghost in self.units(GHOST):
+                        if ghost.tag not in self.army_ghosts:
+                            done = 1 # there are nuke_ghosts
+                            if len(self.nuke_ghosts) < 1:
+                                self.nuke_ghosts.add(ghost.tag)
+                    for ghost in self.units(GHOST):
+                        if ghost.tag in self.nuke_ghosts:
+                            if ghost.energy < 100:
+                                done = 0 # there are nuke_ghosts with low energy
+                    if self.we_started_amount(NUKESILONOVA) >= 1:
+                        done += 1 # there are started nukes
+                    for (martype, bartype, pos, dura) in self.eggs:
+                        if (martype == NUKESILONOVA) and (dura > 20):
+                            done -= 1 # there are child nukes
+                    if done >= 2:
+                        phase = 'E'
+                        # init
+                        for ghost in self.units(GHOST):
+                            if ghost.tag in self.nuke_ghosts:
+                                pos = ghost.position
+                        self.get_nuke_target(pos)
+                elif phase == 'E':
+                    # there are ghosts and nukes and a target
+                    # if none close to nuking place, go there
+                    close = False
+                    for ghost in self.units(GHOST):
+                        if ghost.tag in self.nuke_ghosts:
+                            if self.near(ghost.position, self.nuke_target, 13):
+                                close = True
+                    if close:
+                        phase = 'G'
+                    else:
+                        target = self.nuke_target
+                        radius = 13
+                        tooclose = True
+                        tries = 0
+                        while (tries < 100) and tooclose:
+                            tries += 1
+                            x = target.x + random.randrange(-radius, radius)
+                            y = target.y + random.randrange(-radius, radius)
+                            goal = Point2((x, y))
+                            tooclose = False
+                            for tp in self.enemy_structureinfo_plus:
+                                (typ, pos, finish) = tp
+                                if typ in self.antiair_detector:
+                                    if self.near(goal, pos, self.detection_range):
+                                        if finish < self.frame + 200:  # finished or within 8 sec
+                                            tooclose = True
+                        for ghost in self.units(GHOST):
+                            if ghost.tag in self.nuke_ghosts:
+                                self.go_move(ghost, goal)
+                        phase = 'F'
+                elif phase == 'F':
+                    # moving to goals
+                    for ghost in self.units(GHOST):
+                        if ghost.tag in self.nuke_ghosts:
+                            if self.near(ghost.position, self.nuke_target, 70):
+                                abilities = (await self.get_available_abilities([ghost]))[0]
+                                if AbilityId.BEHAVIOR_CLOAKON_GHOST in abilities:
+                                    ghost(AbilityId.BEHAVIOR_CLOAKON_GHOST)
+                            if ghost.tag in self.goal_of_unittag:  # dont ask me, it occurred
+                                if self.no_move(ghost, 64):
+                                    self.get_nuke_target(ghost.position)
+                                    phase = 'E'
+                elif phase == 'G':
+                    # goal reached
+                    # call nuke
+                    done = 0
+                    for ghost in self.units(GHOST):
+                        if ghost.tag in self.nuke_ghosts:
+                            if self.near(ghost.position, self.nuke_target, 13):
+                                abilities = (await self.get_available_abilities([ghost]))[0]
+                                if AbilityId.TACNUKESTRIKE_NUKECALLDOWN in abilities:
+                                    ghost(AbilityId.TACNUKESTRIKE_NUKECALLDOWN, self.nuke_target)
+                                    fleepos = self.nuke_target.towards(ghost.position, 16)
+                                    ghost.move(fleepos, queue=True)
+                                    done += 1
+                    # continue
+                    if done >= 1:
+                        phase = 'H'
+                elif phase == 'H':
+                    # waiting for strike
+                    phase = 'I'
+                    # init
+                    for ghost in self.units(GHOST):
+                        if ghost.tag in self.nuke_ghosts:
+                            self.go_move(ghost, self.loved_pos)
+                elif phase == 'I':
+                    # walking home
+                    done = 0
+                    for ghost in self.units(GHOST):
+                        if ghost.tag in self.nuke_ghosts:
+                            if not self.near(ghost.position, self.nuke_target, 70):
+                                abilities = (await self.get_available_abilities([ghost]))[0]
+                                if AbilityId.BEHAVIOR_CLOAKOFF_GHOST in abilities:
+                                    ghost(AbilityId.BEHAVIOR_CLOAKOFF_GHOST)
+                            if not self.no_move(ghost, 64):
+                                done -= 1
+                    # continue
+                    if done >= 0:
+                        phase = 'C'
+                        # init
+                        for ghost in self.units(GHOST):
+                            if ghost.tag in self.nuke_ghosts:
+                                abilities = (await self.get_available_abilities([ghost]))[0]
+                                if AbilityId.BEHAVIOR_CLOAKOFF_GHOST in abilities:
+                                    ghost(AbilityId.BEHAVIOR_CLOAKOFF_GHOST)
+            # write phase, cooldown
+            if phase != self.ghost_phase:
+                self.ghost_calmdown = 80
+                self.ghost_phase = phase
 
 
     # workerfight administration wa_ ######################################################
@@ -13854,6 +14218,7 @@ class Chaosbot(sc2.BotAI):
                     # reserved 45 minerals for repair
                     self.purse.minerals -= 45
                     self.rushrepairs = set()
+                    self.rushrepairers = set()
                     for scv in self.units(SCV):
                         if scv.tag in self.speciality_of_tag:
                             if self.speciality_of_tag[scv.tag] == 'workerrush':
@@ -14008,7 +14373,8 @@ class Chaosbot(sc2.BotAI):
                                          + ' ' + str(scv.weapon_cooldown) + ' ' + str(dte) + ' ' + str(wai) + orders)
             #
             # delete rushrepair
-            todel = set()
+            todel1 = set()
+            todel2 = set()
             for (repairer_tag,repairee_tag) in self.rushrepairs:
                 repairerfound = False
                 for may_repairer in self.units(SCV):
@@ -14024,13 +14390,17 @@ class Chaosbot(sc2.BotAI):
                                 repaireefound = True
                                 if repairee.health >= self.healthybound:
                                     # cured
-                                    todel.add((repairer_tag,repairee_tag))
+                                    todel1.add(repairer_tag)
+                                    todel2.add((repairer_tag,repairee_tag))
                     if not repaireefound:
-                        todel.add((repairer_tag, repairee_tag))
+                        todel1.add(repairer_tag)
+                        todel2.add((repairer_tag, repairee_tag))
                 else: # repairer not found
-                    todel.add((repairer_tag, repairee_tag))
-            self.rushrepairs -= todel
-            for (repairer_tag,repairee_tag) in todel:
+                    todel1.add(repairer_tag)
+                    todel2.add((repairer_tag, repairee_tag))
+            self.rushrepairers -= todel1
+            self.rushrepairs -= todel2
+            for (repairer_tag,repairee_tag) in todel2:
                 self.log_success(self.name(repairer_tag)+' ended repairing '+self.name(repairee_tag))
             for (repairer_tag,repairee_tag) in self.rushrepairs:
                 self.log_success(self.name(repairer_tag)+' is repairing '+self.name(repairee_tag))
@@ -14284,10 +14654,12 @@ class Chaosbot(sc2.BotAI):
                                     emotion = 'ingoing'
                                 elif minsd < 99999:
                                     if (minsd < 5*5) or (self.frame % 53 == 52):
-                                        emotion = 'inrepair'
-                                        self.emotion_of_unittag[bestscv.tag] = 'inrepair'
-                                        self.rushrepairs.add((scv.tag, bestscv.tag))
-                                        re_move_set.add(scv.tag)
+                                        if scv.tag not in self.rushrepairers:
+                                            emotion = 'inrepair'
+                                            self.emotion_of_unittag[bestscv.tag] = 'inrepair'
+                                            self.rushrepairs.add((scv.tag, bestscv.tag))
+                                            self.rushrepairers.add(scv.tag)
+                                            re_move_set.add(scv.tag)
                         #
                         #
                         # workerrush timeouts
@@ -14394,17 +14766,17 @@ class Chaosbot(sc2.BotAI):
                                 itisarepairee = False
                                 for (repairer_tag, repairee_tag) in self.rushrepairs:
                                     # find one of the partners
-                                    if scv.tag == repairer_tag:
-                                        itisarepairer = True
-                                        for other in self.units(SCV):
-                                            if other.tag == repairee_tag:
-                                                partner = other
-                                                repairee = other
-                                    elif scv.tag == repairee_tag:
+                                    if scv.tag == repairee_tag:
                                         itisarepairee = True
                                         for other in self.units(SCV):
                                             if other.tag == repairer_tag:
-                                                partner = other
+                                                partner = other # multiple
+                                    elif scv.tag == repairer_tag:
+                                        itisarepairer = True
+                                        for other in self.units(SCV):
+                                            if other.tag == repairee_tag:
+                                                partner = other # unique
+                                                repairee = other
                                 halfway = Point2(((scv.position.x + partner.position.x) / 2,
                                                   (scv.position.y + partner.position.y) / 2))
                                 if self.minerals > 10:
@@ -15195,6 +15567,9 @@ class Chaosbot(sc2.BotAI):
                             for order in s.orders:
                                 if order.ability.id == AbilityId.EFFECT_TACTICALJUMP:
                                     handable = False
+                        if s.tag in self.speciality_of_tag:
+                            if (strtype == MEDIVAC): # repair drew this off track
+                                handable = False
                         if handable:
                             qual = s.health / self.maxhealth[s.type_id]
                             if qual < low_qual:
@@ -16433,7 +16808,7 @@ class Chaosbot(sc2.BotAI):
         # for a new opponent, add a strategy.
         if self.stratline == len(self.strategy):
             # new opponent, so use species info copy
-            speciesline = self.line_of_oppi(self.opponent_species)
+            speciesline = self.line_of_oppi(self.enemy_species)
             newstrategy = self.strategy[speciesline].copy()
             self.strategy_oppi.append(self.opponent)
             self.strategy.append(newstrategy)
@@ -16466,7 +16841,7 @@ class Chaosbot(sc2.BotAI):
                 radio_numbers.add(nr)
         radio_nr = random.choice(tuple(radio_numbers))
         # TO TEST use next line
-        #radio_nr = 19
+        #radio_nr = 44
         for nr in range(0,self.radio_choices):
             self.game_choice.append(nr == radio_nr)
         for nr in range(self.radio_choices,self.game_choices):
@@ -16479,7 +16854,7 @@ def main():
     all_maps = ['LightshadeAIE','OxideAIE','BlackburnAIE','JagannathaAIE','2000AtmospheresAIE','RomanticideAIE']
     map = random.choice(all_maps)
     # TO TEST use next line
-    #map = 'JagannathaAIE'
+    #map = 'LightshadeAIE'
     opponentspecies = random.choice([Race.Terran,Race.Zerg,Race.Protoss])
     # TO TEST use next line
     #opponentspecies = Race.Zerg
