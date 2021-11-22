@@ -702,6 +702,11 @@ class Chaosbot(sc2.BotAI):
     rushghost_bunker = True
     rushghost_scvs = set() # the nukerush scvs
     rushghost_retired = set() # some ghosts
+    rushghost_droppos = nowhere # for the medivac
+    rushghost_callpos = nowhere # for the nuking ghost
+    rushghost_shootpos = nowhere # to stand in the enemy mineralline
+    rushghost_bunkerpos = nowhere # for a distraction bunker
+    medivac_speedframe = {} # per medivac the frame it started its speed boost.
     platoons = [] # of set of scvtag
     platooncenters = [] # of Point2
     platoonenemies = [] # of set of workertag
@@ -2069,7 +2074,7 @@ class Chaosbot(sc2.BotAI):
                                         STARPORT, STARPORT, STARPORT, MARINE,
                                         STARPORTTECHLAB,STARPORTTECHLAB,STARPORTTECHLAB,BANSHEECLOAK]
             self.chosenplaces.append((COMMANDCENTER, self.homenatural_pos))
-            self.natural_numker()
+            self.natural_bunker()
             self.opening_create_kinds = {(BANSHEE,6)}
         elif self.game_choice[43]:
             self.opening_name = 'marauder-3'
@@ -2438,7 +2443,7 @@ class Chaosbot(sc2.BotAI):
         'CantFindCancelOrder', # 214;
         ]
         # chat
-        await self._client.chat_send('Chaosbot version 21 nov 2021, made by MerkMore', team_only=False)
+        await self._client.chat_send('Chaosbot version 22 nov 2021, made by MerkMore', team_only=False)
         await self._client.chat_send('Good luck and have fun, '+self.opponent, team_only=False)
         #
         #layout_if.photo_layout()
@@ -2954,7 +2959,7 @@ class Chaosbot(sc2.BotAI):
                         turpos = goal.towards(self.game_info.map_center,-3)
                         turpos = self.place_around(MISSILETURRET,turpos)
                         self.throw_at_spot(MISSILETURRET,turpos,'act_on_errors')
-            await self._client.chat_send('on_error '+abiname+' '+self.errortexts[res], team_only=False)
+            #await self._client.chat_send('on_error '+abiname+' '+self.errortexts[res], team_only=False)
 
 
     def position_of_building(self, bui) -> Point2:
@@ -13172,6 +13177,54 @@ class Chaosbot(sc2.BotAI):
     ################################# ghosts #########################################
 
     # rush_ghosts
+    def calculate_rushghost_points(self):
+        nukepos = self.enemy_pos.towards(self.game_info.map_center, -3)
+        height = self.get_height(self.enemy_pos)
+        # rushghost_droppos
+        oneside = Point2((self.enemy_pos.x,100))
+        otherside = Point2((100,self.enemy_pos.y))
+        if self.sdist(oneside,self.enemynatural_pos) < self.sdist(otherside,self.enemynatural_pos):
+            toside = otherside
+        else:
+            toside = oneside
+        dropheight = self.get_height(self.enemy_pos)
+        dd = 0
+        self.rushghost_droppos = self.enemy_pos
+        while self.get_height(self.rushghost_droppos) == dropheight:
+            dd += 1
+            self.rushghost_droppos = self.enemy_pos.towards(toside, dd)
+        dd -= 1
+        self.rushghost_droppos = self.enemy_pos.towards(toside, dd)
+        improved_pos = self.undetect_point(self.rushghost_droppos)
+        if self.get_height(improved_pos) == height:
+            self.rushghost_droppos = improved_pos
+        self.rushghost_droppos = self.place_around_atheight(AUTOTURRET,self.rushghost_droppos)
+        # rushghost_callpos
+        self.rushghost_callpos = nukepos.towards(self.rushghost_droppos,11)
+        improved_pos = self.undetect_point(self.rushghost_callpos)
+        if self.get_height(improved_pos) == height:
+            if self.near(self.rushghost_callpos,improved_pos,6):
+                self.rushghost_callpos = improved_pos
+        # rushghost_shootpos
+        self.rushghost_shootpos = self.enemy_pos.towards(self.game_info.map_center, -10)
+        improved_pos = self.undetect_point(self.rushghost_shootpos)
+        if self.get_height(improved_pos) == height:
+            self.rushghost_shootpos = improved_pos
+        # rushghost_bunkerpos
+        pos = self.enemy_pos.towards(self.enemyramp_pos,-5)
+        self.rushghost_bunkerpos = self.place_around_atheight(BUNKER,pos)
+        # try to improve
+        pos = self.rushghost_bunkerpos
+        dist = 0
+        while self.near(pos, nukepos, 10):
+            dist += 1
+            pos = self.rushghost_bunkerpos.towards(self.enemyramp_pos, -dist)
+        if self.get_height(pos) == height:
+            selfrushghost_bunkerpos = self.place_around_atheight(BUNKER,pos)
+
+
+
+
     async def do_rush_ghosts(self):
         if self.opening_name == 'nukerush':
             # init new medivac and starportbuilder to get control.
@@ -13248,11 +13301,20 @@ class Chaosbot(sc2.BotAI):
                                     self.rushghost_passengers.add(scv.tag)
                         phase = 'D'
                 elif phase == 'D':
+                    maxenergy = 0
+                    for ghost in self.units(GHOST):
+                        tag = ghost.tag
+                        if tag in self.rush_ghosts:
+                            maxenergy = max(ghost.energy,maxenergy)
                     for ghost in self.units(GHOST):
                         tag = ghost.tag
                         if tag in self.rush_ghosts:
                             ghost(AbilityId.BEHAVIOR_HOLDFIREON_GHOST)
-                    phase = 'E'
+                            if ghost.energy == maxenergy:
+                                self.rushghost_tonuke = tag
+                            else:
+                                self.rushghost_toemp = tag
+                            phase = 'E'
                 elif phase == 'E':
                     for ghost in self.units(GHOST):
                         tag = ghost.tag
@@ -13280,30 +13342,31 @@ class Chaosbot(sc2.BotAI):
                             else:
                                 phase = 'H'
                 elif phase == 'H':
-                    tonat = Point2((self.enemynatural_pos.x - self.enemy_pos.x, self.enemynatural_pos.y - self.enemy_pos.y))
-                    vec = Point2((tonat.y,tonat.x)) # mirrorred
-                    topoint = Point2((self.enemy_pos.x + vec.x,self.enemy_pos.y + vec.y))
-                    dropheight = self.get_height(self.enemy_pos)
-                    dd = 0
-                    self.rushghost_droppoint = self.enemy_pos
-                    while self.get_height(self.rushghost_droppoint) == dropheight:
-                        dd += 1
-                        self.rushghost_droppoint = self.enemy_pos.towards(topoint, dd)
-                    dd -= 1
-                    self.rushghost_droppoint = self.enemy_pos.towards(topoint, dd)
-                    self.rushghost_droppoint = self.place_around(AUTOTURRET,self.rushghost_droppoint)
+                    self.calculate_rushghost_points()
                     for med in self.units(MEDIVAC):
-                        mid = self.sneakymid(med.position,self.rushghost_droppoint)
+                        mid = self.sneakymid(med.position,self.rushghost_droppos)
                         self.go_move(med, mid)
                         phase = 'I'
                 elif phase == 'I':
                     for med in self.units(MEDIVAC):
-                        goal = self.rushghost_droppoint
+                        self.rushghost_droppos = self.place_around_atheight(AUTOTURRET,self.rushghost_droppos)
+                        goal = self.rushghost_droppos
+                        if med.tag not in self.medivac_speedframe:
+                            self.medivac_speedframe[med.tag] = 0
+                        dospeed = False
+                        if self.near(med.position,goal,30):
+                            dospeed = True
+                        if med.tag in self.last_health:
+                            if med.health < self.last_health[med.tag]:
+                                dospeed = True
+                        if dospeed:
+                            if self.frame >= self.medivac_speedframe[med.tag]: # canspeed
+                                med(AbilityId.EFFECT_MEDIVACIGNITEAFTERBURNERS)
+                                self.medivac_speedframe[med.tag] = self.frame + 414
                         if self.no_move_or_near(med, 8, 4):
                             if self.near(med.position,goal,1):
-                                if med.tag in self.idles:
-                                    med(AbilityId.UNLOADALLAT_MEDIVAC,self.rushghost_droppoint)
-                                    phase = 'J'
+                                med(AbilityId.UNLOADALLAT_MEDIVAC,self.rushghost_droppos)
+                                phase = 'J'
                             elif self.near(med.position,goal,8):
                                 med.move(goal)
                             else:
@@ -13339,38 +13402,36 @@ class Chaosbot(sc2.BotAI):
                             self.promote(scv, 'reporter')
                             if self.rushghost_bunker:
                                 self.rushghost_bunker = False
-                                nukepos = self.enemy_pos.towards(self.game_info.map_center, -3)
-                                dist = 0
-                                pos = self.enemy_pos
-                                while self.near(pos, nukepos, 10):
-                                    dist += 1
-                                    pos = self.enemy_pos.towards(self.enemyramp_pos, -dist)
-                                pos = self.place_around(BUNKER,pos)
-                                self.throw_at_spot(BUNKER, pos, 'do_rush_ghosts')
-                                scv.move(pos)
+                                self.throw_at_spot(BUNKER, self.rushghost_bunkerpos, 'do_rush_ghosts')
+                                scv.move(self.rushghost_bunkerpos)
                     # emp townhall
-                    # nuke townhall
+                    # goto nukepos
                     for ghost in self.units(GHOST):
                         tag = ghost.tag
                         if tag in self.rush_ghosts:
                             if self.enemy_species == 'terran':
-                                if self.rushghost_toemp == self.notag:
-                                    if tag not in [self.rushghost_toemp,self.rushghost_tonuke]:
-                                        abilities = (await self.get_available_abilities([ghost]))[0]
-                                        if AbilityId.EMP_EMP in abilities:
-                                            pos = self.enemy_pos.towards(self.game_info.map_center,2)
-                                            ghost(AbilityId.EMP_EMP, pos)
-                                            self.rushghost_toemp = tag
-                            if self.rushghost_tonuke == self.notag:
-                                if tag not in [self.rushghost_toemp,self.rushghost_tonuke]:
+                                if tag == self.rushghost_toemp:
                                     abilities = (await self.get_available_abilities([ghost]))[0]
-                                    if AbilityId.TACNUKESTRIKE_NUKECALLDOWN in abilities:
-                                        pos = self.enemy_pos.towards(self.game_info.map_center,-3)
-                                        ghost(AbilityId.TACNUKESTRIKE_NUKECALLDOWN, pos)
-                                        self.rushghost_tonuke = tag
-                    if (self.rushghost_tonuke != self.notag):
-                        phase = 'L'
+                                    if AbilityId.EMP_EMP in abilities:
+                                        pos = self.enemy_pos.towards(self.game_info.map_center,2)
+                                        ghost(AbilityId.EMP_EMP, pos)
+                            if tag == self.rushghost_tonuke:
+                                ghost.move(self.rushghost_callpos)
+                    phase = 'L'
                 elif phase == 'L':
+                    for ghost in self.units(GHOST):
+                        tag = ghost.tag
+                        if tag == self.rushghost_tonuke:
+                            if self.near(ghost.position,self.rushghost_callpos,1):
+                                abilities = (await self.get_available_abilities([ghost]))[0]
+                                if AbilityId.TACNUKESTRIKE_NUKECALLDOWN in abilities:
+                                    pos = self.enemy_pos.towards(self.game_info.map_center,-3)
+                                    ghost(AbilityId.TACNUKESTRIKE_NUKECALLDOWN, pos)
+                                    phase = 'M'
+                        elif tag == self.rushghost_toemp:
+                            if tag in self.idles:
+                                ghost.move(self.rushghost_shootpos)
+                elif phase == 'M':
                     # reuse ghosts when idle
                     for ghost in self.units(GHOST):
                         tag = ghost.tag
@@ -13387,12 +13448,11 @@ class Chaosbot(sc2.BotAI):
                                     self.rushghost_retired.add(tag)
                                     ghost.move(self.loved_pos)
                                 elif tag in self.idles:
-                                    pos = self.enemy_pos.towards(self.game_info.map_center, -10)
-                                    if self.near(pos,ghost.position,2):
+                                    if self.near(self.rushghost_shootpos,ghost.position,1):
                                         ghost(AbilityId.BEHAVIOR_HOLDFIREOFF_GHOST)
-                                        ghost(AbilityId.HOLDPOSITION,queue=True)
+                                        ghost(AbilityId.HOLDPOSITION)
                                     else:
-                                        ghost.move(pos)
+                                        ghost.move(self.rushghost_shootpos)
                 # enz
                 if phase != self.rushghost_phase:
                     self.rushghost_frame = self.frame + 20
@@ -15052,7 +15112,6 @@ class Chaosbot(sc2.BotAI):
                 if self.goal_of_cluster[cluster] == goal:
                     del self.goal_of_cluster[cluster]
 
-
     def place_around(self, building, anchor) -> Point2:
         altpoint = self.put_on_the_grid(building, anchor)
         ok = self.check_layout(building, altpoint)
@@ -15067,6 +15126,24 @@ class Chaosbot(sc2.BotAI):
             y = around.y + random.randrange(-radius, radius)
             altpoint = Point2((x, y))
             ok = self.check_layout(building, altpoint)
+        return altpoint
+
+    def place_around_atheight(self, building, anchor) -> Point2:
+        altpoint = self.put_on_the_grid(building, anchor)
+        height = self.get_height(altpoint)
+        ok = self.check_layout(building, altpoint)
+        tries = 0
+        radius = 0
+        around = altpoint
+        while (not ok):
+            if tries == radius * radius:
+                radius += 1
+            tries += 1
+            x = around.x + random.randrange(-radius, radius)
+            y = around.y + random.randrange(-radius, radius)
+            altpoint = Point2((x, y))
+            ok = self.check_layout(building, altpoint)
+            ok = ok and (height == self.get_height(altpoint))
         return altpoint
 
     def init_airports(self):
@@ -16673,8 +16750,7 @@ class Chaosbot(sc2.BotAI):
                         await self._client.chat_send('I surrender voluntary under social pressure', team_only=False)
                         self.selfhate_frame = self.frame + 7 * 22
                     elif self.frame >= self.selfhate_frame:
-                        zero = 0
-                        quit_game = 1 / zero
+                        await self._client.quit()
 
 #*********************************************************************************************************************
 #   strategy system
