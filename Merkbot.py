@@ -2443,8 +2443,9 @@ class Chaosbot(sc2.BotAI):
         'CantFindCancelOrder', # 214;
         ]
         # chat
-        await self._client.chat_send('Chaosbot version 22 nov 2021, made by MerkMore', team_only=False)
-        await self._client.chat_send('Good luck and have fun, '+self.opponent, team_only=False)
+        await self._client.chat_send('Chaosbot version 23 nov 2021, made by MerkMore', team_only=False)
+        await self._client.chat_send('Good luck and have fun!', team_only=False)
+        await self._client.chat_send('Tag:'+self.opponent[0:8], team_only=False)
         #
         #layout_if.photo_layout()
 
@@ -16810,6 +16811,12 @@ class Chaosbot(sc2.BotAI):
                     else:
                         will = was
                     self.strategy[self.stratline][nr] = will
+            # reset some strategies TEST
+            for nr in [45,46,47,48,49]:
+                self.strategy[self.stratline][nr] = 0.5
+            # promote a strategy TEST
+            nr = 44
+            self.strategy[self.stratline][nr] = 0.55
             # write strategy
             if self.game_result != 'doubt':
                 self.log_success('gg '+self.game_result)
