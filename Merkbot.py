@@ -181,6 +181,7 @@ class Chaosbot(sc2.BotAI):
     do_slowdown = False
     slowdown_frames = 99999 # 5*60*22.4
     slowness = 0.05 # realtime is around 0.05
+    there_is_a_new_opening = True
     do_funchat = False
     do_selfhate = True
     do_log_success = False
@@ -372,6 +373,7 @@ class Chaosbot(sc2.BotAI):
     good_upgrades = 0
     good_plans = set()
     last_good_plans = set()
+    notechlab = set() # of (thingtype,pos), to prevent building a techlab there.
     #   ############### REST ##############################################################
     focus = {} # per unittag the enemy to attack tag advice
     queuefocus = {} # if a queued attack is wanted, take this.
@@ -600,6 +602,8 @@ class Chaosbot(sc2.BotAI):
     compensatorx = 0
     compensatory = 0
     remember_terrain = {} # per alfasegment a tuple (compensatorx, compensatory, signature)
+    # standard reaper:
+    reaper_goal = nowhere
     #
     banshee_right = {} # per bansheetag a bool
     fearframe_of_banshee = {} # per bansheetag a framenumber
@@ -917,7 +921,7 @@ class Chaosbot(sc2.BotAI):
     strategy_oppi = [] # opponent_id, to pair on stratline with strategy
     stratline = 0 # which line in strategy 
     game_choice = []
-    radio_choices = 46
+    radio_choices = 47
     game_choices = 62
     game_result = 'doubt'
     opening_name = 'no'
@@ -1032,6 +1036,7 @@ class Chaosbot(sc2.BotAI):
             self.refineries_adlib()
             self.build_minima()
             self.armybuildings_adlib()
+            self.techlabs_adlib()
             self.upgradebuildings_adlib()
             self.upgrades_adlib()
             self.army_adlib()
@@ -1833,6 +1838,13 @@ class Chaosbot(sc2.BotAI):
                 viewpos = Point2((43,45))
             self.chosenplaces.append((SUPPLYDEPOT, viewpos))
         #
+        # reassign wall_barracks_pos tile to loved_pos expo
+        # this should help to repair the wall
+        maptile = self.maptile_of_pos(self.loved_pos)
+        chosen_expo = self.expo_of_maptile[maptile]
+        maptile = self.maptile_of_pos(self.wall_barracks_pos)
+        self.expo_of_maptile[maptile] = chosen_expo
+        #
         # idiot_plan to be used when floating minerals
         block = [COMMANDCENTER, SCV,SCV,SCV,SCV,SCV,SCV,SCV,SCV, REFINERY, SCV,SCV,SCV, SCV, REFINERY,
                  SUPPLYDEPOT, STARPORT, SCV, SCV, SCV, SCV, STARPORTTECHLAB, BATTLECRUISER]
@@ -1844,6 +1856,8 @@ class Chaosbot(sc2.BotAI):
                             ARMORY, TERRANSHIPWEAPONSLEVEL1]
         self.idiot_plan += block + block + block + [RAVEN, BATTLECRUISER, BATTLECRUISER]
 
+        # standard reaper_goal
+        self.reaper_goal = self.enemynatural_pos.towards(self.enemy_pos,-3)
         #
         self.init_liberator_spots()
         # opening
@@ -2186,15 +2200,17 @@ class Chaosbot(sc2.BotAI):
             # full marines after barrackstechlab, 2 medivacs after starportreactor
             self.opening_create = {(MARINE,24),(MEDIVAC,2)}
             self.production_pause_finish.add((MARINE, 0, BARRACKSTECHLAB, 1))
-            self.opening_create_slack = 2 # means not all opening_buildsreies first
+            self.opening_create_slack = 2 # means not all opening_buildseries first
             self.production_pause_finish.add((MEDIVAC, 0, STARPORTREACTOR, 1))
             # swap starport to factoryreactor
             around = self.loved_pos.towards(self.map_center,7)
             facpos = self.place_around(FACTORY, around)
             self.chosenplaces.append((FACTORY, facpos))
             self.write_layout(FACTORY, facpos)
+            self.notechlab.add((FACTORY,facpos))
             sppos = self.init_cheese_position(facpos, 3, 20, STARPORT) # does write layout
             self.chosenplaces.append((STARPORT, sppos))
+            self.notechlab.add((STARPORT,sppos))
             self.swapplans.add((sppos,facpos))
             # placement for dumb walls
             for (lab,pos) in self.unthinkable:
@@ -2209,7 +2225,32 @@ class Chaosbot(sc2.BotAI):
                     self.chosenplaces.insert(0, (BARRACKS, barpos))
                     self.write_layout(BARRACKS, barpos)
             self.do211_init()
-        # radio_choices = 46
+        elif self.game_choice[46]:
+            self.opening_name = 'reaper-rauder'
+            self.rushopening = True
+            self.buildseries_opening = [SUPPLYDEPOT,BARRACKS,REFINERY,REAPER,ORBITALCOMMAND,COMMANDCENTER,
+                                        BARRACKS,SUPPLYDEPOT,BARRACKSREACTOR,BARRACKSTECHLAB,REFINERY,
+                                        ORBITALCOMMAND,PUNISHERGRENADES, ENGINEERINGBAY, REFINERY, TERRANINFANTRYARMORSLEVEL1,
+                                        FACTORY,COMMANDCENTER,STARPORT,FUSIONCORE,STARPORTTECHLAB,BATTLECRUISER]
+            self.opening_create = {(REAPER,10),(MARAUDER,15)}
+            #for agh in range(0,5):
+            #    self.ghost_requests.append('army_ghost')
+            self.opening_create_slack = 2 # means not all opening_buildseries first
+            self.reaper_goal = self.enemy_pos.towards(self.map_center,-5)
+            self.marauder_goal = self.reaper_goal
+            self.production_pause_egg.add((MARINE, 0, BARRACKSTECHLAB, 1))
+            # placement for dumb walls
+            for (lab,pos) in self.unthinkable:
+                if lab == BARRACKSTECHLAB:
+                    # find 2 barracks spots
+                    for times in [1,2]:
+                        barpos = self.map_center
+                        while not self.hoxy(barpos):
+                            barpos = self.random_mappoint()
+                        barpos = self.place_around(BARRACKS, barpos)
+                        self.chosenplaces.insert(0,(BARRACKS, barpos))
+                        self.write_layout(BARRACKS, barpos)
+        # radio_choices = 47
         self.log_success('OPENING: '+self.opening_name)
         #
         for (kind,am) in self.opening_create:
@@ -2528,7 +2569,7 @@ class Chaosbot(sc2.BotAI):
         'CantFindCancelOrder', # 214;
         ]
         # chat
-        await self._client.chat_send('Chaosbot version 2 dec 2021, made by MerkMore', team_only=False)
+        await self._client.chat_send('Chaosbot version 6 dec 2021, made by MerkMore', team_only=False)
         code = self.opponent[0:8]
         if code in self.botnames:
             human = self.botnames[code]
@@ -3183,8 +3224,10 @@ class Chaosbot(sc2.BotAI):
         self.write_layout(FACTORY, facpos)
         pos = self.init_cheese_position(barpos, 3, 20, STARPORT)
         self.chosenplaces.append((STARPORT, pos))
+        self.notechlab.add((STARPORT, pos))
         pos = self.init_cheese_position(facpos, 3, 20, STARPORT)
         self.chosenplaces.append((STARPORT, pos))
+        self.notechlab.add((STARPORT, pos))
 
     def init_liberator_spots(self):
         self.add_spot('contain1',self.enemyramp_pos,self.enemy_pos)
@@ -3736,6 +3779,7 @@ class Chaosbot(sc2.BotAI):
                     bestsd = sd
                     chosen_expo = expo
             self.expo_of_maptile[maptile] = chosen_expo
+        # later the homeramp tile will be forced to loved_pos expansion
 
     def expo_of_pos(self, pos: Point2) -> int:
         return self.expo_of_maptile[self.maptile_of_pos(pos)]
@@ -7673,7 +7717,11 @@ class Chaosbot(sc2.BotAI):
                             if not growing:
                                 if not aba.has_add_on:
                                     if not self.proxy(aba.position):
-                                        sps.append(aba)
+                                        if thing in self.all_techlabs:
+                                            if (bar,aba.position) not in self.notechlab:
+                                                sps.append(aba)
+                                        else: # reactor
+                                            sps.append(aba)
                 if len(sps) > 0:
                     sp = random.choice(sps)
                     place = self.position_of_building(sp)
@@ -7896,39 +7944,31 @@ class Chaosbot(sc2.BotAI):
             self.opening_create -= todel
 
 
+    def techlabs_adlib(self):
+        # ensure a free factory with a techlab.
+        todo = 1
+        for (lab_type,bui_type) in self.cradle:
+            if lab_type in self.all_techlabs:
+                has_idle = False
+                for bui in self.structures(bui_type):
+                    if bui.has_techlab and (bui.tag in self.idles):
+                        has_idle = True
+                if not has_idle:
+                    # need one more
+                    canlab = self.eggorbird_amount(bui_type)
+                    for (a_lab_type, a_bui_type) in self.cradle:
+                        if a_bui_type == bui_type:
+                            if a_lab_type in self.all_labs:
+                                canlab -= self.we_started_amount(a_lab_type)
+                    if canlab > 0:
+                        if self.allow_throw(lab_type):
+                            self.throw_anywhere(lab_type,'techlabs_adlib')
+                            todo = 0
+
+
     def armybuildings_adlib(self):
         if ('armybuilding' in self.good_plans):
-            # ensure a free factory with a techlab.
             todo = 1
-            for (lab_type,bui_type) in self.cradle:
-                if lab_type in self.all_techlabs:
-                    has_idle = False
-                    for bui in self.structures(bui_type):
-                        if bui.has_techlab and (bui.tag in self.idles):
-                            has_idle = True
-                    if not has_idle:
-                        # need one more
-                        canlab = self.we_started_amount(bui_type)
-                        for (a_lab_type, a_bui_type) in self.cradle:
-                            if a_bui_type == bui_type:
-                                if a_lab_type in self.all_labs:
-                                    canlab -= self.we_started_amount(a_lab_type)
-                        if canlab > 0:
-                            if self.allow_throw(lab_type):
-                                self.throw_anywhere(lab_type,'armybuildings_adlib')
-                                todo = 0
-                        else:
-                            bui_started = False
-                            for (th, po, status, ow) in self.throwspots:
-                                if th == bui_type:
-                                    bui_started = True
-                            for (th,scv,pos,dura) in self.eggs:
-                                if th == bui_type:
-                                    bui_started = True
-                            if not bui_started:
-                                if self.allow_throw(bui_type):
-                                    self.throw_anywhere(bui_type, 'armybuildings_adlib')
-                                    todo = 0
             if todo == 1:
                 if self.we_finished_a(FACTORY) and (self.we_started_amount(STARPORT) < self.maxam_of_thing(STARPORT)):
                     self.throw_anywhere(STARPORT, 'armybuildings_adlib')
@@ -13678,8 +13718,7 @@ class Chaosbot(sc2.BotAI):
                 if status == 'home':
                     if rea.health >= 35:
                         status = 'out'
-                        goal = self.enemynatural_pos.towards(self.enemy_pos,-3)
-                        self.attackmove(tag,goal,2)
+                        self.attackmove(tag,self.reaper_goal,2)
                 elif status == 'out':
                     if tag in self.last_health:
                         if rea.health < 0.67 * self.last_health[tag]:
@@ -13690,12 +13729,19 @@ class Chaosbot(sc2.BotAI):
 
     def do211_init(self):
         self.do211_goals = []
+        # brute fly-in
         goal = self.enemy_pos.towards(self.map_center,4)
         goal = self.place_around(AUTOTURRET,goal)
         self.do211_goals.append(goal)
-        goal = self.enemyramp_pos.towards(self.enemy_pos,4)
+        # ramptop
+        goal = self.enemyramp_pos.towards(self.enemy_pos,3)
         goal = self.place_around(AUTOTURRET,goal)
         self.do211_goals.append(goal)
+        # rampbottom
+        goal = self.enemyramp_pos.towards(self.enemy_pos,-3)
+        goal = self.place_around(AUTOTURRET,goal)
+        self.do211_goals.append(goal)
+        # choke
         goal = self.enemynaturalchoke_pos.towards(self.map_center,4)
         goal = self.place_around(AUTOTURRET,goal)
         self.do211_goals.append(goal)
@@ -13763,7 +13809,7 @@ class Chaosbot(sc2.BotAI):
                 self.do211_phase += 1
             elif self.do211_phase == 2:
                 # load
-                # can be entered from phase 8
+                # can be entered from phase 9
                 allpassengers = min(8 * len(self.do211_med), len(self.do211_mar) + len(self.do211_scv))
                 loadedpassengers = 0
                 for med in self.units(MEDIVAC):
@@ -13817,14 +13863,16 @@ class Chaosbot(sc2.BotAI):
                     self.do211_delay_attack = True
                 if his_agression >= 80: # about 2 stalkers
                     self.do211_delay_attack = False
+                    goal = random.choice(self.do211_goals)
                 for med in self.units(MEDIVAC):
                     if med.tag in self.do211_med:
                         mid = self.sneakymid(med.position, goal)
                         self.go_move(med, mid)
+                        self.emotion_of_unittag[med.tag] = 'flying'
                 self.do211_goal = goal
                 self.do211_phase += 1
             elif self.do211_phase == 5:
-                # fly
+                # all fly
                 #
                 goal = self.do211_goal
                 #
@@ -13838,6 +13886,14 @@ class Chaosbot(sc2.BotAI):
                 if danger >= 80: # about 2 stalkers
                     self.do211_phase == 3 # back
                 else:
+                    somenear = False
+                    for med in self.units(MEDIVAC):
+                        if med.tag in self.do211_med:
+                            if self.near(med.position,goal,3):
+                                somenear = True
+                                # unsure goal landable
+                                goal = self.place_around(AUTOTURRET,goal)
+                                self.do211_goal = goal
                     #
                     # boost
                     for med in self.units(MEDIVAC):
@@ -13855,15 +13911,6 @@ class Chaosbot(sc2.BotAI):
                                     med(AbilityId.EFFECT_MEDIVACIGNITEAFTERBURNERS)
                                     self.medivac_speedframe[med.tag] = self.frame + 414
                     #
-                    somefar = False
-                    somenear = False
-                    for med in self.units(MEDIVAC):
-                        if med.tag in self.do211_med:
-                            if self.near(med.position,goal,1):
-                                somenear = True
-                            else:
-                                somefar = True
-                    #
                     for med in self.units(MEDIVAC):
                         if med.tag in self.do211_med:
                             if self.no_move_or_near(med, 8, 4):
@@ -13874,18 +13921,46 @@ class Chaosbot(sc2.BotAI):
                                     mid = self.sneakymid(med.position, goal)
                                     self.go_move(med, mid)
                     #
-                    if (somenear) and (not somefar) and (danger < 80):
+                    if somenear:
                         self.do211_phase += 1
-                        for med in self.units(MEDIVAC):
-                            if med.tag in self.do211_med:
-                                med(AbilityId.UNLOADALLAT_MEDIVAC,self.do211_goal)
             elif self.do211_phase == 6:
+                # fly and unload
+                goal = self.do211_goal
+                #
+                somefar = False
+                somenear = False
+                for med in self.units(MEDIVAC):
+                    if med.tag in self.do211_med:
+                        if self.near(med.position,goal,3):
+                            somenear = True
+                            if self.emotion_of_unittag[med.tag] == 'flying':
+                                self.emotion_of_unittag[med.tag] = 'unloading'
+                                med(AbilityId.UNLOADALLAT_MEDIVAC,self.do211_goal)
+                        else:
+                            somefar = True
+                #
+                for med in self.units(MEDIVAC):
+                    if med.tag in self.do211_med:
+                        if self.no_move_or_near(med, 8, 4):
+                            if self.near(med.position, goal, 6):
+                                if self.goal_of_unittag[med.tag] != goal: # no redo go_move
+                                    self.go_move(med,goal)
+                            else:
+                                mid = self.sneakymid(med.position, goal)
+                                self.go_move(med, mid)
+                #
+                if (somenear) and (not somefar):
+                    self.do211_phase += 1
+            elif self.do211_phase == 7:
                 # unload
                 haspassengers = False
                 for med in self.units(MEDIVAC):
                     if med.tag in self.do211_med:
                         if len(med.passengers) > 0:
                             haspassengers = True
+                            # sometimes the drop_all failed partly.
+                            if med.tag in self.idles:
+                                med(AbilityId.UNLOADALLAT_MEDIVAC,self.do211_goal)
                 for mar in self.units(MARINE): # appeared
                     if mar.tag in self.do211_mar:
                         if self.emotion_of_unittag[mar.tag] == 'flying':
@@ -13898,7 +13973,7 @@ class Chaosbot(sc2.BotAI):
                             self.waitframe_of_tag[scv.tag] = self.frame + 3 * self.frames_per_second # unload time
                 if not haspassengers:
                     self.do211_phase += 1
-            elif self.do211_phase == 7:
+            elif self.do211_phase == 8:
                 # attack
                 somewait = False
                 for mar in self.units(MARINE):
@@ -13923,7 +13998,8 @@ class Chaosbot(sc2.BotAI):
                                 somewait = True
                 if not somewait:
                     self.do211_phase += 1
-            elif self.do211_phase == 8:
+            elif self.do211_phase == 9:
+                # wait
                 if self.do211_delay_attack:
                     his_agression = 0
                     for ene in self.enemy_units:
@@ -17637,10 +17713,6 @@ class Chaosbot(sc2.BotAI):
                     else:
                         will = was
                     self.strategy[self.stratline][nr] = will
-            # promote a strategy TEST
-            # nr = 44
-            # self.strategy[self.stratline][nr] = 0.55
-            # write strategy
             if self.game_result != 'doubt':
                 self.log_success('gg '+self.game_result)
                 self.write_strategy()
@@ -17653,6 +17725,8 @@ class Chaosbot(sc2.BotAI):
         for ix in range(0,len(self.strategy)):
             oppi = self.strategy_oppi[ix]
             astrat = self.strategy[ix]
+            if self.there_is_a_new_opening:
+                astrat[self.radio_choices - 1] = 0.51
             stri = 'opponent '+oppi
             iix = 0
             while iix < len(astrat):
@@ -17767,7 +17841,7 @@ class Chaosbot(sc2.BotAI):
                 radio_numbers.add(nr)
         radio_nr = random.choice(tuple(radio_numbers))
         # TO TEST use next line
-        #radio_nr = 45
+        #radio_nr = 46
         for nr in range(0,self.radio_choices):
             self.game_choice.append(nr == radio_nr)
         for nr in range(self.radio_choices,self.game_choices):
