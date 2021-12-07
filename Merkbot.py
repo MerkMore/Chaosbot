@@ -604,6 +604,7 @@ class Chaosbot(sc2.BotAI):
     remember_terrain = {} # per alfasegment a tuple (compensatorx, compensatory, signature)
     # standard reaper:
     reaper_goal = nowhere
+    reaperkd8_frame = {}
     # reapercircle
     reapercircle_tags = set()
     reapercircle_love = 0
@@ -2237,7 +2238,7 @@ class Chaosbot(sc2.BotAI):
                                         BARRACKS,SUPPLYDEPOT,BARRACKSREACTOR,BARRACKSTECHLAB,REFINERY,
                                         ORBITALCOMMAND,PUNISHERGRENADES, ENGINEERINGBAY, REFINERY, TERRANINFANTRYARMORSLEVEL1,
                                         FACTORY,COMMANDCENTER,STARPORT,FUSIONCORE,STARPORTTECHLAB,BATTLECRUISER]
-            self.opening_create = {(REAPER,10),(MARAUDER,15)}
+            self.opening_create = {(REAPER,8),(MARAUDER,8)}
             #for agh in range(0,5):
             #    self.ghost_requests.append('army_ghost')
             self.opening_create_slack = 2 # means not all opening_buildseries first
@@ -2574,7 +2575,7 @@ class Chaosbot(sc2.BotAI):
         'CantFindCancelOrder', # 214;
         ]
         # chat
-        await self._client.chat_send('Chaosbot version 7 dec 2021, made by MerkMore', team_only=False)
+        await self._client.chat_send('Chaosbot version evening 7 dec 2021, made by MerkMore', team_only=False)
         code = self.opponent[0:8]
         if code in self.botnames:
             human = self.botnames[code]
@@ -9264,6 +9265,9 @@ class Chaosbot(sc2.BotAI):
             if unt.tag == tag:
                 if len(unt.orders) > 0:
                     unt(AbilityId.STOP)
+                if unt.type_id == REAPER:
+                    if unt.tag not in self.reaperkd8_frame:
+                        self.reaperkd8_frame[unt.tag] = 0
 
     def end_attackmove(self,tag):
         if tag in self.attackmove_state:
@@ -9308,6 +9312,10 @@ class Chaosbot(sc2.BotAI):
                             for ene in self.enemy_units | self.enemy_real_structures:
                                 if ene.tag == enetag:
                                     mar.attack(ene)
+                                    if mar.type_id == REAPER:
+                                        if self.frame >= self.reaperkd8_frame[martag]:
+                                            mar(AbilityId.KD8CHARGE_KD8CHARGE,ene.position,queue=True)
+                                            self.reaperkd8_frame[martag] = self.frame + 320
                             if martag in self.queuefocus:
                                 queue_enetag = self.queuefocus[martag]
                                 self.attackmove_queue_enetag[martag] = queue_enetag
@@ -9357,7 +9365,6 @@ class Chaosbot(sc2.BotAI):
                     self.attackmove_fightgoal[martag] = self.nowhere
                 self.attackmove_state[martag] = state
 
-
     def do_reapercircle(self):
         wished_circlereapers = 1
         if self.frame % 23 == 22:
@@ -9371,6 +9378,7 @@ class Chaosbot(sc2.BotAI):
                         self.emotion_of_unittag[rep.tag] = 'racing'
                         self.reapercircle_pole[rep.tag] = -1
                         self.speciality_of_tag[rep.tag] = 'circlereaper'
+                        self.reaperkd8_frame[rep.tag] = 0
             if rep.tag in self.reapercircle_tags:
                 # per emotion
                 emotion = self.emotion_of_unittag[rep.tag]
@@ -9380,14 +9388,19 @@ class Chaosbot(sc2.BotAI):
                 goodpole = (goodpole + 1) % len(self.scout1_pos)
                 #
                 if emotion == 'racing':
-                    if rep.tag in self.focus:
+                    if (rep.tag in self.focus) and (rep.health >= 10):
                         enetag = self.focus[rep.tag]
-                        self.reapercircle_love += 10
+                        self.reapercircle_love += 7
                         self.emotion_of_unittag[rep.tag] = 'shooting'
                         self.waitframe_of_tag[rep.tag] = self.frame + 10
                         for ene in self.enemy_units:
                             if ene.tag == enetag:
-                                rep.attack(ene)
+                                if self.frame >= self.reaperkd8_frame[rep.tag]:
+                                    rep(AbilityId.KD8CHARGE_KD8CHARGE,ene.position)
+                                    self.reaperkd8_frame[rep.tag] = self.frame + 320
+                                    rep.attack(ene,queue=True)
+                                else:
+                                    rep.attack(ene)
                     elif pole != goodpole:
                         self.reapercircle_pole[rep.tag] = goodpole
                         goal = self.scout1_pos[goodpole]
