@@ -181,7 +181,7 @@ class Chaosbot(sc2.BotAI):
     do_slowdown = False
     slowdown_frames = 99999 # 5*60*22.4
     slowness = 0.05 # realtime is around 0.05
-    there_is_a_new_opening = True
+    there_is_a_new_opening = False
     do_funchat = False
     do_selfhate = True
     do_log_success = False
@@ -604,6 +604,10 @@ class Chaosbot(sc2.BotAI):
     remember_terrain = {} # per alfasegment a tuple (compensatorx, compensatory, signature)
     # standard reaper:
     reaper_goal = nowhere
+    # reapercircle
+    reapercircle_tags = set()
+    reapercircle_love = 0
+    reapercircle_pole = {} # per reaper a number
     #
     banshee_right = {} # per bansheetag a bool
     fearframe_of_banshee = {} # per bansheetag a framenumber
@@ -1018,6 +1022,7 @@ class Chaosbot(sc2.BotAI):
         self.calc_fightpos()
         self.do_attackmove()
         self.do_ghostmove()
+        self.do_reapercircle()
         if (self.frame % 5 == 4):
             await self.siege_tanks()
         self.use_cluster()
@@ -2569,7 +2574,7 @@ class Chaosbot(sc2.BotAI):
         'CantFindCancelOrder', # 214;
         ]
         # chat
-        await self._client.chat_send('Chaosbot version 6 dec 2021, made by MerkMore', team_only=False)
+        await self._client.chat_send('Chaosbot version 7 dec 2021, made by MerkMore', team_only=False)
         code = self.opponent[0:8]
         if code in self.botnames:
             human = self.botnames[code]
@@ -9119,27 +9124,31 @@ class Chaosbot(sc2.BotAI):
                 damagemax[ene.tag] = 0
         for myn in self.units:
             couldfocus[myn.tag] = []
+            unitsonly = False
+            if myn.type_id in {REAPER,HELLION,HELLIONTANK}:
+                unitsonly = True
             mypos = myn.position
             mytile = self.maptile_of_pos(mypos)
             for tile in self.nine[mytile]:
                 for ene in self.enemies_of_tile[tile]:
-                    if ene.type_id not in {EGG,LARVA, AUTOTURRET}:
-                        enepos = ene.position
-                        armor = ene.armor + ene.armor_upgrade_level
-                        if ene.is_flying:
-                            if self.near(mypos,enepos,myn.air_range+myn.radius+ene.radius+0.25):
-                                if airdamage[myn.tag] > 0:
-                                    couldfocus[myn.tag].append(ene.tag)
-                            if self.near(mypos, enepos, myn.air_range+myn.radius+ene.radius):
-                                if myn.weapon_cooldown == 0:
-                                    damagemax[ene.tag] += (airdamage[myn.tag] - armor) * airattacks[myn.tag]
-                        else:
-                            if self.near(mypos, enepos, myn.ground_range+myn.radius+ene.radius+0.25):
-                                if grounddamage[myn.tag] > 0:
-                                    couldfocus[myn.tag].append(ene.tag)
-                            if self.near(mypos, enepos, myn.ground_range+myn.radius+ene.radius):
-                                if myn.weapon_cooldown == 0:
-                                    damagemax[ene.tag] += (grounddamage[myn.tag] - armor) * groundattacks[myn.tag]
+                    if (ene in self.enemy_units) or (not unitsonly):
+                        if ene.type_id not in {EGG,LARVA, AUTOTURRET}:
+                            enepos = ene.position
+                            armor = ene.armor + ene.armor_upgrade_level
+                            if ene.is_flying:
+                                if self.near(mypos,enepos,myn.air_range+myn.radius+ene.radius+0.25):
+                                    if airdamage[myn.tag] > 0:
+                                        couldfocus[myn.tag].append(ene.tag)
+                                if self.near(mypos, enepos, myn.air_range+myn.radius+ene.radius):
+                                    if myn.weapon_cooldown == 0:
+                                        damagemax[ene.tag] += (airdamage[myn.tag] - armor) * airattacks[myn.tag]
+                            else:
+                                if self.near(mypos, enepos, myn.ground_range+myn.radius+ene.radius+0.25):
+                                    if grounddamage[myn.tag] > 0:
+                                        couldfocus[myn.tag].append(ene.tag)
+                                if self.near(mypos, enepos, myn.ground_range+myn.radius+ene.radius):
+                                    if myn.weapon_cooldown == 0:
+                                        damagemax[ene.tag] += (grounddamage[myn.tag] - armor) * groundattacks[myn.tag]
         focusplus = []
         for ene in self.enemy_units | self.enemy_real_structures:
             if ene.type_id not in {EGG, LARVA, AUTOTURRET}:
@@ -9179,6 +9188,9 @@ class Chaosbot(sc2.BotAI):
         # fightposition hint dependant on nearest enemy
         self.fightpos = {}
         for myn in self.units:
+            unitsonly = False
+            if myn.type_id in {REAPER,HELLION,HELLIONTANK}:
+                unitsonly = True
             self.fightpos[myn.tag] = self.nowhere
             mypos = myn.position
             minsd = 10*10 # do not react on enemies further away
@@ -9192,49 +9204,50 @@ class Chaosbot(sc2.BotAI):
             mytile = self.maptile_of_pos(mypos)
             for tile in self.nine[mytile]:
                 for ene in self.enemies_of_tile[tile]:
-                    if ene.type_id not in {EGG,LARVA,AUTOTURRET}:
-                        enepos = ene.position
-                        sd = self.sdist(mypos,enepos)
-                        if sd < minsd:
-                            # this is your enemy unit. Make a plan.
-                            it_can_hit_air = False
-                            it_can_hit_ground = False
-                            for weapon in ene._weapons:
-                                if weapon.type in TARGET_GROUND:
-                                    it_can_hit_ground = True
-                                if weapon.type in TARGET_AIR:
-                                    it_can_hit_air = True
-                            i_can_hit_it = False
-                            it_can_hit_me = False
-                            if ene.is_flying:
-                                if i_can_hit_air:
-                                    i_can_hit_it = True
-                                    myrange = myn.air_range
-                            else:
-                                if i_can_hit_ground:
-                                    i_can_hit_it = True
-                                    myrange = myn.ground_range
-                            if myn.is_flying:
-                                if it_can_hit_air:
-                                    it_can_hit_me = True
-                                    itsrange = ene.air_range
-                            else:
-                                if it_can_hit_ground:
-                                    it_can_hit_me = True
-                                    itsrange = ene.ground_range
-                            # plandist
-                            if i_can_hit_it and it_can_hit_me:
-                                if myrange > itsrange:
-                                    plandist = max(0.5*myrange+0.5*itsrange, myrange - 1) + myn.radius + ene.radius
+                    if (ene in self.enemy_units) or (not unitsonly):
+                        if ene.type_id not in {EGG,LARVA,AUTOTURRET}:
+                            enepos = ene.position
+                            sd = self.sdist(mypos,enepos)
+                            if sd < minsd:
+                                # this is your enemy unit. Make a plan.
+                                it_can_hit_air = False
+                                it_can_hit_ground = False
+                                for weapon in ene._weapons:
+                                    if weapon.type in TARGET_GROUND:
+                                        it_can_hit_ground = True
+                                    if weapon.type in TARGET_AIR:
+                                        it_can_hit_air = True
+                                i_can_hit_it = False
+                                it_can_hit_me = False
+                                if ene.is_flying:
+                                    if i_can_hit_air:
+                                        i_can_hit_it = True
+                                        myrange = myn.air_range
                                 else:
+                                    if i_can_hit_ground:
+                                        i_can_hit_it = True
+                                        myrange = myn.ground_range
+                                if myn.is_flying:
+                                    if it_can_hit_air:
+                                        it_can_hit_me = True
+                                        itsrange = ene.air_range
+                                else:
+                                    if it_can_hit_ground:
+                                        it_can_hit_me = True
+                                        itsrange = ene.ground_range
+                                # plandist
+                                if i_can_hit_it and it_can_hit_me:
+                                    if myrange > itsrange:
+                                        plandist = max(0.5*myrange+0.5*itsrange, myrange - 1) + myn.radius + ene.radius
+                                    else:
+                                        plandist = (myrange - 1) + myn.radius + ene.radius
+                                elif it_can_hit_me:
+                                    plandist = (itsrange + 1) + myn.radius + ene.radius
+                                elif i_can_hit_it:
                                     plandist = (myrange - 1) + myn.radius + ene.radius
-                            elif it_can_hit_me:
-                                plandist = (itsrange + 1) + myn.radius + ene.radius
-                            elif i_can_hit_it:
-                                plandist = (myrange - 1) + myn.radius + ene.radius
-                            if i_can_hit_it or it_can_hit_me:
-                                minsd = sd
-                                self.fightpos[myn.tag] = enepos.towards(mypos,plandist)
+                                if i_can_hit_it or it_can_hit_me:
+                                    minsd = sd
+                                    self.fightpos[myn.tag] = enepos.towards(mypos,plandist)
 
     def attackmove(self,tag,goal,hangout):
         # makes my unit move to goal, attacking enemies in range.
@@ -9343,6 +9356,52 @@ class Chaosbot(sc2.BotAI):
                 if state != 'approach':
                     self.attackmove_fightgoal[martag] = self.nowhere
                 self.attackmove_state[martag] = state
+
+
+    def do_reapercircle(self):
+        wished_circlereapers = 1
+        if self.frame % 23 == 22:
+            self.reapercircle_tags = self.reapercircle_tags & self.all_unittags
+        for rep in self.units(REAPER):
+            if rep.tag not in self.reapercircle_tags:
+                if len(self.reapercircle_tags) < wished_circlereapers:
+                    if (self.reapercircle_love >= 0) or (len(self.units(REAPER)) >= 4):
+                        self.reapercircle_love -= 150
+                        self.reapercircle_tags.add(rep.tag)
+                        self.emotion_of_unittag[rep.tag] = 'racing'
+                        self.reapercircle_pole[rep.tag] = -1
+                        self.speciality_of_tag[rep.tag] = 'circlereaper'
+            if rep.tag in self.reapercircle_tags:
+                # per emotion
+                emotion = self.emotion_of_unittag[rep.tag]
+                pole = self.reapercircle_pole[rep.tag]
+                #
+                goodpole = self.get_near_pole(rep.position)
+                goodpole = (goodpole + 1) % len(self.scout1_pos)
+                #
+                if emotion == 'racing':
+                    if rep.tag in self.focus:
+                        enetag = self.focus[rep.tag]
+                        self.reapercircle_love += 10
+                        self.emotion_of_unittag[rep.tag] = 'shooting'
+                        self.waitframe_of_tag[rep.tag] = self.frame + 10
+                        for ene in self.enemy_units:
+                            if ene.tag == enetag:
+                                rep.attack(ene)
+                    elif pole != goodpole:
+                        self.reapercircle_pole[rep.tag] = goodpole
+                        goal = self.scout1_pos[goodpole]
+                        rep.move(goal)
+                elif emotion == 'shooting':
+                    if (rep.weapon_cooldown > 10) or (self.frame >= self.waitframe_of_tag[rep.tag]):
+                        self.emotion_of_unittag[rep.tag] = 'racing'
+                        self.reapercircle_pole[rep.tag] = goodpole
+                        goal = self.scout1_pos[goodpole]
+                        rep.move(goal)
+                
+
+
+    ###############################
 
     def init_undetect(self):
         # called if enemy_structureinfo changed
