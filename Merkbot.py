@@ -804,15 +804,17 @@ class Chaosbot(sc2.BotAI):
     mulestart_of_ptag = {} # the frame a mule was dropped here
     # speedmining.
     # No deceleration when having a queued command at minerals. No deceleration when avoiding collisions. 
-    phase_of_minert = {}
+    hatchpoint_of_mimt = {}
     patchpoint_of_mimt = {}
-    lastppdist_of_minert = {} # distance to patchpoint last programloop
-    lastspeed_of_minert = {} # log
+    midpoint_of_mimt = {}
+    seen_hatchpoint_of_minert = {}
+    seen_patchpoint_of_minert = {}
+    seen_hpdist_of_minert = {}
+    seen_ppdist_of_minert = {}
+    speed_of_minert = {}
     basepos_hash = 0 # to avoid recalculating basepos_of_mimt
     basepos_of_mimt = {} # per mimt the closest own landed base
-    miningframe_of_minert = {} # per scvtag the frame it neared decidepoint (patchpoint + 3).
-    hint_patch_of_scvt = {} # Hints are never cleaned, and remember a last connection to skip calculations.
-    start_to_speed = 54 # othertime to start to speed from either pp=3 or standstill at waitpoint
+    hint_patch_of_scvt = {}
     #
     # a reporter for an attacked builder
     reporter_of_scvt = {}
@@ -2299,11 +2301,9 @@ class Chaosbot(sc2.BotAI):
                                 gogather = False
                 if gogather:
                     self.go_gather_mim(miner,mim)
-                    self.phase_of_minert[minert] = 'G'
                 else: # needs move to prevent automatic mining
                     startpoint = self.loved_pos.towards(mimpos,3)
                     miner.move(startpoint)
-                    self.phase_of_minert[minert] = 'W'
         self.fix_count_of_job()
         #
         #  preparing midgame
@@ -2575,7 +2575,7 @@ class Chaosbot(sc2.BotAI):
         'CantFindCancelOrder', # 214;
         ]
         # chat
-        await self._client.chat_send('Chaosbot version evening 7 dec 2021, made by MerkMore', team_only=False)
+        await self._client.chat_send('Chaosbot version 8 dec 2021, made by MerkMore', team_only=False)
         code = self.opponent[0:8]
         if code in self.botnames:
             human = self.botnames[code]
@@ -16107,10 +16107,11 @@ class Chaosbot(sc2.BotAI):
             self.write_layout(ARMORY, place)
             self.airport_of_expo[expo] = place
             # also reserve an employment office
-            around = ccpos.towards(self.map_center, -4)
+            around = ccpos.towards(self.map_center, -3)
             place = self.place_around(SUPPLYDEPOT, around)
             self.write_layout(SUPPLYDEPOT, place)
             self.employment_of_expo[expo] = place
+            self.set_rally.add((ccpos, place))
 
     def lift(self):
         # attacked buildings can fly, survive, be repaired, and land back.
@@ -17248,6 +17249,13 @@ class Chaosbot(sc2.BotAI):
         return (layout_if.layout[lu.x][lu.y] in {0,2})
 
     def speedmining(self):
+        # idle miners should mine. Rare.
+        for miner in self.units(SCV):
+            minert = miner.tag
+            if minert in self.idles:
+                if minert in self.mim_of_minert:
+                    mim = self.mim_of_minert[minert]
+                    self.go_gather_mim(miner, mim)
         # set basepos_of_mimt
         hash = 0
         for bas in self.all_bases:
@@ -17268,7 +17276,7 @@ class Chaosbot(sc2.BotAI):
                         bestbasepos = basepos
                 self.basepos_of_mimt[mimt] = bestbasepos
             # automatic hatchpoint is at average distance 2.91 from basepos
-            # automatic patchpoint is at average distance 0.92 from closetst mineralpatchhalf
+            # automatic patchpoint is at average distance 0.92 from closest mineralpatchhalf
             for (mimpos,mimt) in self.all_minerals:
                 basepos = self.basepos_of_mimt[mimt]
                 mimleft = Point2((mimpos.x - 0.5, mimpos.y))
@@ -17286,174 +17294,90 @@ class Chaosbot(sc2.BotAI):
                     else:
                         patchpoint = patchpointleft
                 self.patchpoint_of_mimt[mimt] = patchpoint
-        if self.supply_used >= 100:
-            # normal mining
-            # idle miners should mine. Rare.
-            for miner in self.units(SCV):
-                minert = miner.tag
-                if minert in self.idles:
+                # hatchpoint
+                hatchpoint = basepos.towards(patchpoint,2.91)
+                self.hatchpoint_of_mimt[mimt] = hatchpoint
+                # midpoint
+                midpoint = Point2((0.5*hatchpoint.x+0.5*patchpoint.x,0.5*hatchpoint.y+0.5*patchpoint.y))
+                self.midpoint_of_mimt[mimt] = midpoint
+        # init per minert
+        for miner in self.units(SCV):
+            minert = miner.tag
+            if minert in self.mim_of_minert:
+                if minert not in self.speed_of_minert:
+                    self.speed_of_minert[minert] = False
+                    # seen points
+                    self.seen_patchpoint_of_minert[minert] = self.nowhere
+                    self.seen_hatchpoint_of_minert[minert] = self.nowhere
+                    self.seen_ppdist_of_minert[minert] = 99999
+                    self.seen_hpdist_of_minert[minert] = 99999
+        # seen points
+        for miner in self.units(SCV):
+            minert = miner.tag
+            if minert in self.mim_of_minert:
+                mim = self.mim_of_minert[minert]
+                (mimpos, mimt) = mim
+                basepos = self.basepos_of_mimt[mimt]
+                hatchpoint = self.hatchpoint_of_mimt[mimt]
+                patchpoint = self.patchpoint_of_mimt[mimt]
+                midpoint = self.midpoint_of_mimt[mimt]
+                seenpp = self.seen_patchpoint_of_minert[minert]
+                seenhp = self.seen_hatchpoint_of_minert[minert]
+                #
+                ppdist = self.sdist(miner.position,mimpos)
+                if ppdist < self.seen_ppdist_of_minert[minert]:
+                    self.seen_ppdist_of_minert[minert] = ppdist
+                    self.seen_patchpoint_of_minert[minert] = miner.position
+                elif ppdist >= 2.5*2.5: # dist 0.9+1.5
+                    if self.near(seenpp,patchpoint,1):
+                        self.patchpoint_of_mimt[mimt] = Point2((0.3*seenpp.x+0.7*patchpoint.x,0.3*seenpp.y+0.7*patchpoint.y))
+                    self.seen_patchpoint_of_minert[minert] = midpoint
+                    self.seen_ppdist_of_minert[minert] = 99999    
+                #
+                hpdist = self.sdist(miner.position,basepos)
+                if hpdist < self.seen_hpdist_of_minert[minert]:
+                    self.seen_hpdist_of_minert[minert] = hpdist
+                    self.seen_hatchpoint_of_minert[minert] = miner.position
+                elif hpdist >= 4.5*4.5: # dist 2.9+1.5
+                    if self.near(seenhp,hatchpoint,1):
+                        self.hatchpoint_of_mimt[mimt] = Point2((0.3*seenhp.x+0.7*hatchpoint.x,0.3*seenhp.y+0.7*hatchpoint.y))
+                    self.seen_hatchpoint_of_minert[minert] = midpoint    
+                    self.seen_hpdist_of_minert[minert] = 99999    
+                #
+        if (self.supply_used < 100):
+            if self.frame >= self.frames_per_second * 7:
+                # speedmining
+                for miner in self.units(SCV):
+                    minert = miner.tag
                     if minert in self.mim_of_minert:
                         mim = self.mim_of_minert[minert]
-                        self.go_gather_mim(miner, mim)
-        if self.supply_used < 100:
-            # init phase_of_minert
-            for minert in self.mim_of_minert:
-                if minert not in self.phase_of_minert:
-                    self.phase_of_minert[minert] = 'G'
-            # log
-            for miner in self.units(SCV):
-                minert = miner.tag
-                if minert in self.mim_of_minert:
-                    mim = self.mim_of_minert[minert]
-                    (mimpos, mimt) = mim
-                    patchpoint = self.patchpoint_of_mimt[mimt]
-                    ppdist = self.circledist(patchpoint, miner.position)
-                    if minert not in self.lastppdist_of_minert:
-                        self.lastppdist_of_minert[minert] = ppdist
-                    speed = ppdist - self.lastppdist_of_minert[minert]
-                    if minert not in self.lastspeed_of_minert:
-                        self.lastspeed_of_minert[minert] = speed
-                    acc = speed - self.lastspeed_of_minert[minert]
-                    exclama = ''
-                    if abs(acc) >= 0.06:
-                        exclama = '!'
-                    self.log_speedmining(
-                        self.name(minert) + '   ' + str(round(100*ppdist)) + ' ' + str(round(100*speed))
-                        + ' ' + str(round(100*acc)) + '   ' + self.phase_of_minert[minert] + exclama)
-                    self.lastspeed_of_minert[minert] = speed
-            # idle miners should mine. This is rare.
-            for miner in self.units(SCV):
-                minert = miner.tag
-                if minert in self.idles:
-                    if minert in self.mim_of_minert:
-                        # move to waitpoint, start gather when other is at miningframe start_to_speed
-                        thismim = self.mim_of_minert[minert]
-                        (thismimpos, thismimt) = thismim
-                        patchpoint = self.patchpoint_of_mimt[thismimt]
-                        basepos = self.basepos_of_mimt[thismimt]
-                        waitpoint = patchpoint.towards(basepos, 2)
-                        wait = False
-                        for otherminert in self.mim_of_minert:
-                            if self.mim_of_minert[otherminert] == thismim:
-                                if otherminert < minert:  # smallest first
-                                    wait = True
-                                    if otherminert in self.miningframe_of_minert:
-                                        othertime = self.frame - self.miningframe_of_minert[otherminert]
-                                        if (othertime >= self.start_to_speed) and (othertime < self.start_to_speed + 20):
-                                            wait = False
-                        if not self.near(miner.position, waitpoint, 1.0):
-                            wait = True  # move to waitpoint
-                        if wait:
-                            if not self.near(miner.position, waitpoint, 1.0):
-                                miner.move(waitpoint)
-                        else:  # start mining
-                            for mim in self.all_minerals:
-                                (mimpos, mimt) = mim
-                                if mimt == thismimt:
-                                    self.go_gather_mim(miner, mim)
-            # miningframe_of_minert
-            for miner in self.units(SCV):
-                minert = miner.tag
-                if minert in self.mim_of_minert:
-                    mim = self.mim_of_minert[minert]
-                    (mimpos, mimt) = mim
-                    patchpoint = self.patchpoint_of_mimt[mimt]
-                    if minert not in self.miningframe_of_minert:
-                        self.miningframe_of_minert[minert] = -99999
-                    ppdist = self.circledist(patchpoint, miner.position)
-                    # miningframe: moment the scv is 3 near the patchpoint
-                    if (ppdist < 3):
-                        if not miner.is_carrying_minerals:
-                            if self.miningframe_of_minert[minert] + 90 < self.frame: # roundtrip > 90
-                                if (ppdist > 2):
-                                    self.miningframe_of_minert[minert] = self.frame
-            # calibrating miningframe on ppdist
-            for miner in self.units(SCV):
-                minert = miner.tag
-                if minert in self.mim_of_minert:
-                    mim = self.mim_of_minert[minert]
-                    (mimpos, mimt) = mim
-                    phase = self.phase_of_minert[minert]
-                    patchpoint = self.patchpoint_of_mimt[mimt]
-                    ppdist = self.circledist(patchpoint, miner.position)
-                    time = self.frame - self.miningframe_of_minert[minert]
-                    if minert not in self.lastppdist_of_minert:
-                        self.lastppdist_of_minert[minert] = ppdist
-                    speed = (ppdist - self.lastppdist_of_minert[minert]) / self.chosen_game_step
-                    if ppdist > 0.2:
-                        if phase in {'H','I'}:
-                            calctime = round(2 + (3-ppdist) / self.scv_step)
-                            if calctime < time:
-                                # calibrating miningframe
-                                self.miningframe_of_minert[minert] = self.frame - calctime
-            # speedmining
-            for miner in self.units(SCV):
-                minert = miner.tag
-                if minert in self.mim_of_minert:
-                    mim = self.mim_of_minert[minert]
-                    (mimpos, mimt) = mim
-                    phase = self.phase_of_minert[minert]
-                    patchpoint = self.patchpoint_of_mimt[mimt]
-                    ppdist = self.circledist(patchpoint, miner.position)
-                    if phase in {'G','H','W','I'}:
+                        (mimpos, mimt) = mim
+                        patchpoint = self.patchpoint_of_mimt[mimt]
+                        hatchpoint = self.hatchpoint_of_mimt[mimt]
+                        basepos = self.basepos_of_mimt[mimt]
                         if miner.is_carrying_minerals:
-                            # it turns to return; patchpoint
-                            phase = 'R'
-                    if phase == 'R':
+                            if self.near(miner.position, hatchpoint, 1.5):
+                                if not self.speed_of_minert[minert]:
+                                    self.speed_of_minert[minert] = True
+                                    for patch in self.mineral_field:
+                                        if self.postag_of_patch(patch) == mimt:
+                                            for cc in self.structures:
+                                                if cc.position == basepos:
+                                                    miner.move(hatchpoint)
+                                                    miner(AbilityId.SMART,cc,queue=True)
+                                                    miner(AbilityId.HARVEST_GATHER_SCV,patch,queue=True)
+                            else: # not near
+                                self.speed_of_minert[minert] = False
                         if not miner.is_carrying_minerals:
-                            # it turns to gather; hatchpoint
-                            phase = 'G'
-                    if phase == 'G':
-                        if self.near(miner.position, patchpoint, 3):
-                            phase = 'I'
-                            for othert in self.mim_of_minert:
-                                if othert != minert:
-                                    if mim == self.mim_of_minert[othert]:
-                                        basepos = self.basepos_of_mimt[mimt]
-                                        waitpoint = patchpoint.towards(basepos, 2)
-                                        if othert in self.miningframe_of_minert:
-                                            othertime = self.frame - self.miningframe_of_minert[othert]
-                                            if othertime < self.start_to_speed:
-                                                phase = 'W'
-                                                miner.move(waitpoint)
-                                        if othert in self.phase_of_minert:
-                                            if self.phase_of_minert[othert] == 'I':
-                                                phase = 'W'
-                                                miner.move(waitpoint)
-                    if phase == 'W':
-                        wait = False
-                        for othert in self.mim_of_minert:
-                            if othert != minert:
-                                if mim == self.mim_of_minert[othert]:
-                                    if othert in self.miningframe_of_minert:
-                                        wait = True
-                                        othertime = self.frame - self.miningframe_of_minert[othert]
-                                        if othertime >= self.start_to_speed:
-                                            wait = False
-                                    if othert in self.phase_of_minert:
-                                        if self.phase_of_minert[othert] == 'I':
-                                            wait = True
-                        if not wait:
-                            phase = 'I'
-                            for mim in self.all_minerals:
-                                if mim[1] == mimt:
-                                    self.go_gather_mim(miner,mim)
-                    if phase == 'I':
-                        if self.near(miner.position, patchpoint, 1.5):
-                            phase = 'H'
-                            for patch in self.mineral_field:
-                                if self.postag_of_patch(patch) == mimt:
-                                    miner.move(patchpoint)
-                                    miner(AbilityId.HARVEST_GATHER_SCV,patch,queue=True)
-                    if phase == 'H':
-                        # expect ppdist decreasing
-                        if ppdist > self.lastppdist_of_minert[minert] + 0.2:
-                            # Should be rare. When this happens, the order has shifted.
-                            for patch in self.mineral_field:
-                                if self.postag_of_patch(patch) == mimt:
-                                    miner(AbilityId.HARVEST_GATHER_SCV, patch)
-                    self.phase_of_minert[minert] = phase
-                    self.lastppdist_of_minert[minert] = ppdist # do not use beyond this point
+                            if self.near(miner.position, patchpoint, 1.5):
+                                if not self.speed_of_minert[minert]:
+                                    self.speed_of_minert[minert] = True
+                                    for patch in self.mineral_field:
+                                        if self.postag_of_patch(patch) == mimt:
+                                            miner.move(patchpoint)
+                                            miner(AbilityId.SMART,patch,queue=True)
+                            else: # not near
+                                self.speed_of_minert[minert] = False
 
 
 
