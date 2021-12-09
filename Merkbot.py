@@ -524,10 +524,9 @@ class Chaosbot(sc2.BotAI):
     cleaning_tank_tags = set()
     cleaning_object_found = False
     cleaning_object_pos = nowhere
+    cleaning_object_radius = 0
     cleaning_tank_siegepos = {} # intended siege position
     cleaning_tank_shotframe = {} # to know whether it is shooting
-    cleaning_tank_thinkframe = {} # to wait a second after being surprised
-    cleaning_tank_back = {} # move one step back if falling in a fight
     #
     emotion_of_unittag = {} # jumpy bc emotion "lazy","repair", etc. Also for tanks, and for widowmines, rushworkers.
     burrowpos_of_wmt = {}
@@ -2239,10 +2238,11 @@ class Chaosbot(sc2.BotAI):
             self.buildseries_opening = [SUPPLYDEPOT,BARRACKS,REFINERY,REAPER,ORBITALCOMMAND,COMMANDCENTER,
                                         BARRACKS,SUPPLYDEPOT,BARRACKSREACTOR,BARRACKSTECHLAB,REFINERY,
                                         ORBITALCOMMAND,PUNISHERGRENADES, ENGINEERINGBAY, REFINERY, TERRANINFANTRYARMORSLEVEL1,
-                                        FACTORY,COMMANDCENTER,STARPORT,FUSIONCORE,STARPORTTECHLAB,BATTLECRUISER]
+                                        FACTORY,COMMANDCENTER,STARPORT,FUSIONCORE,STARPORT,
+                                        STARPORTTECHLAB,STARPORTTECHLAB,BATTLECRUISER,BATTLECRUISER]
             self.opening_create = {(REAPER,8),(MARAUDER,8)}
-            #for agh in range(0,5):
-            #    self.ghost_requests.append('army_ghost')
+            # no scout1
+            self.scout1_tag = -2
             self.opening_create_slack = 2 # means not all opening_buildseries first
             self.reaper_goal = self.enemy_pos.towards(self.map_center,-5)
             self.marauder_goal = self.reaper_goal
@@ -2575,7 +2575,7 @@ class Chaosbot(sc2.BotAI):
         'CantFindCancelOrder', # 214;
         ]
         # chat
-        await self._client.chat_send('Chaosbot version 8 dec 2021, made by MerkMore', team_only=False)
+        await self._client.chat_send('Chaosbot version 9 dec 2021, made by MerkMore', team_only=False)
         code = self.opponent[0:8]
         if code in self.botnames:
             human = self.botnames[code]
@@ -9280,6 +9280,18 @@ class Chaosbot(sc2.BotAI):
             del self.attackmove_fightgoal[tag]
             del self.attackmove_goaltried[tag]
 
+    def micro_attack(self,mar,ene):
+        # mar.attack(ene)
+        if mar.type_id == REAPER:
+            if self.frame >= self.reaperkd8_frame[mar.tag]:
+                mar(AbilityId.KD8CHARGE_KD8CHARGE,ene.position)
+                self.reaperkd8_frame[mar.tag] = self.frame + 320
+            else:
+                mar.attack(ene)
+        else:
+            mar.attack(ene)
+
+
     def do_attackmove(self):
         # cleanup
         if self.frame % 29 == 28:
@@ -9311,11 +9323,7 @@ class Chaosbot(sc2.BotAI):
                             self.attackmove_enetag[martag] = enetag
                             for ene in self.enemy_units | self.enemy_real_structures:
                                 if ene.tag == enetag:
-                                    mar.attack(ene)
-                                    if mar.type_id == REAPER:
-                                        if self.frame >= self.reaperkd8_frame[martag]:
-                                            mar(AbilityId.KD8CHARGE_KD8CHARGE,ene.position,queue=True)
-                                            self.reaperkd8_frame[martag] = self.frame + 320
+                                    self.micro_attack(mar,ene)
                             if martag in self.queuefocus:
                                 queue_enetag = self.queuefocus[martag]
                                 self.attackmove_queue_enetag[martag] = queue_enetag
@@ -9331,7 +9339,7 @@ class Chaosbot(sc2.BotAI):
                         self.attackmove_enetag[martag] = enetag
                         for ene in self.enemy_units | self.enemy_real_structures:
                             if ene.tag == enetag:
-                                mar.attack(ene)
+                                self.micro_attack(mar,ene)
                         if martag in self.queuefocus:
                             queue_enetag = self.queuefocus[martag]
                             self.attackmove_queue_enetag[martag] = queue_enetag
@@ -9344,7 +9352,7 @@ class Chaosbot(sc2.BotAI):
                         if state == 'approach':
                             state = 'rest'
                     else: # take fightpos
-                        if not self.near(fpos,fightgoal,0.5):
+                        if not self.near(fpos,fightgoal,0.25):
                             mar.move(fpos)
                             self.attackmove_fightgoal[martag] = fpos
                         state = 'approach'
@@ -9357,6 +9365,7 @@ class Chaosbot(sc2.BotAI):
                     if self.near(mar.position, goal, tolerance):
                         state = 'rest'
                     elif martag in self.idles:
+                        self.idles.remove(martag)
                         mar.move(goal)
                         self.attackmove_goaltried[martag] += 1
                         if self.attackmove_goaltried[martag] >= 4:
@@ -9395,12 +9404,7 @@ class Chaosbot(sc2.BotAI):
                         self.waitframe_of_tag[rep.tag] = self.frame + 10
                         for ene in self.enemy_units:
                             if ene.tag == enetag:
-                                if self.frame >= self.reaperkd8_frame[rep.tag]:
-                                    rep(AbilityId.KD8CHARGE_KD8CHARGE,ene.position)
-                                    self.reaperkd8_frame[rep.tag] = self.frame + 320
-                                    rep.attack(ene,queue=True)
-                                else:
-                                    rep.attack(ene)
+                                self.micro_attack(rep,ene)
                     elif pole != goodpole:
                         self.reapercircle_pole[rep.tag] = goodpole
                         goal = self.scout1_pos[goodpole]
@@ -10907,99 +10911,119 @@ class Chaosbot(sc2.BotAI):
             cyct = cyc.tag
             #await self.debug(cyc)
             if self.no_doubling(cyct):
-                if self.emotion_of_unittag[cyct] == 'resting':
-                    side = self.side_of_unittag[cyct]
-                    if side == 'L':
-                        exists = left_building_exists
-                        target_pos = left_building_target_pos
-                    else:
-                        exists = right_building_exists
-                        target_pos = right_building_target_pos
-                    if exists:
-                        self.go_attack(cyc,target_pos)
-                        self.emotion_of_unittag[cyct] = 'attacking'
-                elif self.emotion_of_unittag[cyct] == 'attacking':
-                    if self.no_move(cyc,120):
+                minpower = 111
+                if self.emotion_of_unittag[cyct] == 'retreating':
+                    if self.frame >= self.unlockframe_of_cyclonetag[cyct] + 100: # cooldown of lock
                         self.emotion_of_unittag[cyct] = 'resting'
-                    if cyc.weapon_cooldown > 0: # it shot
-                        if self.frame >= self.unlockframe_of_cyclonetag[cyct] + 100: # cooldown of lock
-                            mytile = self.maptile_of_pos(cyc.position)
-                            tolock = None
-                            max_power = 0
-                            for tile in self.nine[mytile]:
-                                for ene in self.enemies_of_tile[tile]:
-                                    if ene.type_id not in self.all_workertypes:
-                                        if self.near(cyc.position, ene.position, 10):
-                                            power = self.unit_power(ene.type_id)
-                                            #print('cyclone sees '+ene.type_id.name+' power '+str(power))
-                                            if power > max_power:
-                                                tolock = ene
-                                                max_power = power
-                            if max_power > 0:
-                                self.log_success('locking a '+tolock.type_id.name)
-                                self.victimtag_of_unittag[cyct] = tolock.tag
-                                bestpos = tolock.position.towards(cyc.position,10)
-                                if cyct in self.trail:
-                                    bestdist = 99999
-                                    for tp in range(0, 10):
-                                        pos = self.trail[cyct][tp]
-                                        dist = abs(self.circledist(pos, tolock.position) - 10)
-                                        if dist < bestdist:
-                                            bestdist = dist
-                                            bestpos = pos
-                                cyc.move(bestpos) # run away
-                                cyc(AbilityId.LOCKON_LOCKON,tolock) # start lockon
+                if self.emotion_of_unittag[cyct] == 'resting':
+                    if self.frame < self.unlockframe_of_cyclonetag[cyct] + 100: # cooldown of lock
+                        self.emotion_of_unittag[cyct] = 'retreating'
+                        bestpos = self.loved_pos.towards(self.map_center,3)
+                        cyc.move(bestpos)
+                        self.goal_of_unittag[cyct] = bestpos
+                    else:
+                        side = self.side_of_unittag[cyct]
+                        if side == 'L':
+                            exists = left_building_exists
+                            target_pos = left_building_target_pos
+                        else:
+                            exists = right_building_exists
+                            target_pos = right_building_target_pos
+                        if exists:
+                            self.attackmove(cyct,target_pos,4)
+                            self.emotion_of_unittag[cyct] = 'moving'
+                elif self.emotion_of_unittag[cyct] == 'moving':
+                    goal = self.attackmove_goal[cyct]
+                    if self.near(cyc.position,goal,1):
+                        self.end_attackmove(cyct)
+                        self.emotion_of_unittag[cyct] = 'resting'
+                    elif self.frame >= self.unlockframe_of_cyclonetag[cyct] + 100: # cooldown of lock
+                        mytile = self.maptile_of_pos(cyc.position)
+                        tolock = None
+                        maxpower = minpower
+                        for tile in self.nine[mytile]:
+                            for ene in self.enemies_of_tile[tile]:
+                                if ene.type_id not in self.all_workertypes:
+                                    if self.near(cyc.position, ene.position, 10):
+                                        power = self.unit_power(ene.type_id)
+                                        if power > maxpower:
+                                            tolock = ene
+                                            maxpower = power
+                        if maxpower > minpower:
+                            self.log_success('trying to lock a '+tolock.type_id.name)
+                            self.end_attackmove(cyct)
+                            self.victimtag_of_unittag[cyct] = tolock.tag
+                            bestpos = tolock.position.towards(cyc.position,7)
+                            cyc.move(bestpos) # run towards
+                            self.goal_of_unittag[cyct] = bestpos
+                            self.emotion_of_unittag[cyct] = 'targetting'
+                elif self.emotion_of_unittag[cyct] == 'targetting':
+                    found = False
+                    tolock = None
+                    mytile = self.maptile_of_pos(cyc.position)
+                    for tile in self.nine[mytile]:
+                        for ene in self.enemies_of_tile[tile]:
+                            if ene.tag == self.victimtag_of_unittag[cyct]:
+                                found = True
+                                tolock = ene
+                                maxpower = self.unit_power(ene.type_id)
+                    if found:
+                        # accept target changing
+                        for tile in self.nine[mytile]:
+                            for ene in self.enemies_of_tile[tile]:
+                                if ene.type_id not in self.all_workertypes:
+                                    if self.near(cyc.position, ene.position, 10):
+                                        power = self.unit_power(ene.type_id)
+                                        if power > maxpower:
+                                            tolock = ene
+                                            self.log_success('improved victim is a '+tolock.type_id.name)
+                                            maxpower = power
+                                            self.victimtag_of_unittag[cyct] = tolock.tag
+                        #
+                        if self.near(cyc.position,tolock.position,7):
+                            abilities = (await self.get_available_abilities([cyc]))[0]
+                            if AbilityId.LOCKON_LOCKON in abilities:
+                                # start lockon
+                                cyc(AbilityId.LOCKON_LOCKON,tolock)
+                                fleepos = tolock.position.towards(cyc.position,10)
+                                cyc.move(fleepos,queue=True)
                                 self.emotion_of_unittag[cyct] = 'locking'
-                                #self.slowdown_frames = 30
-                            else: # no enemy in sight
-                                self.emotion_of_unittag[cyct] = 'retreating'
-                                self.go_move(cyc, cyc.position.towards(self.loved_pos, 6))
-                        else: # in cooldown
-                            self.emotion_of_unittag[cyct] = 'retreating'
-                            self.go_move(cyc,cyc.position.towards(self.loved_pos, 6))
-                elif self.emotion_of_unittag[cyct] == 'retreating':
-                    if (cyc.health < self.last_health[cyct]) or (cyc.weapon_cooldown > 0):
-                        self.go_move(cyc, cyc.position.towards(self.loved_pos, 6))
-                    if self.no_move(cyc,40):
+                                self.waitframe_of_tag[cyct] = self.frame + 20
+                            else: # no enemy in range
+                                self.emotion_of_unittag[cyct] = 'resting'
+                        else:
+                            # chase
+                            bestpos = tolock.position.towards(cyc.position,7) 
+                            if not self.near(bestpos,self.goal_of_unittag[cyct],1):
+                                cyc.move(bestpos) # run towards
+                                self.goal_of_unittag[cyct] = bestpos                                
+                    else: # not found
                         self.emotion_of_unittag[cyct] = 'resting'
                 elif self.emotion_of_unittag[cyct] == 'locking':
-                    abilities = (await self.get_available_abilities([cyc]))[0]
-                    if AbilityId.CANCEL_LOCKON in abilities:
-                        self.emotion_of_unittag[cyct] = 'locked'
-                    if AbilityId.LOCKON_LOCKON in abilities:
-                        # how did the lockon fail?
-                        self.emotion_of_unittag[cyct] = 'resting'
+                    if self.frame >= self.waitframe_of_tag[cyct]:
+                        abilities = (await self.get_available_abilities([cyc]))[0]
+                        if AbilityId.CANCEL_LOCKON in abilities:
+                            self.emotion_of_unittag[cyct] = 'locked'
+                        if AbilityId.LOCKON_LOCKON in abilities:
+                            # how did the lockon fail?
+                            self.emotion_of_unittag[cyct] = 'resting'
                 elif self.emotion_of_unittag[cyct] == 'locked':
-                    self.unlockframe_of_cyclonetag[cyct] = self.frame
+                    self.unlockframe_of_cyclonetag[cyct] = self.frame # this value will remain when not locked
                     mytile = self.maptile_of_pos(cyc.position)
                     abilities = (await self.get_available_abilities([cyc]))[0]
                     if AbilityId.CANCEL_LOCKON not in abilities:
                         self.emotion_of_unittag[cyct] = 'resting'
+                    # move to dist 10
                     enepos = self.nowhere
-                    enethreat = False
                     for tile in self.nine[mytile]:
                         for ene in self.enemies_of_tile[tile]:
                             if ene.tag == self.victimtag_of_unittag[cyct]:
                                 enepos = ene.position
-                            if self.near(ene.position,cyc.position,7):
-                                enethreat = True
-                                threatpos = ene.position
-                    calc_pos = cyc.position
                     if enepos != self.nowhere:
-                        calc_pos = enepos.towards(cyc.position, 10)
-                    if enethreat:
-                        calc_pos = cyc.position.towards(threatpos,-3)
-                    bestsd = 99999
-                    bestpos = calc_pos
-                    if cyct in self.trail:
-                        for tp in range(0,10):
-                            pos = self.trail[cyct][tp]
-                            sd = self.sdist(pos,calc_pos)
-                            if sd < bestsd:
-                                bestsd = sd
-                                bestpos = pos
-                    if bestpos != cyc.position:
-                        cyc.move(bestpos)
+                        bestpos = enepos.towards(cyc.position, 10)
+                        if not self.near(bestpos,self.goal_of_unittag[cyct],1):
+                            cyc.move(bestpos) # run towards
+                            self.goal_of_unittag[cyct] = bestpos                                
         # banshees
         if len(self.banshee_right) > len(self.units(BANSHEE)):
             # cleanup lost banshees
@@ -11225,73 +11249,50 @@ class Chaosbot(sc2.BotAI):
                         minsd = sd
                         self.cleaning_object_found = True
                         self.cleaning_object_pos = pos
+                        self.cleaning_object_radius = self.size_of_structure[typ] / 2
             # cleaning tanks
             if self.cleaning_object_found:
                 for tnk in self.units(SIEGETANK):
                     tnkt = tnk.tag
                     if tnkt in self.idles:
                         if tnkt in self.cleaning_tank_tags:
-                            if self.emotion_of_unittag[tnkt] == 'fighting':
-                                if (tnk.health < self.last_health[tnkt]) or (tnk.weapon_cooldown > 0):
-                                    self.cleaning_tank_back[tnkt] = self.back_step(tnkt)
-                                    backpoint = tnk.position.towards(self.cleaning_tank_back[tnkt],2)
-                                    self.log_command('tnk.move(backpoint)')
-                                    tnk.move(backpoint)
-                                else: # stopped fighting
-                                    self.log_command('tnk(AbilityId.SIEGEMODE_SIEGEMODE)')
-                                    tnk(AbilityId.SIEGEMODE_SIEGEMODE)
-                                    # start boredness timer
-                                    self.cleaning_tank_shotframe[tnkt] = self.frame + 60 # some siegingtime
-                                    self.emotion_of_unittag[tnkt] = 'sieged'
                             if self.emotion_of_unittag[tnkt] == 'enthousiast':
                                 # get siegepos
-                                around = self.cleaning_object_pos.towards(self.loved_pos,10)
-                                siegepos = self.place_around(AUTOTURRET, around)
+                                around = self.cleaning_object_pos.towards(tnk.position,9)
+                                around = self.put_on_the_grid(AUTOTURRET,around)
+                                ok = False
+                                tries = 0
+                                radius = 0
+                                while (not ok):
+                                    if tries == radius * radius:
+                                        radius += 1
+                                    tries += 1
+                                    x = around.x + random.randrange(-radius, radius)
+                                    y = around.y + random.randrange(-radius, radius)
+                                    siegepos = Point2((x, y))
+                                    ok = self.check_layout(AUTOTURRET, siegepos)
+                                    ok = ok and self.near(siegepos,self.cleaning_object_pos,11+self.cleaning_object_radius)
+                                    ok = ok and not self.near(siegepos,self.cleaning_object_pos,9+self.cleaning_object_radius)
                                 self.cleaning_tank_siegepos[tnkt] = siegepos
                                 # Mark as used.
                                 self.write_layout(MISSILETURRET, siegepos)
                                 self.tankplaces.add(siegepos)
                                 # go there
-                                self.log_command('tnk.attack(siegepos)')
-                                self.go_attack(tnk, siegepos)
+                                self.attackmove(tnkt, siegepos, 0.1)
                                 self.emotion_of_unittag[tnkt] = 'approaching'
                             if self.emotion_of_unittag[tnkt] == 'approaching':
-                                if self.no_move_or_near(tnk, 280, 0.1):
+                                siegepos = self.cleaning_tank_siegepos[tnkt]
+                                if self.near(tnk.position,siegepos,0.1):
                                     if tnk.weapon_cooldown == 0:
+                                        self.end_attackmove(tnkt)
                                         self.log_command('tnk(AbilityId.SIEGEMODE_SIEGEMODE)')
                                         tnk(AbilityId.SIEGEMODE_SIEGEMODE)
                                         # start boreness timer
                                         self.cleaning_tank_shotframe[tnkt] = self.frame + 60 # some siegingtime
                                         self.emotion_of_unittag[tnkt] = 'sieged'
-                for tnk in self.units(SIEGETANK):
-                    tnkt = tnk.tag
-                    if tnkt in self.cleaning_tank_tags:
-                        # log
-                        #stri = self.emotion_of_unittag[tnkt]
-                        #self.log_unitorder(tnk,stri)
-                        # starting a fight
-                        if tnkt in self.last_health:
-                            if (tnk.health < self.last_health[tnkt]) or (tnk.weapon_cooldown > 0):
-                                self.emotion_of_unittag[tnkt] = 'backabit'
-                                self.cleaning_tank_back[tnkt] = self.back_first_step(tnkt)
-                                backpoint = tnk.position.towards(self.cleaning_tank_back[tnkt], 2)
-                                self.log_command('tnk.move(backpoint)')
-                                tnk.move(backpoint)
-                                self.prevent_doubling(tnkt)
-                        if self.emotion_of_unittag[tnkt] == 'backabit':
-                            moves = 0
-                            for order in tnk.orders:
-                                if order.ability.id == AbilityId.MOVE:
-                                    moves += 1
-                                else:
-                                    moves = 99999
-                            if moves == 1:
-                                self.emotion_of_unittag[tnkt] = 'fighting'
                 for tnk in self.units(SIEGETANKSIEGED):
                     tnkt = tnk.tag
                     if tnkt in self.cleaning_tank_tags:
-                        #stri = self.emotion_of_unittag[tnkt]
-                        #self.log_unitorder(tnk,stri)
                         if self.emotion_of_unittag[tnkt] == 'sieged':
                             if tnk.weapon_cooldown > 0:
                                 self.cleaning_tank_shotframe[tnkt] = self.frame
@@ -17837,11 +17838,13 @@ class Chaosbot(sc2.BotAI):
                 radio_numbers.add(nr)
         radio_nr = random.choice(tuple(radio_numbers))
         # TO TEST use next line
-        #radio_nr = 46
+        #radio_nr = 45
         for nr in range(0,self.radio_choices):
             self.game_choice.append(nr == radio_nr)
         for nr in range(self.radio_choices,self.game_choices):
             self.game_choice.append(random.random() < self.strategy[self.stratline][nr])
+        # TO TEST use next line
+        #self.game_choice[57] = True
         self.game_result = 'doubt'
 
 #*********************************************************************************************************************
