@@ -15,7 +15,7 @@ mpyq==0.2.5
 multidict==5.2.0
 numpy==1.19.3
 Pillow==8.4.0
-pipenv==2021.5.29
+pipenv==2022.1.8
 platformdirs==2.3.0
 portpicker==1.4.0
 protobuf==3.19.1
