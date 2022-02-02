@@ -3,7 +3,7 @@
 # copied from:
 # https://github.com/DrInfy/sharpy-sc2/blob/5707ab55460ccfc7e872f73fb42bf5d5118668c7/sharpy/general/rocks.py
 #
-from sc2 import UnitTypeId
+from sc2.ids.unit_typeid import UnitTypeId
 class rocks_if:
     unbuildable_rocks = {
         UnitTypeId.UNBUILDABLEROCKSDESTRUCTIBLE,

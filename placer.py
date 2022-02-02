@@ -2,7 +2,7 @@
 # Makes text for building placement
 # appends the output to file "data\placement.txt"
 # author: MerkMore
-# version 16 nov 2021
+# version 11 jan 2022
 from layout_if_py import layout_if
 import random
 from math import sqrt, sin, cos, acos, pi
@@ -138,16 +138,23 @@ class prog:
         ramptop = self.filterresult.copy() # the parts of ramp touching the top area
         self.logg('enemyramptop '+str(len(ramptop)))
         # for a multi-ramp map, the central ramp is chosen
-        alsoramptop = set()
-        bestsd = 99999
-        for square in ramptop:
-            sd = self.sdist(square,self.mapcenter)
-            if sd < bestsd:
-                bestsd = sd
-                alsoramptop = set([square])
-                enemyramptop_tobeusedlater = square
-        self.extend(alsoramptop)
-        ramptop = ramptop & alsoramptop
+        # a good ramp has size at least 3 (for map GlitteringAshes)
+        goodsquares = ramptop.copy()
+        goodramp = False
+        while not goodramp:
+            chosenramptop = set()
+            bestsd = 99999
+            for square in goodsquares:
+                sd = self.sdist(square,self.mapcenter)
+                if sd < bestsd:
+                    bestsd = sd
+                    chosenramptop = set([square])
+                    enemyramptop_tobeusedlater = square
+            self.extend(chosenramptop)
+            chosenramptop = chosenramptop & goodsquares
+            goodsquares -= chosenramptop
+            goodramp = (len(chosenramptop) >= 3)
+        ramptop = chosenramptop
         self.logg('restricted to 1 ramptop, ramptop '+str(len(ramptop)))
         ramp = ramptop.copy()
         self.extend(ramp)
@@ -198,15 +205,23 @@ class prog:
         ramptop = self.filterresult.copy()
         self.logg('ramptop '+str(len(ramptop)))
         # for a multi-ramp map, the central ramp is chosen
-        alsoramptop = set()
-        bestsd = 99999
-        for square in ramptop:
-            sd = self.sdist(square,self.mapcenter)
-            if sd < bestsd:
-                bestsd = sd
-                alsoramptop = set([square])
-        self.extend(alsoramptop)
-        ramptop = ramptop & alsoramptop
+        # a good ramp has size at least 3 (for map GlitteringAshes)
+        goodsquares = ramptop.copy()
+        goodramp = False
+        while not goodramp:
+            chosenramptop = set()
+            bestsd = 99999
+            for square in goodsquares:
+                sd = self.sdist(square,self.mapcenter)
+                if sd < bestsd:
+                    bestsd = sd
+                    chosenramptop = set([square])
+                    enemyramptop_tobeusedlater = square
+            self.extend(chosenramptop)
+            chosenramptop = chosenramptop & goodsquares
+            goodsquares -= chosenramptop
+            goodramp = (len(chosenramptop) >= 3)
+        ramptop = chosenramptop
         self.logg('restricted to 1 ramptop, ramptop '+str(len(ramptop)))
         ramp = ramptop.copy()
         self.extend(ramp)
