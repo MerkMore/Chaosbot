@@ -189,13 +189,13 @@ from sc2.ids.unit_typeid import ZERGLING
 
 class Chaosbot(BotAI):
     #   ############### CHANGE VALUE AD LIB
-    versiontext = 'Chaosbot version 2 feb 2022, made by MerkMore'
+    versiontext = 'Chaosbot version 3 feb 2022, made by MerkMore'
     do_slowdown = False # do not while realtime
     slowdown_frames = 99999
     slowness = 0.02 # realtime is around 0.05
     there_is_a_new_opening = False
     test_radio_nr = -1 # -1
-    strategy_randomness = 0.7 # 0.7
+    strategy_randomness = 0.3 # 0.3
     do_funchat = False
     do_resignable = True
     do_log_success = False
@@ -18899,7 +18899,7 @@ class Chaosbot(BotAI):
         # radio tuning
         totalsum = 0.0
         for nr in range(0,self.radio_choices):
-            totalsum = totalsum + self.strategy[self.stratline][nr]
+            totalsum += self.strategy[self.stratline][nr]
         # radiostrategy
         radiostrategy = []
         for chance in self.strategy[self.stratline]:
@@ -18940,7 +18940,7 @@ def main():
     all_maps = ['BlackburnAIE','CuriousMindsAIE','2000AtmospheresAIE','GlitteringAshesAIE','HardwireAIE','BerlingradAIE']
     map = random.choice(all_maps)
     # TO TEST use next line
-    map = 'GlitteringAshesAIE'
+    #map = 'GlitteringAshesAIE'
     opponentspecies = random.choice([Race.Terran,Race.Zerg,Race.Protoss])
     # TO TEST use next line
     #opponentspecies = Race.Zerg
