@@ -189,7 +189,7 @@ from sc2.ids.unit_typeid import ZERGLING
 
 class Chaosbot(BotAI):
     #   ############### CHANGE VALUE AD LIB
-    versiontext = 'Chaosbot version 3 feb 2022, made by MerkMore'
+    versiontext = 'Chaosbot version 7 feb 2022, made by MerkMore'
     do_slowdown = False # do not while realtime
     slowdown_frames = 99999
     slowness = 0.02 # realtime is around 0.05
@@ -18906,32 +18906,33 @@ class Chaosbot(BotAI):
             radiostrategy.append(chance / totalsum)
         # init game_choice
         self.game_choice = []
+        # max-system radio_nr (brutal variant)
+        maxval = -1
+        radio_numbers = set()
+        for nr in range(0, self.radio_choices):
+            cval = radiostrategy[nr]
+            if cval > maxval:
+                maxval = cval
+                radio_numbers = {nr}
+            elif cval == maxval:
+                radio_numbers.add(nr)
+        radio_nr = random.choice(tuple(radio_numbers))
         if random.random() < self.strategy_randomness:
-            # equal chance-system radio_nr (using an overwrite calculation)
-            radio_nr = 0
-            sum = 0.0
-            for nr in range(0,self.radio_choices):
-                sum += radiostrategy[nr]
-                if random.random() * sum < radiostrategy[nr]:
-                    radio_nr = nr
-        else: # repeat winning strategy
-            # max-system radio_nr (brutal variant)
-            maxval = -1
-            radio_numbers = set()
-            for nr in range(0,self.radio_choices):
-                cval = radiostrategy[nr]
-                if cval > maxval:
-                    maxval = cval
-                    radio_numbers = {nr}
-                elif cval == maxval:
-                    radio_numbers.add(nr)
-            radio_nr = random.choice(tuple(radio_numbers))
+            if maxval < 0.9: # no pity for low bots
+                # equal chance-system radio_nr (using an overwrite calculation)
+                radio_nr = 0
+                sum = 0.0
+                for nr in range(0,self.radio_choices):
+                    sum += radiostrategy[nr]
+                    if random.random() * sum < radiostrategy[nr]:
+                        radio_nr = nr
         if self.test_radio_nr >= 0:
             radio_nr = self.test_radio_nr
         for nr in range(0,self.radio_choices):
             self.game_choice.append(nr == radio_nr)
         for nr in range(self.radio_choices,self.game_choices):
-            self.game_choice.append(random.random() < self.strategy[self.stratline][nr])
+            choosethis = (random.random() < self.strategy[self.stratline][nr])
+            self.game_choice.append(choosethis)
         self.game_result = 'doubt'
 
 #*********************************************************************************************************************
