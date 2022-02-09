@@ -2,7 +2,7 @@
 # Makes text for building placement
 # appends the output to file "data\placement.txt"
 # author: MerkMore
-# version 11 jan 2022
+# version 8 feb 2022
 from layout_if_py import layout_if
 import random
 from math import sqrt, sin, cos, acos, pi
@@ -43,6 +43,8 @@ class prog:
     path_direction = (0,0)
     asol = []
     asolprison = set()
+    neighbours = set()
+    spo = []
 
     def main(self):
         # get maps
@@ -77,7 +79,9 @@ class prog:
                 layout_if.photo_height() # debug
         if not didsomething:
             self.testing = True
-            # using the last self.mapplace
+            # using next line for a fixed map
+            #self.mapplace = 'map: blackburn 36.5 31.5'
+            # else using the last self.mapplace
             print('test analyzing ' + self.mapplace)
             layout_if.load_layout(self.mapplace)
             self.appendthemap()
@@ -175,6 +179,7 @@ class prog:
         x = self.enemynatural[0]+0.5
         y = self.enemynatural[1]+0.5
         text.write('position ENEMYNATURAL ' + str(x) + ' ' + str(y) + '\n')
+        self.showtest(self.enemynatural)
         # enemythird
         closest = 99999
         for lo in self.expansions:
@@ -189,6 +194,7 @@ class prog:
         x = self.enemythird[0]+0.5
         y = self.enemythird[1]+0.5
         text.write('position ENEMYTHIRD ' + str(x) + ' ' + str(y) + '\n')
+        self.showtest(self.enemythird)
         #
         startcc = set([self.startsquare]) # cc
         self.extend(startcc)
@@ -230,6 +236,7 @@ class prog:
         x = 0.001*round(1000*(rampcenter[0]+0.5))
         y = 0.001*round(1000*(rampcenter[1]+0.5))
         text.write('position HOMERAMP ' + str(x) + ' ' + str(y) + '\n')
+        self.showtest(rampcenter)
         # homenatural
         closest = 99999
         for lo in self.expansions:
@@ -263,7 +270,7 @@ class prog:
         vec = (vec[0] * wantsize / hassize, vec[1] * wantsize / hassize)
         estimate = (round(self.homenatural[0] + vec[0]),round(self.homenatural[1] + vec[1]))
         self.logg('estimate nat. choke '+str(estimate[0])+','+str(estimate[1]))
-        naturalchoke = estimate
+        homenaturalchoke = estimate
         # check that a tankpath can be found without choking
         homenattile = (round(self.homenatural[0]),round(self.homenatural[1]))
         while not self.istile(homenattile): # can place a tank
@@ -292,6 +299,7 @@ class prog:
             y = 0.001*round(1000*(self.centerresult[1]))
             text.write('position HOMENATURALCHOKE ' + str(x) + ' ' + str(y) + '\n')
             homenaturalchoke = (round(x),round(y))
+            self.showtest(homenaturalchoke)
         #
         # ENEMY NATURAL CHOKE
         # centertile
@@ -342,6 +350,7 @@ class prog:
             y = 0.001*round(1000*(self.centerresult[1]))
             text.write('position ENEMYNATURALCHOKE ' + str(x) + ' ' + str(y) + '\n')
             enemynaturalchoke = (round(x),round(y))
+            self.showtest(enemynaturalchoke)
         #
         # WALKING dist to enemy
         # enemy starts being colored 4, temporally erase it
@@ -494,24 +503,24 @@ class prog:
         # COCOON
         # Find a 8*8 cocoon spot near the enemy choke.
         # Do not draw/reserve it as this spot can have other uses.
-        anchor = enemynaturalchoke
-        idealsd = 15
-        besttry = 99999
+        bestsd = 99999
         found_spot = (0, 0)
-        estimate = self.fromto(anchor, self.mapcenter, sqrt(idealsd))
+        wish = self.fromaway(enemynaturalchoke, self.enemynatural, 3.9) # center
+        wish = (wish[0] - 4,wish[1] - 4) # leftunderpoint
+        anchor = (round(wish[0]),round(wish[1]))
         for dx in range(-15, 15):
             for dy in range(-15, 15):
-                maypos = (estimate[0] + dx, estimate[1] + dy)
+                maypos = (anchor[0] + dx, anchor[1] + dy)
                 if self.can_place_shape(8, maypos):
-                    sd = self.sdist(anchor, maypos)
-                    try0 = (sd - idealsd) * (sd - idealsd) + 4 * self.circledist(maypos, self.mapcenter)
-                    if try0 < besttry:
+                    sd = self.sdist(wish, maypos)
+                    if sd < bestsd:
                         found_spot = maypos
-                        besttry = try0
-        if besttry != 99999:
-            place = found_spot
-            text.write('position INFESTEDCOCOON ' + str(place[0] + 4) + ' ' + str(place[1] + 4) + '\n')
-            self.logg('position INFESTEDCOCOON ' + str(place[0] + 4) + ' ' + str(place[1] + 4))
+                        bestsd = sd
+        if bestsd != 99999:
+            place = (found_spot[0] + 4, found_spot[1] + 4) # center
+            text.write('position INFESTEDCOCOON ' + str(place[0]) + ' ' + str(place[1]) + '\n')
+            self.logg('position INFESTEDCOCOON ' + str(place[0]) + ' ' + str(place[1]))
+            self.showtest(place)
         #
         # PF POSITIONS
         # find a close hallposition for each old hallposition
@@ -629,8 +638,9 @@ class prog:
         (baselayout, baseheight) = self.get_terrain(dsquare)
         darea = {dsquare}
         self.terrain_extend(darea)
+        darea = self.edgeresult
         self.terrain_get_edge(darea)
-        possi = self.edgeresult.copy()
+        possi = self.edgeresult
         self.terrain_get_edge(possi)
         possi = self.edgeresult
         reaperall = set()
@@ -1180,7 +1190,7 @@ class prog:
         self.centerresult = (avgx,avgy)
 
     def make_spo(self,aset):
-        #       list self.spo with (x,y,sd) from aset
+        # list self.spo with (x,y,sd) from aset
         self.spo = []
         for square in aset:
             sd = self.sdist(square,self.startsquare)
@@ -1195,7 +1205,6 @@ class prog:
                 thigh = tlow
                 
     def pop_spo(self):
-        square = (self.spo[0][0],self.spo[0][1])
         thigh = len(self.spo)-1
         self.spo[0] = self.spo[thigh]
         del self.spo[thigh]
@@ -1217,7 +1226,7 @@ class prog:
 
 
     def add_spo(self,square):
-#       square should not be in spo yet
+        # square should not be in spo yet
         sd = self.sdist(square,self.path_direction)
         self.spo.append((square[0],square[1],sd))
         thigh = len(self.spo)-1
@@ -1382,7 +1391,20 @@ class prog:
         vector = (round(direction[0]*factor), round(direction[1]*factor))
         res = (fra[0] + vector[0], fra[1] + vector[1])
         return res
-    
+
+    def fromaway(self, fra, awa, dist):  # -> point
+        # returns a fractioned point
+        direction = (fra[0] - awa[0], fra[1] - awa[1])
+        norm = sqrt(direction[0] * direction[0] + direction[1] * direction[1])
+        factor = dist / norm
+        vector = (direction[0] * factor, direction[1] * factor)
+        res = (fra[0] + vector[0], fra[1] + vector[1])
+        return res
+
+    def showtest(self,yellow):
+        if self.testing:
+            layout_if.layout[yellow[0]][yellow[1]] = 5
+
     ############## terrain routines ###################################
 
     def get_terrain(self, dpoint):
@@ -1417,7 +1439,7 @@ class prog:
                 for nsquare in self.neighbours:
                     if self.get_terrain(nsquare) == myterrain:
                         bigset.add(nsquare)
-        aset = bigset.copy()
+        self.edgeresult = bigset.copy()
 
     def terrain_get_edge(self,aset):
         # self.edgeresult is the squares around aset

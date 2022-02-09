@@ -20,7 +20,7 @@ path 132 64  133 64  134 65  135 64  136 63  136 62  136 61  137 60  138 59  139
 path 140 57  141 56  142 55  143 54  143 53  142 52  141 51  140 50  140 49  140 48  
 path 140 47  141 46  141 45  141 44  142 43  143 42  143 41  144 40  143 39  143 38  
 path 144 37  143 36  143 35  144 34  143 33  143 32  
-position INFESTEDCOCOON 48 97
+position INFESTEDCOCOON 49 95
 position EXTRACC 45.5 34.5
 position EXTRACC 128.5 110.5
 position EXTRACC 133.5 36.5
@@ -34,45 +34,45 @@ position EXTRACC 55.5 53.5
 position EXTRACC 137.5 90.5
 position EXTRACC 138.5 129.5
 position EXTRACC 75.5 126.5
-position EXTRACC 53.5 83.5
-position EXTRACC 131.5 104.5
-position EXTRACC 98.5 104.5
-position EXTRACC 112.5 131.5
-position EXTRACC 72.5 34.5
-position EXTRACC 79.5 57.5
-position EXTRACC 131.5 79.5
-position EXTRACC 109.5 124.5
-position EXTRACC 49.5 59.5
-position EXTRACC 132.5 68.5
+position EXTRACC 103.5 103.5
+position EXTRACC 131.5 42.5
+position EXTRACC 109.5 132.5
+position EXTRACC 74.5 36.5
+position EXTRACC 68.5 34.5
+position EXTRACC 80.5 57.5
+position EXTRACC 51.5 58.5
+position EXTRACC 134.5 100.5
+position EXTRACC 150.5 43.5
+position EXTRACC 130.5 80.5
 position FUSIONCORE * 56.5 18.5
 position FUSIONCORE * 131.5 22.5
 position FUSIONCORE * 152.5 122.5
 position FUSIONCORE * 157.5 98.5
 position FUSIONCORE * 98.5 20.5
 position FUSIONCORE * 155.5 88.5
-position FUSIONCORE * 142.5 121.5
+position FUSIONCORE * 55.5 34.5
 position STARPORT * 55.5 21.5
 position STARPORT * 128.5 25.5
 position STARPORT * 147.5 121.5
 position STARPORT * 153.5 103.5
-position STARPORT * 55.5 34.5
 position STARPORT * 105.5 23.5
 position STARPORT * 73.5 26.5
-position SCOUT 43.5 119.5
-position SCOUT 48.5 122.5
-position SCOUT 51.5 126.5
-position SCOUT 52.5 130.5
-position SCOUT 51.5 135.5
-position SCOUT 48.5 140.5
-position SCOUT 44.5 142.5
-position SCOUT 39.5 143.5
-position SCOUT 34.5 142.5
-position SCOUT 31.5 138.5
-position SCOUT 29.5 134.5
-position SCOUT 28.5 129.5
-position SCOUT 30.5 124.5
-position SCOUT 34.5 121.5
-position SCOUT 38.5 119.5
+position STARPORT * 58.5 34.5
+position SCOUT 49.5 123.5
+position SCOUT 52.5 128.5
+position SCOUT 52.5 133.5
+position SCOUT 50.5 137.5
+position SCOUT 47.5 141.5
+position SCOUT 42.5 143.5
+position SCOUT 37.5 142.5
+position SCOUT 33.5 140.5
+position SCOUT 30.5 136.5
+position SCOUT 29.5 132.5
+position SCOUT 29.5 127.5
+position SCOUT 31.5 123.5
+position SCOUT 36.5 120.5
+position SCOUT 41.5 119.5
+position SCOUT 45.5 120.5
 position REAPERJUMP 43.0 116.0
 position REAPERJUMP 46.0 113.0
 position REAPERBARRACKS 42.5 99.5
@@ -92,7 +92,7 @@ position HOMERAMP 59.5 38.5
 position HOMENATURAL 69.5 34.5
 position HOMENATURALCHOKE 76.0 42.0
 position ENEMYNATURALCHOKE 93.0 144.0
-position FOLLOWERS 62.5 124.5
+position FOLLOWERS 60.5 125.5
 position SUPPLYDEPOT 55 40
 position SUPPLYDEPOT 58 43
 position BARRACKS 55.5 42.5
@@ -104,7 +104,7 @@ path 75 49  74 48  74 47  73 46  73 45  72 44  71 43  70 43  69 42  68 41
 path 67 40  66 40  65 39  64 38  63 37  62 37  61 37  60 38  59 39  58 40  
 path 57 40  56 40  55 40  54 40  53 41  52 41  51 41  50 40  49 40  48 41  
 path 47 40  46 39  45 38  44 37  43 36  42 35  41 34  
-position INFESTEDCOCOON 93 145
+position INFESTEDCOCOON 91 141
 position EXTRACC 46.5 113.5
 position EXTRACC 133.5 99.5
 position EXTRACC 64.5 71.5
@@ -118,16 +118,16 @@ position EXTRACC 97.5 43.5
 position EXTRACC 70.5 142.5
 position EXTRACC 39.5 145.5
 position EXTRACC 128.5 40.5
-position EXTRACC 123.5 64.5
-position EXTRACC 102.5 38.5
-position EXTRACC 122.5 85.5
-position EXTRACC 87.5 106.5
-position EXTRACC 76.5 78.5
-position EXTRACC 104.5 118.5
-position EXTRACC 44.5 150.5
+position EXTRACC 120.5 84.5
+position EXTRACC 44.5 100.5
+position EXTRACC 75.5 78.5
+position EXTRACC 125.5 66.5
+position EXTRACC 85.5 108.5
+position EXTRACC 88.5 116.5
 position EXTRACC 52.5 106.5
-position EXTRACC 84.5 137.5
-position EXTRACC 46.5 100.5
+position EXTRACC 86.5 100.5
+position EXTRACC 86.5 137.5
+position EXTRACC 89.5 131.5
 position FUSIONCORE * 131.5 24.5
 position FUSIONCORE * 121.5 26.5
 position FUSIONCORE * 105.5 23.5
@@ -142,28 +142,28 @@ position STARPORT * 121.5 34.5
 position STARPORT * 78.5 28.5
 position STARPORT * 109.5 36.5
 position STARPORT * 28.5 71.5
-position SCOUT 115.5 146.5
-position SCOUT 118.5 142.5
-position SCOUT 122.5 140.5
-position SCOUT 127.5 139.5
-position SCOUT 132.5 140.5
-position SCOUT 136.5 144.5
-position SCOUT 138.5 148.5
-position SCOUT 138.5 153.5
-position SCOUT 136.5 158.5
-position SCOUT 132.5 161.5
-position SCOUT 128.5 162.5
-position SCOUT 123.5 163.5
-position SCOUT 118.5 160.5
-position SCOUT 115.5 156.5
-position SCOUT 114.5 151.5
+position SCOUT 120.5 141.5
+position SCOUT 124.5 139.5
+position SCOUT 129.5 139.5
+position SCOUT 134.5 142.5
+position SCOUT 137.5 146.5
+position SCOUT 138.5 151.5
+position SCOUT 137.5 156.5
+position SCOUT 134.5 160.5
+position SCOUT 130.5 162.5
+position SCOUT 125.5 163.5
+position SCOUT 120.5 162.5
+position SCOUT 117.5 158.5
+position SCOUT 114.5 154.5
+position SCOUT 114.5 149.5
+position SCOUT 116.5 144.5
 position REAPERJUMP 109.0 143.5
 position REAPERJUMP 112.0 146.5
 position REAPERBARRACKS 94.5 146.5
 position INFESTEDBUNKER 130.5 136.5
 position INFESTEDLANDING 133.5 135.5
 position INFESTEDPRISON 132.5 133.5
-position INFESTEDTANK 133 122
+position INFESTEDTANK 131 122
 position INFESTEDBARRACKS 132.5 121.5
 position INFESTEDFACTORY 133.5 104.5
 #####
@@ -176,7 +176,7 @@ position HOMERAMP 46.5 115.5
 position HOMENATURAL 46.5 103.5
 position HOMENATURALCHOKE 56.0 108.0
 position ENEMYNATURALCHOKE 144.0 64.0
-position FOLLOWERS 38.5 135.5
+position FOLLOWERS 45.5 35.5
 position SUPPLYDEPOT 43 116
 position SUPPLYDEPOT 46 119
 position BARRACKS 43.5 118.5
@@ -188,7 +188,7 @@ path 66 102  65 103  64 104  63 104  62 105  61 105  60 105  59 105  58 105  57 
 path 56 106  55 107  54 108  53 109  52 110  51 111  50 112  49 113  48 114  47 115  
 path 46 116  46 117  46 118  46 119  47 120  48 121  48 122  49 123  48 124  48 125  
 path 48 126  47 127  48 128  47 129  46 130  45 131  44 132  43 133  42 134  41 135  
-position INFESTEDCOCOON 146 71
+position INFESTEDCOCOON 140 62
 position EXTRACC 135.5 55.5
 position EXTRACC 143.5 64.5
 position EXTRACC 91.5 39.5
@@ -204,16 +204,16 @@ position EXTRACC 55.5 99.5
 position EXTRACC 64.5 116.5
 position EXTRACC 49.5 65.5
 position EXTRACC 150.5 106.5
-position EXTRACC 92.5 59.5
-position EXTRACC 85.5 135.5
-position EXTRACC 167.5 123.5
-position EXTRACC 115.5 39.5
+position EXTRACC 52.5 125.5
 position EXTRACC 31.5 47.5
-position EXTRACC 34.5 52.5
-position EXTRACC 39.5 116.5
-position EXTRACC 107.5 114.5
-position EXTRACC 109.5 62.5
-position EXTRACC 89.5 107.5
+position EXTRACC 165.5 120.5
+position EXTRACC 115.5 42.5
+position EXTRACC 35.5 116.5
+position EXTRACC 85.5 137.5
+position EXTRACC 93.5 57.5
+position EXTRACC 170.5 124.5
+position EXTRACC 137.5 61.5
+position EXTRACC 110.5 64.5
 position FUSIONCORE * 29.5 51.5
 position FUSIONCORE * 28.5 61.5
 position FUSIONCORE * 30.5 71.5
@@ -221,28 +221,28 @@ position FUSIONCORE * 58.5 143.5
 position FUSIONCORE * 39.5 54.5
 position FUSIONCORE * 37.5 94.5
 position FUSIONCORE * 40.5 69.5
-position STARPORT * 30.5 56.5
+position STARPORT * 30.5 54.5
 position STARPORT * 33.5 75.5
-position STARPORT * 40.5 57.5
+position STARPORT * 38.5 61.5
 position STARPORT * 59.5 140.5
 position STARPORT * 52.5 48.5
-position STARPORT * 43.5 67.5
 position STARPORT * 40.5 93.5
-position SCOUT 155.5 48.5
-position SCOUT 150.5 45.5
-position SCOUT 147.5 41.5
-position SCOUT 146.5 37.5
-position SCOUT 147.5 32.5
-position SCOUT 150.5 27.5
-position SCOUT 154.5 25.5
-position SCOUT 158.5 24.5
-position SCOUT 163.5 25.5
-position SCOUT 167.5 29.5
-position SCOUT 170.5 33.5
-position SCOUT 170.5 38.5
-position SCOUT 168.5 43.5
-position SCOUT 164.5 46.5
-position SCOUT 160.5 48.5
+position STARPORT * 43.5 70.5
+position SCOUT 148.5 43.5
+position SCOUT 146.5 38.5
+position SCOUT 146.5 33.5
+position SCOUT 148.5 29.5
+position SCOUT 152.5 26.5
+position SCOUT 157.5 24.5
+position SCOUT 162.5 25.5
+position SCOUT 166.5 28.5
+position SCOUT 169.5 31.5
+position SCOUT 170.5 36.5
+position SCOUT 169.5 41.5
+position SCOUT 166.5 45.5
+position SCOUT 162.5 47.5
+position SCOUT 157.5 48.5
+position SCOUT 152.5 46.5
 position INFESTEDLANDING 142.5 43.5
 position INFESTEDBUNKER 144.5 46.5
 position INFESTEDPRISON 142.5 45.5
@@ -259,7 +259,7 @@ position HOMERAMP 153.5 56.5
 position HOMENATURAL 153.5 68.5
 position HOMENATURALCHOKE 144.0 64.0
 position ENEMYNATURALCHOKE 56.0 108.0
-position FOLLOWERS 130.5 126.5
+position FOLLOWERS 125.5 124.5
 position SUPPLYDEPOT 154 53
 position SUPPLYDEPOT 156 53
 position BARRACKS 157.5 55.5
@@ -272,7 +272,7 @@ path 144 66  145 65  146 64  147 63  148 62  149 61  150 60  151 59  152 58  153
 path 154 56  155 55  155 54  156 53  157 52  157 51  157 50  158 49  157 48  157 47  
 path 158 46  157 45  157 44  156 43  157 42  157 41  158 40  157 39  157 38  158 37  
 path 158 36  
-position INFESTEDCOCOON 63 114
+position INFESTEDCOCOON 59 110
 position EXTRACC 135.5 55.5
 position EXTRACC 144.5 72.5
 position EXTRACC 91.5 39.5
@@ -288,45 +288,45 @@ position EXTRACC 56.5 107.5
 position EXTRACC 64.5 116.5
 position EXTRACC 49.5 65.5
 position EXTRACC 150.5 106.5
-position EXTRACC 30.5 47.5
-position EXTRACC 61.5 110.5
-position EXTRACC 110.5 64.5
-position EXTRACC 169.5 123.5
-position EXTRACC 114.5 35.5
-position EXTRACC 96.5 63.5
-position EXTRACC 91.5 106.5
-position EXTRACC 85.5 129.5
-position EXTRACC 116.5 42.5
-position EXTRACC 45.5 59.5
-position FUSIONCORE * 169.5 119.5
-position FUSIONCORE * 171.5 109.5
+position EXTRACC 165.5 120.5
+position EXTRACC 136.5 60.5
+position EXTRACC 108.5 66.5
+position EXTRACC 29.5 48.5
+position EXTRACC 162.5 55.5
+position EXTRACC 107.5 113.5
+position EXTRACC 155.5 108.5
+position EXTRACC 114.5 37.5
+position EXTRACC 84.5 133.5
+position EXTRACC 102.5 109.5
+position FUSIONCORE * 171.5 126.5
+position FUSIONCORE * 169.5 116.5
 position FUSIONCORE * 144.5 28.5
-position FUSIONCORE * 169.5 99.5
-position FUSIONCORE * 161.5 112.5
+position FUSIONCORE * 171.5 106.5
+position FUSIONCORE * 166.5 97.5
+position FUSIONCORE * 159.5 115.5
 position FUSIONCORE * 135.5 33.5
-position FUSIONCORE * 73.5 30.5
-position STARPORT * 167.5 116.5
+position STARPORT * 169.5 123.5
+position STARPORT * 167.5 113.5
 position STARPORT * 139.5 28.5
-position STARPORT * 164.5 96.5
-position STARPORT * 157.5 115.5
-position STARPORT * 70.5 33.5
+position STARPORT * 73.5 30.5
+position STARPORT * 162.5 102.5
+position STARPORT * 157.5 112.5
 position STARPORT * 96.5 29.5
-position STARPORT * 145.5 124.5
-position SCOUT 44.5 123.5
-position SCOUT 49.5 126.5
-position SCOUT 52.5 130.5
-position SCOUT 53.5 134.5
-position SCOUT 52.5 139.5
-position SCOUT 49.5 144.5
-position SCOUT 45.5 146.5
-position SCOUT 41.5 147.5
-position SCOUT 36.5 146.5
-position SCOUT 32.5 142.5
-position SCOUT 29.5 138.5
-position SCOUT 29.5 133.5
-position SCOUT 31.5 128.5
-position SCOUT 35.5 125.5
-position SCOUT 39.5 123.5
+position SCOUT 51.5 128.5
+position SCOUT 53.5 133.5
+position SCOUT 53.5 138.5
+position SCOUT 51.5 142.5
+position SCOUT 47.5 145.5
+position SCOUT 42.5 147.5
+position SCOUT 37.5 146.5
+position SCOUT 33.5 143.5
+position SCOUT 30.5 140.5
+position SCOUT 29.5 135.5
+position SCOUT 30.5 130.5
+position SCOUT 33.5 126.5
+position SCOUT 37.5 124.5
+position SCOUT 42.5 123.5
+position SCOUT 47.5 125.5
 position REAPERJUMP 43.5 115.0
 position REAPERJUMP 52.5 121.0
 position REAPERJUMP 53.0 121.0
@@ -339,8 +339,8 @@ position INFESTEDBUNKER 63.5 137.5
 position INFESTEDLANDING 63.5 140.5
 position INFESTEDPRISON 65.5 138.5
 position INFESTEDTANK 69 136
-position INFESTEDBARRACKS 66.5 130.5
-position INFESTEDFACTORY 79.5 127.5
+position INFESTEDBARRACKS 73.5 134.5
+position INFESTEDFACTORY 84.5 129.5
 #####
 #####
 map: oxide 44.5 56.5
@@ -351,7 +351,7 @@ position HOMERAMP 63.5 58.5
 position HOMENATURAL 69.5 52.5
 position HOMENATURALCHOKE 78.0 64.0
 position ENEMYNATURALCHOKE 114.0 140.0
-position FOLLOWERS 116.5 100.5
+position FOLLOWERS 58.5 147.5
 position SUPPLYDEPOT 59 60
 position SUPPLYDEPOT 62 63
 position BARRACKS 59.5 62.5
@@ -364,7 +364,7 @@ path 79 67  78 66  77 65  76 64  75 63  74 63  73 63  72 62  71 61  70 60
 path 69 60  68 59  67 58  66 57  65 57  64 58  63 59  62 60  61 60  60 60  
 path 59 60  58 60  57 60  56 59  55 60  54 59  53 60  52 60  51 61  50 60  
 path 49 59  48 58  47 57  46 56  45 56  44 56  
-position INFESTEDCOCOON 116 149
+position INFESTEDCOCOON 108 134
 position EXTRACC 55.5 141.5
 position EXTRACC 89.5 139.5
 position EXTRACC 48.5 66.5
@@ -376,16 +376,16 @@ position EXTRACC 79.5 56.5
 position EXTRACC 112.5 147.5
 position EXTRACC 51.5 105.5
 position EXTRACC 121.5 119.5
-position EXTRACC 94.5 114.5
-position EXTRACC 85.5 119.5
-position EXTRACC 95.5 88.5
-position EXTRACC 104.5 85.5
-position EXTRACC 117.5 145.5
-position EXTRACC 47.5 110.5
-position EXTRACC 100.5 59.5
+position EXTRACC 49.5 111.5
+position EXTRACC 94.5 88.5
+position EXTRACC 43.5 72.5
+position EXTRACC 101.5 89.5
+position EXTRACC 83.5 121.5
+position EXTRACC 69.5 132.5
+position EXTRACC 94.5 143.5
 position EXTRACC 121.5 140.5
-position EXTRACC 46.5 101.5
-position EXTRACC 145.5 106.5
+position EXTRACC 89.5 120.5
+position EXTRACC 73.5 57.5
 position FUSIONCORE * 133.5 42.5
 position FUSIONCORE * 30.5 99.5
 position FUSIONCORE * 49.5 146.5
@@ -400,30 +400,30 @@ position STARPORT * 49.5 143.5
 position STARPORT * 134.5 56.5
 position STARPORT * 38.5 112.5
 position STARPORT * 99.5 44.5
-position SCOUT 135.5 144.5
-position SCOUT 138.5 139.5
-position SCOUT 142.5 136.5
-position SCOUT 146.5 135.5
-position SCOUT 151.5 136.5
-position SCOUT 156.5 139.5
-position SCOUT 158.5 143.5
-position SCOUT 159.5 148.5
-position SCOUT 158.5 153.5
-position SCOUT 154.5 156.5
-position SCOUT 150.5 159.5
-position SCOUT 145.5 158.5
-position SCOUT 140.5 157.5
-position SCOUT 137.5 153.5
-position SCOUT 135.5 149.5
+position SCOUT 139.5 138.5
+position SCOUT 143.5 136.5
+position SCOUT 148.5 135.5
+position SCOUT 153.5 136.5
+position SCOUT 156.5 140.5
+position SCOUT 158.5 144.5
+position SCOUT 159.5 149.5
+position SCOUT 157.5 154.5
+position SCOUT 153.5 157.5
+position SCOUT 149.5 159.5
+position SCOUT 144.5 159.5
+position SCOUT 139.5 156.5
+position SCOUT 136.5 152.5
+position SCOUT 135.5 148.5
+position SCOUT 136.5 143.5
 position REAPERJUMP 129.0 141.5
 position REAPERJUMP 132.0 144.5
-position REAPERBARRACKS 125.5 123.5
+position REAPERBARRACKS 117.5 147.5
 position INFESTEDBUNKER 142.5 132.5
 position INFESTEDLANDING 145.5 130.5
 position INFESTEDPRISON 142.5 130.5
-position INFESTEDTANK 143 126
+position INFESTEDTANK 140 128
 position INFESTEDBARRACKS 142.5 126.5
-position INFESTEDFACTORY 137.5 134.5
+position INFESTEDFACTORY 137.5 115.5
 #####
 #####
 map: lightshade 40.5 131.5
@@ -434,7 +434,7 @@ position HOMERAMP 42.5 112.5
 position HOMENATURAL 38.5 102.5
 position HOMENATURALCHOKE 46.0 97.0
 position ENEMYNATURALCHOKE 138.0 67.0
-position FOLLOWERS 94.5 34.5
+position FOLLOWERS 86.5 121.5
 position SUPPLYDEPOT 44 117
 position SUPPLYDEPOT 46 117
 position BARRACKS 47.5 114.5
@@ -446,7 +446,7 @@ path 52 99  51 100  50 99  49 100  48 101  48 102  48 103  47 104  46 105  45 10
 path 44 107  43 108  42 109  41 110  41 111  42 112  43 113  44 114  45 115  45 116  
 path 44 117  43 118  43 119  44 120  45 121  44 122  44 123  43 124  43 125  42 126  
 path 41 127  41 128  40 129  40 130  40 131  
-position INFESTEDCOCOON 139 66
+position INFESTEDCOCOON 135 70
 position EXTRACC 45.5 34.5
 position EXTRACC 128.5 110.5
 position EXTRACC 50.5 127.5
@@ -460,16 +460,16 @@ position EXTRACC 55.5 53.5
 position EXTRACC 137.5 90.5
 position EXTRACC 138.5 129.5
 position EXTRACC 75.5 126.5
-position EXTRACC 108.5 125.5
-position EXTRACC 48.5 56.5
-position EXTRACC 74.5 32.5
-position EXTRACC 96.5 98.5
-position EXTRACC 80.5 60.5
-position EXTRACC 136.5 102.5
-position EXTRACC 51.5 93.5
-position EXTRACC 90.5 65.5
-position EXTRACC 54.5 83.5
-position EXTRACC 74.5 37.5
+position EXTRACC 83.5 58.5
+position EXTRACC 98.5 106.5
+position EXTRACC 56.5 123.5
+position EXTRACC 71.5 36.5
+position EXTRACC 94.5 64.5
+position EXTRACC 132.5 73.5
+position EXTRACC 50.5 59.5
+position EXTRACC 48.5 120.5
+position EXTRACC 108.5 126.5
+position EXTRACC 112.5 132.5
 position FUSIONCORE * 130.5 145.5
 position FUSIONCORE * 34.5 43.5
 position FUSIONCORE * 26.5 65.5
@@ -484,21 +484,21 @@ position STARPORT * 30.5 95.5
 position STARPORT * 33.5 73.5
 position STARPORT * 85.5 143.5
 position STARPORT * 38.5 63.5
-position SCOUT 140.5 44.5
-position SCOUT 135.5 41.5
-position SCOUT 132.5 37.5
-position SCOUT 131.5 33.5
-position SCOUT 132.5 28.5
-position SCOUT 135.5 23.5
-position SCOUT 139.5 21.5
-position SCOUT 144.5 20.5
-position SCOUT 149.5 21.5
-position SCOUT 152.5 25.5
-position SCOUT 154.5 29.5
-position SCOUT 155.5 34.5
-position SCOUT 153.5 39.5
-position SCOUT 149.5 42.5
-position SCOUT 145.5 44.5
+position SCOUT 134.5 40.5
+position SCOUT 131.5 35.5
+position SCOUT 131.5 30.5
+position SCOUT 133.5 26.5
+position SCOUT 136.5 22.5
+position SCOUT 141.5 20.5
+position SCOUT 146.5 21.5
+position SCOUT 150.5 23.5
+position SCOUT 153.5 27.5
+position SCOUT 154.5 31.5
+position SCOUT 154.5 36.5
+position SCOUT 152.5 40.5
+position SCOUT 147.5 43.5
+position SCOUT 142.5 44.5
+position SCOUT 138.5 43.5
 position REAPERJUMP 137.5 50.5
 position REAPERJUMP 140.5 47.5
 position REAPERBARRACKS 140.5 67.5
@@ -518,7 +518,7 @@ position HOMERAMP 128.5 145.5
 position HOMENATURAL 122.5 151.5
 position HOMENATURALCHOKE 114.0 140.0
 position ENEMYNATURALCHOKE 78.0 64.0
-position FOLLOWERS 152.5 99.5
+position FOLLOWERS 151.5 105.5
 position SUPPLYDEPOT 130 141
 position SUPPLYDEPOT 133 144
 position BARRACKS 132.5 141.5
@@ -531,7 +531,7 @@ path 115 139  116 140  117 140  118 141  119 140  120 141  121 142  122 143  123
 path 125 146  126 147  127 147  128 146  129 145  130 144  131 144  132 144  133 144  134 144  
 path 135 143  136 144  137 143  138 143  139 143  140 143  141 144  142 143  143 144  144 144  
 path 145 145  146 146  147 147  
-position INFESTEDCOCOON 82 72
+position INFESTEDCOCOON 84 70
 position EXTRACC 55.5 141.5
 position EXTRACC 89.5 139.5
 position EXTRACC 70.5 84.5
@@ -543,16 +543,16 @@ position EXTRACC 79.5 56.5
 position EXTRACC 112.5 147.5
 position EXTRACC 51.5 105.5
 position EXTRACC 131.5 112.5
+position EXTRACC 145.5 94.5
+position EXTRACC 145.5 103.5
 position EXTRACC 145.5 131.5
-position EXTRACC 86.5 123.5
-position EXTRACC 93.5 114.5
-position EXTRACC 48.5 99.5
-position EXTRACC 145.5 92.5
-position EXTRACC 134.5 137.5
-position EXTRACC 73.5 59.5
-position EXTRACC 88.5 118.5
-position EXTRACC 98.5 59.5
-position EXTRACC 99.5 90.5
+position EXTRACC 105.5 84.5
+position EXTRACC 49.5 111.5
+position EXTRACC 118.5 146.5
+position EXTRACC 91.5 115.5
+position EXTRACC 94.5 89.5
+position EXTRACC 96.5 59.5
+position EXTRACC 122.5 71.5
 position FUSIONCORE * 59.5 160.5
 position FUSIONCORE * 161.5 99.5
 position FUSIONCORE * 142.5 59.5
@@ -567,21 +567,21 @@ position STARPORT * 141.5 62.5
 position STARPORT * 83.5 159.5
 position STARPORT * 63.5 149.5
 position STARPORT * 152.5 113.5
-position SCOUT 56.5 59.5
-position SCOUT 53.5 64.5
-position SCOUT 49.5 67.5
-position SCOUT 45.5 68.5
-position SCOUT 40.5 67.5
-position SCOUT 35.5 64.5
-position SCOUT 33.5 60.5
-position SCOUT 32.5 55.5
-position SCOUT 33.5 50.5
-position SCOUT 37.5 47.5
-position SCOUT 41.5 44.5
-position SCOUT 46.5 45.5
-position SCOUT 51.5 46.5
-position SCOUT 54.5 50.5
-position SCOUT 56.5 54.5
+position SCOUT 52.5 65.5
+position SCOUT 48.5 67.5
+position SCOUT 43.5 68.5
+position SCOUT 38.5 67.5
+position SCOUT 35.5 63.5
+position SCOUT 33.5 59.5
+position SCOUT 32.5 54.5
+position SCOUT 34.5 49.5
+position SCOUT 38.5 46.5
+position SCOUT 42.5 44.5
+position SCOUT 47.5 44.5
+position SCOUT 52.5 47.5
+position SCOUT 55.5 51.5
+position SCOUT 56.5 55.5
+position SCOUT 55.5 60.5
 position REAPERJUMP 62.5 62.0
 position REAPERJUMP 59.5 59.0
 position REAPERBARRACKS 78.5 69.5
@@ -601,7 +601,7 @@ position HOMERAMP 139.5 47.5
 position HOMENATURAL 147.5 54.5
 position HOMENATURALCHOKE 137.0 65.0
 position ENEMYNATURALCHOKE 47.0 65.0
-position FOLLOWERS 143.5 112.5
+position FOLLOWERS 144.5 112.5
 position SUPPLYDEPOT 135 46
 position SUPPLYDEPOT 138 43
 position BARRACKS 135.5 43.5
@@ -613,7 +613,7 @@ path 132 68  133 67  134 66  135 65  136 64  137 63  138 62  139 61  140 60  141
 path 141 58  141 57  142 56  143 55  143 54  144 53  143 52  143 51  142 50  141 49  
 path 140 48  139 47  138 46  138 45  138 44  138 43  139 42  140 41  141 40  141 39  
 path 140 38  141 37  142 36  143 35  144 34  145 33  146 32  147 31  
-position INFESTEDCOCOON 55 69
+position INFESTEDCOCOON 52 70
 position EXTRACC 134.5 76.5
 position EXTRACC 84.5 25.5
 position EXTRACC 46.5 111.5
@@ -627,45 +627,45 @@ position EXTRACC 71.5 64.5
 position EXTRACC 112.5 64.5
 position EXTRACC 50.5 91.5
 position EXTRACC 49.5 76.5
-position EXTRACC 60.5 122.5
-position EXTRACC 69.5 80.5
-position EXTRACC 111.5 88.5
+position EXTRACC 120.5 124.5
+position EXTRACC 40.5 105.5
 position EXTRACC 78.5 85.5
-position EXTRACC 143.5 110.5
-position EXTRACC 114.5 37.5
-position EXTRACC 127.5 25.5
-position EXTRACC 40.5 106.5
-position EXTRACC 124.5 124.5
-position EXTRACC 71.5 91.5
+position EXTRACC 62.5 123.5
+position EXTRACC 111.5 89.5
+position EXTRACC 93.5 115.5
+position EXTRACC 144.5 106.5
+position EXTRACC 114.5 38.5
+position EXTRACC 67.5 79.5
+position EXTRACC 125.5 124.5
 position FUSIONCORE * 157.5 120.5
 position FUSIONCORE * 155.5 109.5
 position FUSIONCORE * 147.5 119.5
 position FUSIONCORE * 155.5 63.5
 position FUSIONCORE * 137.5 121.5
 position FUSIONCORE * 153.5 83.5
-position FUSIONCORE * 145.5 106.5
+position FUSIONCORE * 142.5 110.5
 position STARPORT * 150.5 110.5
 position STARPORT * 142.5 119.5
 position STARPORT * 132.5 120.5
 position STARPORT * 150.5 87.5
-position STARPORT * 140.5 106.5
 position STARPORT * 145.5 76.5
 position STARPORT * 66.5 34.5
+position STARPORT * 140.5 91.5
+position SCOUT 48.5 33.5
+position SCOUT 46.5 37.5
 position SCOUT 43.5 41.5
 position SCOUT 39.5 41.5
-position SCOUT 35.5 41.5
+position SCOUT 32.5 41.5
 position SCOUT 29.5 40.5
-position SCOUT 26.5 37.5
-position SCOUT 24.5 33.5
+position SCOUT 25.5 37.5
+position SCOUT 25.5 32.5
 position SCOUT 25.5 27.5
 position SCOUT 27.5 23.5
-position SCOUT 31.5 21.5
-position SCOUT 36.5 19.5
+position SCOUT 32.5 21.5
+position SCOUT 37.5 19.5
 position SCOUT 41.5 20.5
 position SCOUT 45.5 23.5
-position SCOUT 47.5 27.5
-position SCOUT 48.5 32.5
-position SCOUT 46.5 37.5
+position SCOUT 48.5 28.5
 position REAPERJUMP 45.0 43.5
 position REAPERJUMP 48.0 46.5
 position REAPERBARRACKS 62.5 58.5
@@ -677,6 +677,90 @@ position INFESTEDBARRACKS 62.5 30.5
 position INFESTEDFACTORY 71.5 35.5
 #####
 #####
+map: blackburn 36.5 31.5
+position ENEMYRAMP 139.5 47.5
+position ENEMYNATURAL 147.5 54.5
+position ENEMYTHIRD 116.5 54.5
+position HOMERAMP 44.5 47.5
+position HOMENATURAL 36.5 54.5
+position HOMENATURALCHOKE 47.0 65.0
+position ENEMYNATURALCHOKE 137.0 65.0
+position FOLLOWERS 90.5 101.5
+position SUPPLYDEPOT 46 43
+position SUPPLYDEPOT 48 43
+position BARRACKS 49.5 45.5
+path 92 76  91 76  90 76  89 75  88 75  87 75  86 76  85 76  84 76  83 77  
+path 82 78  81 79  80 80  79 80  78 80  77 80  76 80  75 81  74 82  73 82  
+path 72 83  71 82  70 82  69 82  68 82  67 82  66 82  65 81  64 80  63 79  
+path 62 78  61 77  60 76  59 75  58 74  57 73  56 72  55 71  54 70  53 69  
+path 52 68  51 67  50 66  49 65  48 64  47 63  46 62  46 61  46 60  45 59  
+path 44 58  43 57  44 56  43 55  43 54  44 53  43 52  43 51  42 50  43 49  
+path 44 48  45 47  46 46  47 45  47 44  48 43  47 42  46 41  45 40  44 39  
+path 43 38  42 37  41 36  40 35  39 34  38 33  37 32  36 31  
+position INFESTEDCOCOON 132 70
+position EXTRACC 134.5 76.5
+position EXTRACC 84.5 25.5
+position EXTRACC 46.5 111.5
+position EXTRACC 47.5 54.5
+position EXTRACC 137.5 111.5
+position EXTRACC 136.5 54.5
+position EXTRACC 46.5 35.5
+position EXTRACC 91.5 108.5
+position EXTRACC 133.5 91.5
+position EXTRACC 71.5 64.5
+position EXTRACC 112.5 64.5
+position EXTRACC 50.5 91.5
+position EXTRACC 49.5 76.5
+position EXTRACC 52.5 41.5
+position EXTRACC 107.5 85.5
+position EXTRACC 62.5 124.5
+position EXTRACC 120.5 124.5
+position EXTRACC 110.5 90.5
+position EXTRACC 41.5 110.5
+position EXTRACC 114.5 37.5
+position EXTRACC 141.5 58.5
+position EXTRACC 69.5 38.5
+position EXTRACC 71.5 91.5
+position FUSIONCORE * 26.5 120.5
+position FUSIONCORE * 28.5 109.5
+position FUSIONCORE * 36.5 119.5
+position FUSIONCORE * 26.5 57.5
+position FUSIONCORE * 46.5 121.5
+position FUSIONCORE * 30.5 83.5
+position FUSIONCORE * 38.5 106.5
+position STARPORT * 32.5 112.5
+position STARPORT * 40.5 119.5
+position STARPORT * 28.5 61.5
+position STARPORT * 31.5 102.5
+position STARPORT * 32.5 87.5
+position STARPORT * 50.5 121.5
+position STARPORT * 41.5 106.5
+position SCOUT 135.5 33.5
+position SCOUT 135.5 28.5
+position SCOUT 138.5 23.5
+position SCOUT 142.5 20.5
+position SCOUT 146.5 19.5
+position SCOUT 151.5 21.5
+position SCOUT 156.5 23.5
+position SCOUT 158.5 27.5
+position SCOUT 158.5 32.5
+position SCOUT 158.5 37.5
+position SCOUT 154.5 40.5
+position SCOUT 151.5 41.5
+position SCOUT 144.5 41.5
+position SCOUT 140.5 41.5
+position SCOUT 137.5 37.5
+position REAPERJUMP 135.5 46.5
+position REAPERJUMP 138.5 43.5
+position REAPERBARRACKS 131.5 66.5
+position INFESTEDLANDING 125.5 27.5
+position INFESTEDBUNKER 127.5 24.5
+position INFESTEDPRISON 124.5 24.5
+position INFESTEDTANK 122 30
+position INFESTEDBARRACKS 121.5 30.5
+position INFESTEDFACTORY 100.5 45.5
+#####
+#####
 map: atmospheres 166.5 143.5
 position ENEMYRAMP 75.5 58.5
 position ENEMYNATURAL 79.5 51.5
@@ -685,7 +769,7 @@ position HOMERAMP 148.5 145.5
 position HOMENATURAL 144.5 152.5
 position HOMENATURALCHOKE 136.0 144.0
 position ENEMYNATURALCHOKE 88.0 60.0
-position FOLLOWERS 167.5 95.5
+position FOLLOWERS 172.5 49.5
 position SUPPLYDEPOT 150 141
 position SUPPLYDEPOT 153 144
 position BARRACKS 152.5 141.5
@@ -697,7 +781,7 @@ path 130 134  131 135  132 136  133 137  134 138  135 139  136 140  137 141  138
 path 140 144  141 144  142 144  143 144  144 145  145 146  146 147  147 147  148 146  149 145  
 path 150 144  151 144  152 144  153 144  154 144  155 143  156 143  157 144  158 145  159 146  
 path 160 146  161 147  162 147  163 146  164 145  165 144  166 143  
-position INFESTEDCOCOON 92 68
+position INFESTEDCOCOON 91 63
 position EXTRACC 63.5 111.5
 position EXTRACC 70.5 121.5
 position EXTRACC 78.5 147.5
@@ -713,16 +797,16 @@ position EXTRACC 156.5 139.5
 position EXTRACC 142.5 113.5
 position EXTRACC 81.5 90.5
 position EXTRACC 166.5 59.5
-position EXTRACC 91.5 66.5
-position EXTRACC 142.5 84.5
+position EXTRACC 114.5 94.5
+position EXTRACC 60.5 149.5
+position EXTRACC 78.5 118.5
 position EXTRACC 94.5 116.5
-position EXTRACC 122.5 88.5
-position EXTRACC 93.5 71.5
-position EXTRACC 90.5 139.5
-position EXTRACC 116.5 92.5
-position EXTRACC 99.5 67.5
-position EXTRACC 77.5 118.5
-position EXTRACC 61.5 152.5
+position EXTRACC 73.5 115.5
+position EXTRACC 163.5 49.5
+position EXTRACC 121.5 87.5
+position EXTRACC 90.5 69.5
+position EXTRACC 122.5 69.5
+position EXTRACC 60.5 105.5
 position FUSIONCORE * 178.5 55.5
 position FUSIONCORE * 177.5 65.5
 position FUSIONCORE * 167.5 55.5
@@ -735,32 +819,32 @@ position STARPORT * 172.5 65.5
 position STARPORT * 162.5 55.5
 position STARPORT * 79.5 161.5
 position STARPORT * 175.5 91.5
-position STARPORT * 175.5 105.5
 position STARPORT * 111.5 165.5
-position SCOUT 69.5 61.5
-position SCOUT 68.5 66.5
-position SCOUT 64.5 69.5
-position SCOUT 60.5 72.5
-position SCOUT 55.5 72.5
-position SCOUT 50.5 70.5
-position SCOUT 47.5 66.5
-position SCOUT 45.5 62.5
-position SCOUT 45.5 57.5
-position SCOUT 48.5 52.5
-position SCOUT 52.5 49.5
-position SCOUT 56.5 48.5
-position SCOUT 61.5 49.5
-position SCOUT 66.5 52.5
-position SCOUT 68.5 56.5
+position STARPORT * 175.5 105.5
+position SCOUT 66.5 68.5
+position SCOUT 62.5 71.5
+position SCOUT 57.5 72.5
+position SCOUT 52.5 71.5
+position SCOUT 48.5 68.5
+position SCOUT 46.5 64.5
+position SCOUT 45.5 59.5
+position SCOUT 47.5 54.5
+position SCOUT 50.5 50.5
+position SCOUT 55.5 48.5
+position SCOUT 59.5 48.5
+position SCOUT 64.5 50.5
+position SCOUT 67.5 55.5
+position SCOUT 69.5 59.5
+position SCOUT 68.5 64.5
 position REAPERJUMP 71.5 59.0
 position REAPERJUMP 74.5 62.0
-position REAPERBARRACKS 90.5 62.5
-position INFESTEDBUNKER 66.5 73.5
-position INFESTEDLANDING 69.5 72.5
-position INFESTEDPRISON 68.5 74.5
-position INFESTEDTANK 73 77
-position INFESTEDBARRACKS 73.5 77.5
-position INFESTEDFACTORY 83.5 86.5
+position REAPERBARRACKS 90.5 63.5
+position INFESTEDLANDING 49.5 71.5
+position INFESTEDBUNKER 52.5 73.5
+position INFESTEDPRISON 50.5 74.5
+position INFESTEDTANK 45 98
+position INFESTEDBARRACKS 52.5 95.5
+position INFESTEDFACTORY 51.5 109.5
 #####
 #####
 map: atmospheres 57.5 60.5
@@ -771,7 +855,7 @@ position HOMERAMP 75.5 58.5
 position HOMENATURAL 79.5 51.5
 position HOMENATURALCHOKE 88.0 60.0
 position ENEMYNATURALCHOKE 136.0 144.0
-position FOLLOWERS 57.5 109.5
+position FOLLOWERS 54.5 151.5
 position SUPPLYDEPOT 71 60
 position SUPPLYDEPOT 71 62
 position BARRACKS 73.5 63.5
@@ -783,7 +867,7 @@ path 94 69  93 68  92 68  91 67  90 66  89 65  88 64  87 63  86 62  85 61
 path 84 60  83 59  82 59  81 60  80 59  79 58  78 57  77 57  76 58  75 59  
 path 74 60  73 60  72 60  71 60  70 59  69 60  68 60  67 60  66 59  65 60  
 path 64 60  63 59  62 60  61 59  60 60  59 59  58 60  57 60  
-position INFESTEDCOCOON 137 150
+position INFESTEDCOCOON 133 141
 position EXTRACC 63.5 111.5
 position EXTRACC 70.5 121.5
 position EXTRACC 78.5 147.5
@@ -799,16 +883,16 @@ position EXTRACC 160.5 92.5
 position EXTRACC 142.5 113.5
 position EXTRACC 81.5 90.5
 position EXTRACC 166.5 59.5
-position EXTRACC 77.5 118.5
-position EXTRACC 104.5 112.5
-position EXTRACC 72.5 66.5
-position EXTRACC 164.5 51.5
-position EXTRACC 133.5 65.5
-position EXTRACC 145.5 85.5
-position EXTRACC 61.5 151.5
-position EXTRACC 162.5 98.5
-position EXTRACC 109.5 109.5
-position EXTRACC 133.5 134.5
+position EXTRACC 133.5 136.5
+position EXTRACC 76.5 118.5
+position EXTRACC 61.5 149.5
+position EXTRACC 107.5 107.5
+position EXTRACC 61.5 154.5
+position EXTRACC 162.5 53.5
+position EXTRACC 161.5 98.5
+position EXTRACC 121.5 137.5
+position EXTRACC 123.5 88.5
+position EXTRACC 101.5 134.5
 position FUSIONCORE * 45.5 148.5
 position FUSIONCORE * 46.5 138.5
 position FUSIONCORE * 55.5 150.5
@@ -823,30 +907,30 @@ position STARPORT * 46.5 112.5
 position STARPORT * 46.5 99.5
 position STARPORT * 59.5 140.5
 position STARPORT * 69.5 150.5
-position SCOUT 154.5 142.5
-position SCOUT 155.5 137.5
-position SCOUT 159.5 134.5
-position SCOUT 163.5 131.5
-position SCOUT 168.5 131.5
-position SCOUT 173.5 133.5
-position SCOUT 176.5 137.5
-position SCOUT 178.5 141.5
-position SCOUT 178.5 146.5
-position SCOUT 175.5 151.5
-position SCOUT 171.5 154.5
-position SCOUT 167.5 155.5
-position SCOUT 162.5 154.5
-position SCOUT 157.5 151.5
-position SCOUT 155.5 147.5
+position SCOUT 157.5 135.5
+position SCOUT 161.5 132.5
+position SCOUT 166.5 131.5
+position SCOUT 171.5 132.5
+position SCOUT 175.5 135.5
+position SCOUT 177.5 139.5
+position SCOUT 178.5 144.5
+position SCOUT 176.5 149.5
+position SCOUT 173.5 153.5
+position SCOUT 168.5 155.5
+position SCOUT 164.5 155.5
+position SCOUT 159.5 153.5
+position SCOUT 156.5 148.5
+position SCOUT 154.5 144.5
+position SCOUT 155.5 139.5
 position REAPERJUMP 152.0 144.5
 position REAPERJUMP 149.0 141.5
 position REAPERBARRACKS 135.5 140.5
-position INFESTEDLANDING 164.5 129.5
-position INFESTEDBUNKER 167.5 129.5
-position INFESTEDPRISON 166.5 127.5
-position INFESTEDTANK 176 106
-position INFESTEDBARRACKS 170.5 108.5
-position INFESTEDFACTORY 170.5 94.5
+position INFESTEDLANDING 154.5 131.5
+position INFESTEDBUNKER 157.5 130.5
+position INFESTEDPRISON 155.5 128.5
+position INFESTEDTANK 151 127
+position INFESTEDBARRACKS 150.5 126.5
+position INFESTEDFACTORY 139.5 117.5
 #####
 #####
 map: jagannatha 126.5 151.5
@@ -857,7 +941,7 @@ position HOMERAMP 108.5 147.5
 position HOMENATURAL 98.5 151.5
 position HOMENATURALCHOKE 93.0 144.0
 position ENEMYNATURALCHOKE 76.0 42.0
-position FOLLOWERS 131.5 63.5
+position FOLLOWERS 104.5 31.5
 position SUPPLYDEPOT 110 143
 position SUPPLYDEPOT 113 146
 position BARRACKS 112.5 143.5
@@ -871,7 +955,7 @@ path 96 138  95 139  95 140  95 141  96 142  97 143  98 144  99 143  100 143  10
 path 102 145  103 146  104 147  105 148  106 149  107 149  108 148  109 147  110 146  111 146  
 path 112 146  113 146  114 147  115 146  116 146  117 146  118 147  119 147  120 146  121 146  
 path 122 147  123 148  124 149  125 150  126 151  
-position INFESTEDCOCOON 80 50
+position INFESTEDCOCOON 79 45
 position EXTRACC 46.5 113.5
 position EXTRACC 133.5 99.5
 position EXTRACC 71.5 67.5
@@ -885,45 +969,45 @@ position EXTRACC 97.5 43.5
 position EXTRACC 70.5 142.5
 position EXTRACC 39.5 145.5
 position EXTRACC 128.5 40.5
-position EXTRACC 83.5 76.5
-position EXTRACC 47.5 102.5
-position EXTRACC 121.5 84.5
-position EXTRACC 42.5 123.5
-position EXTRACC 90.5 107.5
-position EXTRACC 83.5 138.5
-position EXTRACC 82.5 48.5
-position EXTRACC 104.5 117.5
-position EXTRACC 66.5 147.5
-position EXTRACC 126.5 84.5
+position EXTRACC 86.5 139.5
+position EXTRACC 45.5 98.5
+position EXTRACC 65.5 145.5
+position EXTRACC 83.5 74.5
+position EXTRACC 102.5 40.5
+position EXTRACC 118.5 78.5
+position EXTRACC 87.5 101.5
+position EXTRACC 79.5 141.5
+position EXTRACC 42.5 150.5
+position EXTRACC 88.5 132.5
 position FUSIONCORE * 40.5 162.5
-position FUSIONCORE * 41.5 152.5
 position FUSIONCORE * 59.5 161.5
 position FUSIONCORE * 70.5 162.5
+position FUSIONCORE * 46.5 151.5
 position FUSIONCORE * 92.5 161.5
-position FUSIONCORE * 56.5 151.5
+position FUSIONCORE * 57.5 151.5
 position FUSIONCORE * 140.5 64.5
 position STARPORT * 43.5 161.5
 position STARPORT * 62.5 162.5
-position STARPORT * 41.5 149.5
 position STARPORT * 73.5 161.5
 position STARPORT * 54.5 154.5
 position STARPORT * 90.5 158.5
 position STARPORT * 51.5 144.5
-position SCOUT 52.5 39.5
-position SCOUT 49.5 43.5
-position SCOUT 45.5 45.5
-position SCOUT 40.5 46.5
-position SCOUT 35.5 45.5
-position SCOUT 31.5 41.5
-position SCOUT 29.5 37.5
-position SCOUT 29.5 32.5
-position SCOUT 31.5 27.5
-position SCOUT 35.5 24.5
-position SCOUT 39.5 23.5
-position SCOUT 44.5 22.5
-position SCOUT 49.5 25.5
-position SCOUT 52.5 29.5
-position SCOUT 53.5 34.5
+position STARPORT * 42.5 136.5
+position SCOUT 47.5 44.5
+position SCOUT 43.5 46.5
+position SCOUT 38.5 46.5
+position SCOUT 33.5 43.5
+position SCOUT 30.5 39.5
+position SCOUT 29.5 34.5
+position SCOUT 30.5 29.5
+position SCOUT 33.5 25.5
+position SCOUT 37.5 23.5
+position SCOUT 42.5 22.5
+position SCOUT 47.5 23.5
+position SCOUT 50.5 27.5
+position SCOUT 53.5 31.5
+position SCOUT 53.5 36.5
+position SCOUT 51.5 41.5
 position REAPERJUMP 55.5 39.0
 position REAPERJUMP 58.5 42.0
 position REAPERBARRACKS 74.5 39.5
@@ -935,90 +1019,6 @@ position INFESTEDBARRACKS 36.5 64.5
 position INFESTEDFACTORY 34.5 80.5
 #####
 #####
-map: blackburn 36.5 31.5
-position ENEMYRAMP 139.5 47.5
-position ENEMYNATURAL 147.5 54.5
-position ENEMYTHIRD 116.5 54.5
-position HOMERAMP 44.5 47.5
-position HOMENATURAL 36.5 54.5
-position HOMENATURALCHOKE 47.0 65.0
-position ENEMYNATURALCHOKE 137.0 65.0
-position FOLLOWERS 40.5 116.5
-position SUPPLYDEPOT 46 43
-position SUPPLYDEPOT 48 43
-position BARRACKS 49.5 45.5
-path 92 76  91 76  90 76  89 75  88 75  87 75  86 76  85 76  84 76  83 77  
-path 82 78  81 79  80 80  79 80  78 80  77 80  76 80  75 81  74 82  73 82  
-path 72 83  71 82  70 82  69 82  68 82  67 82  66 82  65 81  64 80  63 79  
-path 62 78  61 77  60 76  59 75  58 74  57 73  56 72  55 71  54 70  53 69  
-path 52 68  51 67  50 66  49 65  48 64  47 63  46 62  46 61  46 60  45 59  
-path 44 58  43 57  44 56  43 55  43 54  44 53  43 52  43 51  42 50  43 49  
-path 44 48  45 47  46 46  47 45  47 44  48 43  47 42  46 41  45 40  44 39  
-path 43 38  42 37  41 36  40 35  39 34  38 33  37 32  36 31  
-position INFESTEDCOCOON 134 72
-position EXTRACC 134.5 76.5
-position EXTRACC 84.5 25.5
-position EXTRACC 46.5 111.5
-position EXTRACC 47.5 54.5
-position EXTRACC 137.5 111.5
-position EXTRACC 136.5 54.5
-position EXTRACC 46.5 35.5
-position EXTRACC 91.5 108.5
-position EXTRACC 133.5 91.5
-position EXTRACC 71.5 64.5
-position EXTRACC 112.5 64.5
-position EXTRACC 50.5 91.5
-position EXTRACC 49.5 76.5
-position EXTRACC 39.5 106.5
-position EXTRACC 124.5 122.5
-position EXTRACC 108.5 86.5
-position EXTRACC 58.5 123.5
-position EXTRACC 143.5 107.5
-position EXTRACC 110.5 92.5
-position EXTRACC 56.5 25.5
-position EXTRACC 51.5 45.5
-position EXTRACC 142.5 56.5
-position EXTRACC 75.5 86.5
-position FUSIONCORE * 26.5 120.5
-position FUSIONCORE * 28.5 109.5
-position FUSIONCORE * 36.5 119.5
-position FUSIONCORE * 26.5 57.5
-position FUSIONCORE * 46.5 121.5
-position FUSIONCORE * 30.5 83.5
-position FUSIONCORE * 41.5 110.5
-position STARPORT * 32.5 112.5
-position STARPORT * 40.5 119.5
-position STARPORT * 28.5 61.5
-position STARPORT * 31.5 102.5
-position STARPORT * 32.5 87.5
-position STARPORT * 50.5 121.5
-position STARPORT * 35.5 77.5
-position SCOUT 140.5 41.5
-position SCOUT 137.5 37.5
-position SCOUT 135.5 32.5
-position SCOUT 136.5 27.5
-position SCOUT 138.5 23.5
-position SCOUT 142.5 20.5
-position SCOUT 147.5 19.5
-position SCOUT 152.5 21.5
-position SCOUT 156.5 23.5
-position SCOUT 158.5 27.5
-position SCOUT 159.5 33.5
-position SCOUT 157.5 37.5
-position SCOUT 154.5 40.5
-position SCOUT 148.5 41.5
-position SCOUT 144.5 41.5
-position REAPERJUMP 135.5 46.5
-position REAPERJUMP 138.5 43.5
-position REAPERBARRACKS 131.5 66.5
-position INFESTEDLANDING 125.5 27.5
-position INFESTEDBUNKER 127.5 24.5
-position INFESTEDPRISON 124.5 24.5
-position INFESTEDTANK 122 30
-position INFESTEDBARRACKS 121.5 30.5
-position INFESTEDFACTORY 111.5 34.5
-#####
-#####
 map: curiousminds 125.5 24.5
 position ENEMYRAMP 28.5 96.5
 position ENEMYNATURAL 23.5 88.5
@@ -1027,7 +1027,7 @@ position HOMERAMP 123.5 43.5
 position HOMENATURAL 128.5 51.5
 position HOMENATURALCHOKE 118.0 60.0
 position ENEMYNATURALCHOKE 34.0 80.0
-position FOLLOWERS 129.5 119.5
+position FOLLOWERS 128.5 116.5
 position SUPPLYDEPOT 119 42
 position SUPPLYDEPOT 122 39
 position BARRACKS 119.5 39.5
@@ -1040,7 +1040,7 @@ path 114 62  115 61  116 60  117 59  118 58  119 57  120 56  119 55  119 54  118
 path 119 52  120 51  121 50  122 49  123 48  124 47  125 46  125 45  124 44  123 43  
 path 122 42  122 41  122 40  122 39  122 38  123 37  122 36  122 35  123 34  122 33  
 path 122 32  123 31  122 30  122 29  123 28  123 27  124 26  124 25  125 24  
-position INFESTEDCOCOON 42 83
+position INFESTEDCOCOON 41 75
 position EXTRACC 20.5 30.5
 position EXTRACC 118.5 87.5
 position EXTRACC 70.5 105.5
@@ -1052,16 +1052,16 @@ position EXTRACC 131.5 109.5
 position EXTRACC 33.5 52.5
 position EXTRACC 60.5 87.5
 position EXTRACC 91.5 52.5
-position EXTRACC 74.5 54.5
-position EXTRACC 50.5 26.5
-position EXTRACC 78.5 39.5
-position EXTRACC 70.5 100.5
-position EXTRACC 121.5 82.5
-position EXTRACC 40.5 34.5
-position EXTRACC 78.5 89.5
-position EXTRACC 99.5 114.5
-position EXTRACC 85.5 76.5
-position EXTRACC 55.5 53.5
+position EXTRACC 75.5 90.5
+position EXTRACC 75.5 53.5
+position EXTRACC 88.5 79.5
+position EXTRACC 52.5 24.5
+position EXTRACC 28.5 57.5
+position EXTRACC 79.5 39.5
+position EXTRACC 62.5 55.5
+position EXTRACC 100.5 115.5
+position EXTRACC 108.5 105.5
+position EXTRACC 42.5 33.5
 position FUSIONCORE * 138.5 114.5
 position FUSIONCORE * 38.5 9.5
 position FUSIONCORE * 128.5 113.5
@@ -1097,7 +1097,7 @@ position REAPERBARRACKS 28.5 83.5
 position INFESTEDBUNKER 39.5 116.5
 position INFESTEDLANDING 41.5 113.5
 position INFESTEDPRISON 42.5 115.5
-position INFESTEDTANK 55 120
+position INFESTEDTANK 52 118
 position INFESTEDBARRACKS 54.5 116.5
 position INFESTEDFACTORY 70.5 115.5
 #####
@@ -1110,7 +1110,7 @@ position HOMERAMP 36.5 114.5
 position HOMENATURAL 28.5 107.5
 position HOMENATURALCHOKE 38.0 100.0
 position ENEMYNATURALCHOKE 114.0 56.0
-position FOLLOWERS 28.5 129.5
+position FOLLOWERS 36.5 24.5
 position SUPPLYDEPOT 38 119
 position SUPPLYDEPOT 40 119
 position BARRACKS 41.5 116.5
@@ -1123,7 +1123,7 @@ path 43 102  42 101  41 102  40 103  39 104  39 105  39 106  38 107  37 108  36 
 path 35 110  36 111  35 112  35 113  36 114  37 115  38 116  38 117  38 118  39 119  
 path 40 120  41 121  40 122  39 123  38 124  37 125  36 126  35 127  34 128  33 129  
 path 32 130  31 131  
-position INFESTEDCOCOON 118 55
+position INFESTEDCOCOON 111 59
 position EXTRACC 87.5 122.5
 position EXTRACC 66.5 103.5
 position EXTRACC 114.5 124.5
@@ -1137,16 +1137,16 @@ position EXTRACC 87.5 53.5
 position EXTRACC 64.5 33.5
 position EXTRACC 35.5 81.5
 position EXTRACC 36.5 100.5
-position EXTRACC 103.5 61.5
-position EXTRACC 89.5 101.5
-position EXTRACC 44.5 95.5
-position EXTRACC 52.5 40.5
-position EXTRACC 70.5 29.5
-position EXTRACC 58.5 37.5
-position EXTRACC 109.5 60.5
-position EXTRACC 96.5 120.5
-position EXTRACC 64.5 55.5
-position EXTRACC 107.5 55.5
+position EXTRACC 48.5 95.5
+position EXTRACC 89.5 100.5
+position EXTRACC 51.5 39.5
+position EXTRACC 108.5 61.5
+position EXTRACC 108.5 54.5
+position EXTRACC 95.5 118.5
+position EXTRACC 48.5 127.5
+position EXTRACC 102.5 60.5
+position EXTRACC 51.5 44.5
+position EXTRACC 38.5 95.5
 position FUSIONCORE * 121.5 143.5
 position FUSIONCORE * 111.5 144.5
 position FUSIONCORE * 16.5 50.5
@@ -1195,7 +1195,7 @@ position HOMERAMP 115.5 41.5
 position HOMENATURAL 123.5 48.5
 position HOMENATURALCHOKE 114.0 56.0
 position ENEMYNATURALCHOKE 38.0 100.0
-position FOLLOWERS 127.5 111.5
+position FOLLOWERS 121.5 134.5
 position SUPPLYDEPOT 112 38
 position SUPPLYDEPOT 114 37
 position BARRACKS 109.5 39.5
@@ -1206,7 +1206,7 @@ path 103 54  104 54  105 54  106 53  107 53  108 53  109 53  110 54  111 53  112
 path 113 52  114 51  114 50  115 49  114 48  115 47  116 46  117 45  118 44  117 43  
 path 116 42  115 41  114 40  113 39  114 38  113 37  113 36  114 35  114 34  113 33  
 path 114 32  115 31  116 30  115 29  116 28  117 27  118 26  119 25  120 24  
-position INFESTEDCOCOON 43 100
+position INFESTEDCOCOON 41 98
 position EXTRACC 87.5 122.5
 position EXTRACC 64.5 102.5
 position EXTRACC 114.5 124.5
@@ -1220,16 +1220,16 @@ position EXTRACC 85.5 52.5
 position EXTRACC 64.5 33.5
 position EXTRACC 35.5 81.5
 position EXTRACC 37.5 101.5
-position EXTRACC 54.5 36.5
-position EXTRACC 104.5 60.5
-position EXTRACC 109.5 62.5
-position EXTRACC 91.5 103.5
-position EXTRACC 88.5 98.5
-position EXTRACC 45.5 98.5
-position EXTRACC 95.5 120.5
-position EXTRACC 60.5 54.5
+position EXTRACC 110.5 61.5
+position EXTRACC 63.5 54.5
+position EXTRACC 44.5 94.5
+position EXTRACC 100.5 115.5
+position EXTRACC 39.5 95.5
+position EXTRACC 55.5 35.5
+position EXTRACC 82.5 125.5
+position EXTRACC 89.5 100.5
 position EXTRACC 54.5 41.5
-position EXTRACC 59.5 36.5
+position EXTRACC 69.5 29.5
 position FUSIONCORE * 32.5 12.5
 position FUSIONCORE * 42.5 11.5
 position FUSIONCORE * 108.5 14.5
@@ -1262,9 +1262,9 @@ position SCOUT 35.5 120.5
 position INFESTEDLANDING 48.5 118.5
 position INFESTEDBUNKER 49.5 121.5
 position INFESTEDPRISON 50.5 119.5
-position INFESTEDTANK 56 119
+position INFESTEDTANK 55 119
 position INFESTEDBARRACKS 56.5 115.5
-position INFESTEDFACTORY 66.5 107.5
+position INFESTEDFACTORY 48.5 124.5
 #####
 #####
 map: hardwire 157.5 157.5
@@ -1275,7 +1275,7 @@ position HOMERAMP 140.5 159.5
 position HOMENATURAL 135.5 167.5
 position HOMENATURALCHOKE 126.0 159.0
 position ENEMYNATURALCHOKE 90.0 57.0
-position FOLLOWERS 103.5 69.5
+position FOLLOWERS 107.5 69.5
 position SUPPLYDEPOT 142 155
 position SUPPLYDEPOT 145 158
 position BARRACKS 144.5 155.5
@@ -1288,7 +1288,7 @@ path 126 153  127 154  128 155  129 156  130 157  131 158  132 159  133 160  134
 path 136 160  137 160  138 161  139 161  140 160  141 159  142 158  143 158  144 158  145 158  
 path 146 158  147 157  148 157  149 156  150 156  151 157  152 157  153 156  154 156  155 156  
 path 156 156  157 157  
-position INFESTEDCOCOON 94 65
+position INFESTEDCOCOON 93 60
 position EXTRACC 127.5 160.5
 position EXTRACC 71.5 154.5
 position EXTRACC 71.5 141.5
@@ -1304,16 +1304,16 @@ position EXTRACC 69.5 111.5
 position EXTRACC 101.5 144.5
 position EXTRACC 79.5 91.5
 position EXTRACC 87.5 56.5
-position EXTRACC 147.5 99.5
-position EXTRACC 115.5 132.5
-position EXTRACC 107.5 96.5
-position EXTRACC 125.5 87.5
+position EXTRACC 132.5 93.5
+position EXTRACC 127.5 41.5
 position EXTRACC 102.5 84.5
-position EXTRACC 126.5 42.5
-position EXTRACC 158.5 142.5
-position EXTRACC 111.5 118.5
-position EXTRACC 130.5 91.5
-position EXTRACC 97.5 81.5
+position EXTRACC 65.5 106.5
+position EXTRACC 82.5 126.5
+position EXTRACC 142.5 152.5
+position EXTRACC 92.5 170.5
+position EXTRACC 130.5 88.5
+position EXTRACC 150.5 110.5
+position EXTRACC 90.5 63.5
 position FUSIONCORE * 71.5 174.5
 position FUSIONCORE * 87.5 175.5
 position FUSIONCORE * 105.5 177.5
@@ -1345,13 +1345,13 @@ position SCOUT 70.5 58.5
 position SCOUT 69.5 63.5
 position REAPERJUMP 74.5 60.0
 position REAPERJUMP 71.5 57.0
-position REAPERBARRACKS 90.5 61.5
-position INFESTEDLANDING 57.5 77.5
-position INFESTEDBUNKER 60.5 75.5
-position INFESTEDPRISON 59.5 78.5
-position INFESTEDTANK 67 78
-position INFESTEDBARRACKS 64.5 82.5
-position INFESTEDFACTORY 64.5 102.5
+position REAPERBARRACKS 91.5 59.5
+position INFESTEDBUNKER 70.5 67.5
+position INFESTEDLANDING 73.5 66.5
+position INFESTEDPRISON 72.5 68.5
+position INFESTEDTANK 78 72
+position INFESTEDBARRACKS 78.5 72.5
+position INFESTEDFACTORY 83.5 79.5
 #####
 #####
 map: hardwire 58.5 58.5
@@ -1362,7 +1362,7 @@ position HOMERAMP 75.5 56.5
 position HOMENATURAL 80.5 48.5
 position HOMENATURALCHOKE 90.0 57.0
 position ENEMYNATURALCHOKE 126.0 159.0
-position FOLLOWERS 108.5 147.5
+position FOLLOWERS 110.5 148.5
 position SUPPLYDEPOT 71 58
 position SUPPLYDEPOT 71 60
 position BARRACKS 73.5 61.5
@@ -1374,7 +1374,7 @@ path 91 64  90 63  89 62  88 61  87 60  86 59  85 58  84 57  83 56  82 56
 path 81 57  80 57  79 56  78 55  77 55  76 56  75 57  74 58  73 58  72 58  
 path 71 59  70 59  69 60  68 60  67 60  66 59  65 60  64 60  63 59  62 60  
 path 61 59  60 60  59 59  58 58  
-position INFESTEDCOCOON 133 161
+position INFESTEDCOCOON 123 156
 position EXTRACC 128.5 159.5
 position EXTRACC 62.5 68.5
 position EXTRACC 71.5 154.5
@@ -1390,16 +1390,16 @@ position EXTRACC 69.5 111.5
 position EXTRACC 101.5 144.5
 position EXTRACC 79.5 91.5
 position EXTRACC 88.5 55.5
-position EXTRACC 108.5 118.5
-position EXTRACC 133.5 89.5
-position EXTRACC 101.5 124.5
-position EXTRACC 82.5 122.5
-position EXTRACC 152.5 102.5
-position EXTRACC 93.5 174.5
-position EXTRACC 116.5 135.5
-position EXTRACC 57.5 74.5
-position EXTRACC 148.5 109.5
-position EXTRACC 64.5 114.5
+position EXTRACC 100.5 85.5
+position EXTRACC 114.5 130.5
+position EXTRACC 65.5 55.5
+position EXTRACC 58.5 73.5
+position EXTRACC 85.5 124.5
+position EXTRACC 109.5 116.5
+position EXTRACC 149.5 109.5
+position EXTRACC 130.5 89.5
+position EXTRACC 109.5 122.5
+position EXTRACC 121.5 148.5
 position FUSIONCORE * 147.5 42.5
 position FUSIONCORE * 85.5 38.5
 position FUSIONCORE * 128.5 40.5
@@ -1408,7 +1408,7 @@ position FUSIONCORE * 117.5 40.5
 position FUSIONCORE * 137.5 46.5
 position FUSIONCORE * 148.5 55.5
 position STARPORT * 142.5 41.5
-position STARPORT * 110.5 38.5
+position STARPORT * 108.5 38.5
 position STARPORT * 123.5 40.5
 position STARPORT * 141.5 51.5
 position STARPORT * 58.5 147.5
@@ -1448,7 +1448,7 @@ position HOMERAMP 28.5 96.5
 position HOMENATURAL 23.5 88.5
 position HOMENATURALCHOKE 34.0 80.0
 position ENEMYNATURALCHOKE 118.0 60.0
-position FOLLOWERS 105.5 68.5
+position FOLLOWERS 98.5 60.5
 position SUPPLYDEPOT 30 101
 position SUPPLYDEPOT 32 101
 position BARRACKS 33.5 98.5
@@ -1460,7 +1460,7 @@ path 34 83  34 84  34 85  35 86  34 87  33 88  32 89  31 90  30 91  29 92
 path 28 93  27 94  27 95  28 96  29 97  30 98  31 99  31 100  30 101  31 102  
 path 32 103  33 104  34 105  35 106  34 107  33 108  32 109  31 110  30 111  29 112  
 path 28 113  27 114  26 115  
-position INFESTEDCOCOON 114 68
+position INFESTEDCOCOON 111 65
 position EXTRACC 20.5 30.5
 position EXTRACC 118.5 87.5
 position EXTRACC 36.5 111.5
@@ -1472,16 +1472,16 @@ position EXTRACC 131.5 109.5
 position EXTRACC 33.5 52.5
 position EXTRACC 60.5 87.5
 position EXTRACC 91.5 52.5
-position EXTRACC 85.5 76.5
-position EXTRACC 81.5 81.5
-position EXTRACC 76.5 50.5
-position EXTRACC 52.5 24.5
-position EXTRACC 40.5 37.5
-position EXTRACC 63.5 60.5
-position EXTRACC 101.5 115.5
-position EXTRACC 73.5 100.5
-position EXTRACC 80.5 39.5
-position EXTRACC 89.5 84.5
+position EXTRACC 29.5 59.5
+position EXTRACC 60.5 56.5
+position EXTRACC 76.5 87.5
+position EXTRACC 74.5 54.5
+position EXTRACC 121.5 81.5
+position EXTRACC 78.5 39.5
+position EXTRACC 88.5 80.5
+position EXTRACC 97.5 116.5
+position EXTRACC 39.5 39.5
+position EXTRACC 51.5 24.5
 position FUSIONCORE * 14.5 27.5
 position FUSIONCORE * 116.5 129.5
 position FUSIONCORE * 24.5 28.5
@@ -1530,7 +1530,7 @@ position HOMERAMP 65.5 50.5
 position HOMENATURAL 75.5 47.5
 position HOMENATURALCHOKE 79.0 60.0
 position ENEMYNATURALCHOKE 137.0 144.0
-position FOLLOWERS 49.5 103.5
+position FOLLOWERS 104.5 153.5
 position SUPPLYDEPOT 61 52
 position SUPPLYDEPOT 61 54
 position BARRACKS 63.5 55.5
@@ -1543,7 +1543,7 @@ path 80 61  79 60  78 59  77 58  76 57  75 56  74 55  73 54  72 53  71 52
 path 70 51  69 50  68 49  67 49  66 50  65 51  64 52  63 52  62 52  61 53  
 path 60 54  59 53  58 53  57 54  56 53  55 54  54 53  53 53  52 54  51 55  
 path 50 56  49 55  48 54  
-position INFESTEDCOCOON 138 147
+position INFESTEDCOCOON 136 140
 position EXTRACC 158.5 89.5
 position EXTRACC 54.5 105.5
 position EXTRACC 58.5 58.5
@@ -1561,30 +1561,30 @@ position EXTRACC 98.5 90.5
 position EXTRACC 38.5 139.5
 position EXTRACC 177.5 64.5
 position EXTRACC 117.5 113.5
-position EXTRACC 144.5 61.5
-position EXTRACC 129.5 73.5
-position EXTRACC 136.5 66.5
-position EXTRACC 127.5 86.5
-position EXTRACC 74.5 144.5
-position EXTRACC 104.5 149.5
-position EXTRACC 85.5 130.5
-position EXTRACC 57.5 120.5
-position EXTRACC 86.5 118.5
-position EXTRACC 99.5 151.5
+position EXTRACC 130.5 72.5
+position EXTRACC 91.5 153.5
+position EXTRACC 115.5 50.5
+position EXTRACC 143.5 61.5
+position EXTRACC 68.5 87.5
+position EXTRACC 123.5 95.5
+position EXTRACC 89.5 127.5
+position EXTRACC 138.5 54.5
+position EXTRACC 103.5 147.5
+position EXTRACC 73.5 144.5
 position FUSIONCORE * 34.5 138.5
 position FUSIONCORE * 38.5 128.5
 position FUSIONCORE * 34.5 106.5
 position FUSIONCORE * 44.5 139.5
 position FUSIONCORE * 43.5 71.5
 position FUSIONCORE * 40.5 93.5
-position FUSIONCORE * 54.5 143.5
+position FUSIONCORE * 53.5 144.5
 position STARPORT * 37.5 143.5
 position STARPORT * 34.5 133.5
 position STARPORT * 44.5 135.5
 position STARPORT * 41.5 125.5
 position STARPORT * 40.5 98.5
 position STARPORT * 41.5 111.5
-position STARPORT * 57.5 144.5
+position STARPORT * 56.5 144.5
 position SCOUT 158.5 141.5
 position SCOUT 162.5 138.5
 position SCOUT 167.5 137.5
@@ -1619,7 +1619,7 @@ position HOMERAMP 150.5 153.5
 position HOMENATURAL 140.5 156.5
 position HOMENATURALCHOKE 137.0 144.0
 position ENEMYNATURALCHOKE 79.0 60.0
-position FOLLOWERS 113.5 117.5
+position FOLLOWERS 103.5 83.5
 position SUPPLYDEPOT 152 149
 position SUPPLYDEPOT 155 152
 position BARRACKS 154.5 149.5
@@ -1632,7 +1632,7 @@ path 136 143  137 144  138 145  139 146  140 147  141 148  142 149  143 150  144
 path 146 153  147 154  148 155  149 155  150 154  151 153  152 152  153 152  154 152  155 152  
 path 156 153  157 153  158 152  159 152  160 152  161 153  162 153  163 152  164 151  165 150  
 path 166 150  167 149  
-position INFESTEDCOCOON 83 68
+position INFESTEDCOCOON 80 64
 position EXTRACC 158.5 89.5
 position EXTRACC 54.5 105.5
 position EXTRACC 140.5 129.5
@@ -1650,16 +1650,16 @@ position EXTRACC 98.5 90.5
 position EXTRACC 38.5 139.5
 position EXTRACC 177.5 64.5
 position EXTRACC 117.5 113.5
-position EXTRACC 140.5 58.5
-position EXTRACC 123.5 140.5
-position EXTRACC 92.5 153.5
-position EXTRACC 101.5 152.5
-position EXTRACC 94.5 65.5
-position EXTRACC 67.5 86.5
-position EXTRACC 163.5 134.5
-position EXTRACC 157.5 81.5
-position EXTRACC 119.5 96.5
-position EXTRACC 92.5 107.5
+position EXTRACC 141.5 58.5
+position EXTRACC 135.5 67.5
+position EXTRACC 94.5 106.5
+position EXTRACC 84.5 129.5
+position EXTRACC 159.5 139.5
+position EXTRACC 76.5 146.5
+position EXTRACC 137.5 53.5
+position EXTRACC 111.5 54.5
+position EXTRACC 57.5 119.5
+position EXTRACC 103.5 151.5
 position FUSIONCORE * 181.5 65.5
 position FUSIONCORE * 177.5 75.5
 position FUSIONCORE * 171.5 64.5

@@ -189,7 +189,7 @@ from sc2.ids.unit_typeid import ZERGLING
 
 class Chaosbot(BotAI):
     #   ############### CHANGE VALUE AD LIB
-    versiontext = 'Chaosbot version 7 feb 2022, made by MerkMore'
+    versiontext = 'Chaosbot version 9 feb 2022, made by MerkMore'
     do_slowdown = False # do not while realtime
     slowdown_frames = 99999
     slowness = 0.02 # realtime is around 0.05
@@ -2293,8 +2293,11 @@ class Chaosbot(BotAI):
         elif self.game_choice[11]:
             self.opening_name = 'cocoon'
             self.rushopening = True
-            self.buildseries_opening = cocoon_series + [REFINERY, INFESTEDFACTORY, MARINE, COMMANDCENTER, MARINE, FACTORYTECHLAB, SIEGETANK]
+            self.buildseries_opening = cocoon_series + [REFINERY, REFINERY, FACTORY, FACTORYTECHLAB, SIEGETANK,
+                                                        ENGINEERINGBAY]
             self.init_cocoon()
+            factory_pos = self.init_cheese_position(self.cheese3_cocoon_pos, 15, 30, FACTORY)
+            self.chosenplaces.insert(0, (FACTORY, factory_pos))
         elif self.game_choice[12]:
             self.opening_name = 'triple-expand'
             self.buildseries_opening = [SUPPLYDEPOT, COMMANDCENTER, COMMANDCENTER, BARRACKS, SUPPLYDEPOT, COMMANDCENTER, MARINE, ENGINEERINGBAY]
@@ -16972,7 +16975,7 @@ class Chaosbot(BotAI):
                 # continue
                 for tnk in self.units(SIEGETANK):
                     if tnk.tag in self.cheese3_tanktags:
-                        if self.no_move(tnk,32):
+                        if self.no_move(tnk,16):
                             self.log_command('tnk(AbilityId.SIEGEMODE_SIEGEMODE)')
                             tnk(AbilityId.SIEGEMODE_SIEGEMODE)
                             self.cheese3_phase = 'I'
@@ -18941,7 +18944,7 @@ def main():
     all_maps = ['BlackburnAIE','CuriousMindsAIE','2000AtmospheresAIE','GlitteringAshesAIE','HardwireAIE','BerlingradAIE']
     map = random.choice(all_maps)
     # TO TEST use next line
-    #map = 'GlitteringAshesAIE'
+    #map = 'BlackburnAIE'
     opponentspecies = random.choice([Race.Terran,Race.Zerg,Race.Protoss])
     # TO TEST use next line
     #opponentspecies = Race.Zerg
