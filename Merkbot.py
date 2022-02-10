@@ -189,13 +189,13 @@ from sc2.ids.unit_typeid import ZERGLING
 
 class Chaosbot(BotAI):
     #   ############### CHANGE VALUE AD LIB
-    versiontext = 'Chaosbot version 9 feb 2022, made by MerkMore'
+    versiontext = 'Chaosbot version 10 feb 2022, made by MerkMore'
     do_slowdown = False # do not while realtime
     slowdown_frames = 99999
     slowness = 0.02 # realtime is around 0.05
     there_is_a_new_opening = False
-    test_radio_nr = -1 # -1
-    strategy_randomness = 0.3 # 0.3
+    test_radio_nr = -1 # -1 on ladder
+    strategy_randomness = 0.3 # 0.3 on ladder
     do_funchat = False
     do_resignable = True
     do_log_success = False
@@ -442,6 +442,9 @@ class Chaosbot(BotAI):
     neighbours = set()
     chosenplaces = []
     #   ############### ARMY AND STRUCTURE MANAGEMENT
+    stuckhip = {} # per starport the near units
+    stuckhip_frame = 999 # to seldomn do this
+    #
     leftanchor = nowhere # placing random barracks
     #
     workerhitdist = 0
@@ -522,7 +525,7 @@ class Chaosbot(BotAI):
     wa_lastscvs = set() # set of own scv (tag,position,health)
     wa_lastene = set() # set of enemy worker (tag,position,canhit)
     #
-    yamatoed = {} # per enemytag the shootframe. To prevent a group of bcs overkilling the same target.
+    yamatoed = set() # of (enemytag,shotframe). To prevent a group of bcs overkilling the same target.
     #
     # cluster is a number, 0<=cluster<100. It groups widowmines, burried and bare.
     clusters = set() # of each cluster with size>0 (and some with size 0)
@@ -1059,6 +1062,7 @@ class Chaosbot(BotAI):
         await self.manage_rest()
         self.speedmining()
         self.manage_the_wall()
+        self.do_stuckhip()
         self.fighters()
         await self.bunker_handling()
         await self.bunkercheese1()
@@ -2434,13 +2438,13 @@ class Chaosbot(BotAI):
         elif self.game_choice[29]:
             self.opening_name = 'cocoon-widowmine'
             self.rushopening = True
-            self.buildseries_opening = cocoon_series + [ORBITALCOMMAND, REFINERY, COMMANDCENTER, FACTORY, FACTORY, ORBITALCOMMAND]
+            self.buildseries_opening = cocoon_series + [ORBITALCOMMAND, REFINERY, COMMANDCENTER, REFINERY, FACTORY,
+                                                        FACTORY, ORBITALCOMMAND, FACTORYREACTOR, FACTORYREACTOR]
             self.init_cocoon()
-            self.opening_create = {(WIDOWMINE,8)}
-            self.production_pause_finish.add((REFINERY, 1, FACTORY, 1))
+            self.opening_create = {(WIDOWMINE,12)}
             # factories random placing
             facs = 0
-            while facs < 3:
+            while facs < 2:
                 around = self.random_mappoint()
                 while self.proxy(around) or (not self.near(around,self.map_center,60)):
                     around = self.random_mappoint()
@@ -8004,23 +8008,24 @@ class Chaosbot(BotAI):
             nr += 1
         # techup thrown armybuildings
         if self.opening_name.find('marine') < 0: # exception
-            nr = 0
-            while nr < len(self.throwspots):
-                tps = self.throwspots[nr]
-                (thing, place, status, owner) = tps
-                if (status == 'thought'):
-                    for tech in ((BARRACKS,FACTORY),(FACTORY,STARPORT)):
-                        (lowtech,hightech) = tech
-                        if thing == lowtech:
-                            if self.check_techtree(hightech):
-                                if self.we_started_amount(hightech) < self.maxam_of_thing(hightech):
-                                    self.throwspots[nr] = (hightech, place, status, owner)
-                                    self.log_success('techup a thrown '+lowtech.name+' to '+hightech.name)
-                                    nt = self.thoughts.index((lowtech,place,owner))
-                                    self.thoughts[nt] = (hightech,place,owner)
-                                    self.erase_layout_andlab(lowtech,place)
-                                    self.write_layout(hightech,place)
-                nr += 1
+            if self.opening_name.find('widowmine') < 0:  # exception
+                nr = 0
+                while nr < len(self.throwspots):
+                    tps = self.throwspots[nr]
+                    (thing, place, status, owner) = tps
+                    if (status == 'thought'):
+                        for tech in ((BARRACKS,FACTORY),(FACTORY,STARPORT)):
+                            (lowtech,hightech) = tech
+                            if thing == lowtech:
+                                if self.check_techtree(hightech):
+                                    if self.we_started_amount(hightech) < self.maxam_of_thing(hightech):
+                                        self.throwspots[nr] = (hightech, place, status, owner)
+                                        self.log_success('techup a thrown '+lowtech.name+' to '+hightech.name)
+                                        nt = self.thoughts.index((lowtech,place,owner))
+                                        self.thoughts[nt] = (hightech,place,owner)
+                                        self.erase_layout_andlab(lowtech,place)
+                                        self.write_layout(hightech,place)
+                    nr += 1
         # outdated thoughts
         if self.frame % 23 == 22:
             todel = set()
@@ -8497,23 +8502,28 @@ class Chaosbot(BotAI):
                 self.free_normal_basepositions.add(normalpos)
 
     def urgent_pfoc(self):
-        for cc in self.structures(COMMANDCENTER):
-            if cc.position in self.cc_destiny:
-                if self.cc_destiny[cc.position] in {'oc','pf'}:
-                    if self.cc_destiny[cc.position] == 'oc':
-                        pfoc = ORBITALCOMMAND
-                    elif self.cc_destiny[cc.position] == 'pf':
-                        pfoc = PLANETARYFORTRESS
-                    if self.check_techtree(pfoc):
-                        done = False
-                        for (th, pos, status, ow) in self.throwspots:
-                            if (th == pfoc) and (pos == cc.position):
-                                done = True
-                        for (th,scvt,pos,dura) in self.eggs:
-                            if (th == pfoc) and (pos == cc.position):
-                                done = True
-                        if not done:
-                            self.throw_at_spot(pfoc,cc.position,'urgent_pfoc')
+        calm = False
+        for (th, po, status) in self.buildorder_exe:
+            if th in self.all_pfoc:
+                calm = True
+        if not calm:
+            for cc in self.structures(COMMANDCENTER):
+                if cc.position in self.cc_destiny:
+                    if self.cc_destiny[cc.position] in {'oc','pf'}:
+                        if self.cc_destiny[cc.position] == 'oc':
+                            pfoc = ORBITALCOMMAND
+                        elif self.cc_destiny[cc.position] == 'pf':
+                            pfoc = PLANETARYFORTRESS
+                        if self.check_techtree(pfoc):
+                            done = False
+                            for (th, pos, status, ow) in self.throwspots:
+                                if (th == pfoc) and (pos == cc.position):
+                                    done = True
+                            for (th,scvt,pos,dura) in self.eggs:
+                                if (th == pfoc) and (pos == cc.position):
+                                    done = True
+                            if not done:
+                                self.throw_at_spot(pfoc,cc.position,'urgent_pfoc')
 
     def pfoc_cc_adlib(self):
         if ('base' in self.good_plans):
@@ -9921,7 +9931,6 @@ class Chaosbot(BotAI):
 
     def init_undetect(self):
         # called if enemy_structureinfo changed
-        # all detector buildings have sight 11
         detectors = set() # set of positions of enemy detector buildings
         hash = 0
         for tpplus in self.enemy_structureinfo_plus:
@@ -9991,8 +10000,7 @@ class Chaosbot(BotAI):
                     # high APM command not logged
                     bc.move(goal)
 
-    def get_goal(self) -> Point2:
-        # for marines
+    def get_marine_goal(self) -> Point2:
         allloc = []
         for tp in self.enemy_structureinfo:
             (typ,pos) = tp
@@ -10073,7 +10081,7 @@ class Chaosbot(BotAI):
                         if self.near(mar.position,self.marine_goal,8):
                             reached += 1
                 if reached * 6 > 5 * total:
-                    self.marine_goal = self.get_goal()
+                    self.marine_goal = self.get_marine_goal()
                     for mar in self.units(MARINE):
                         if self.speciality(mar.tag,self.opening_name):
                             self.attackmove(mar.tag, self.marine_goal, 8)
@@ -10565,7 +10573,8 @@ class Chaosbot(BotAI):
                 for tile in self.nine[mytile]:
                     for ene in self.enemies_of_tile[tile]:
                         if ene.type_id in self.all_antiair_detector:
-                            antiairseen = True
+                            if self.near(ene.position, bc.position, 9):
+                                antiairseen = True
                 emotion = self.emotion_of_unittag[bct]
                 self.log_unitorder(bc,emotion)
                 # handle diverse possibilities
@@ -12301,16 +12310,17 @@ class Chaosbot(BotAI):
                     self.lasttargettag_of_bctag[bc.tag] = target.tag
                 # yamato
                 if (hatemax >= 4) and (dangersum < 200):
-                    yama = True
-                    if target.tag in self.yamatoed:
-                        if (self.frame < self.yamatoed[target.tag] + 75):
-                            yama = False
-                    if yama:
+                    yamas = 0
+                    for (shottag,shotframe) in self.yamatoed:
+                        if shottag == target.tag:
+                            if (self.frame < shotframe + 75):
+                                yamas += 1
+                    if ene.health + ene.shield > yamas * 240:
                         abilities = (await self.get_available_abilities([bc]))[0]
                         if AbilityId.YAMATO_YAMATOGUN in abilities:
                             self.log_command('bc(AbilityId.YAMATO_YAMATOGUN,'+target.name+')')
                             bc(AbilityId.YAMATO_YAMATOGUN, target)
-                            self.yamatoed[target.tag] = self.frame
+                            self.yamatoed.add((target.tag,self.frame))
                             # the yamato stops the movement, so mark detour.
                             self.detour_of_unittag[bc.tag] = True
 
@@ -12318,11 +12328,10 @@ class Chaosbot(BotAI):
     def yamato_admin(self):
         # To be executed rarely. Cleans up superfluous admin.
         todel = set()
-        for enetag in self.yamatoed:
-            if self.yamatoed[enetag] < self.frame - 75:
-                todel.add(enetag)
-        for enetag in todel:
-            del self.yamatoed[enetag]
+        for (enetag,shotframe) in self.yamatoed:
+            if shotframe < self.frame - 75:
+                todel.add((enetag,shotframe))
+        self.yamatoed -= todel
 
 
     async def raven_micro(self):
@@ -17274,6 +17283,50 @@ class Chaosbot(BotAI):
                         else:
                             self.log_cc(kind.name + ' '+str(cc.tag)+' ' + self.txt(cc.position) + ' landed unsafe.')
                             self.cc_destiny[cc.position] = 'pf'
+
+    def do_stuckhip(self):
+        if self.frame >= self.stuckhip_frame:
+            self.stuckhip_frame = self.frame + 270 # about 12 seconds
+            # remove obstacles
+            for kind in {BARRACKS,FACTORY,STARPORT,SUPPLYDEPOT}:
+                for stru in self.structures(kind):
+                    if stru.tag in self.stuckhip:
+                        if stru.tag not in self.speciality_of_tag:
+                            if stru.tag in self.readies:
+                                if stru.tag in self.idles:
+                                    hip = False
+                                    mytile = self.maptile_of_pos(stru.position)
+                                    for tile in self.nine[mytile]:
+                                        for myn in self.goodguys_of_tile[tile]:
+                                            if self.near(myn.position, stru.position, 7):
+                                                if myn.tag in self.stuckhip[stru.tag]:
+                                                    hip = True
+                                    if hip:
+                                        if kind == SUPPLYDEPOT:
+                                            self.log_command('stru(AbilityId.MORPH_SUPPLYDEPOT_LOWER)')
+                                            stru(AbilityId.MORPH_SUPPLYDEPOT_LOWER)
+                                            self.log_success('stuckhip lowering')
+                                        else:
+                                            self.log_success('stuckhip up '+kind.name)
+                                            self.log_command('stru(AbilityId.LIFT')
+                                            stru(AbilityId.LIFT)
+                                            self.goal_of_flying_struct[stru.tag] = stru.position
+                                            self.landings_of_flying_struct[stru.tag] = 0
+            # collect the units around each building
+            self.stuckhip = {}
+            for kind in {BARRACKS,FACTORY,STARPORT,SUPPLYDEPOT}:
+                for stru in self.structures(kind):
+                    if stru.position not in {self.wall_depot0_pos,self.wall_depot1_pos,self.wall_barracks_pos}:
+                        around = set()
+                        mytile = self.maptile_of_pos(stru.position)
+                        for tile in self.nine[mytile]:
+                            for myn in self.goodguys_of_tile[tile]:
+                                if self.near(myn.position, stru.position, 7):
+                                    if myn.type_id in {MARINE,MARAUDER,SIEGETANK,HELLION}:
+                                        around.add(myn.tag)
+                        if len(around) > 0:
+                            self.stuckhip[stru.tag] = around
+
 
 
     def manage_the_wall(self):
