@@ -189,7 +189,7 @@ from sc2.ids.unit_typeid import ZERGLING
 
 class Chaosbot(BotAI):
     #   ############### CHANGE VALUE AD LIB
-    versiontext = 'Chaosbot version 10 feb 2022, made by MerkMore'
+    versiontext = 'Chaosbot version 12 feb 2022, made by MerkMore'
     do_slowdown = False # do not while realtime
     slowdown_frames = 99999
     slowness = 0.02 # realtime is around 0.05
@@ -1383,6 +1383,7 @@ class Chaosbot(BotAI):
         self.init_army(REAPER,32,1,'ground')
         self.init_army(HELLION,21,2,'ground')
         self.init_army(HELLIONTANK,21,2,'ground')
+        self.init_army(THOR,43,6,'ground')
         self.init_army(CYCLONE,32,3,'ground')
         self.init_army(WIDOWMINE,21,2,'ground')
         self.init_army(WIDOWMINEBURROWED,21,2,'ground')
@@ -1457,6 +1458,7 @@ class Chaosbot(BotAI):
         self.init_cradle(WIDOWMINE,FACTORY)
         self.init_cradle(HELLION,FACTORY)
         self.init_cradle(HELLIONTANK,FACTORY)
+        self.init_cradle(THOR,FACTORY)
         self.init_cradle(BATTLECRUISER,STARPORT)
         self.init_cradle(BARRACKSTECHLAB,BARRACKS)
         self.init_cradle(FACTORYTECHLAB,FACTORY)
@@ -1521,6 +1523,7 @@ class Chaosbot(BotAI):
         self.init_techtree(BATTLECRUISER,STARPORTTECHLAB)
         self.init_techtree(BATTLECRUISER,FUSIONCORE)
         self.init_techtree(SIEGETANK,FACTORYTECHLAB)
+        self.init_techtree(THOR,FACTORYTECHLAB)
         self.init_techtree(BANSHEE,STARPORTTECHLAB)
         self.init_techtree(CYCLONE,FACTORYTECHLAB)
         self.init_techtree(MARAUDER,BARRACKSTECHLAB)
@@ -1639,6 +1642,7 @@ class Chaosbot(BotAI):
         self.init_maxhealth(REAPER, 60)
         self.init_maxhealth(HELLION, 90)
         self.init_maxhealth(HELLIONTANK, 135)
+        self.init_maxhealth(THOR, 400)
         self.init_maxhealth(CYCLONE, 120)
         self.init_maxhealth(WIDOWMINE, 90)
         self.init_maxhealth(WIDOWMINEBURROWED, 90)
@@ -1758,6 +1762,9 @@ class Chaosbot(BotAI):
         layout_if.starty = self.loved_pos.y
         layout_if.enemyx = self.enemy_pos.x
         layout_if.enemyy = self.enemy_pos.y
+        #
+        # to debug, use next line
+        #layout_if.photo_layout()
         #
         layout_if.save_layout() # saves as data\layout.txt for placer.py
         # now we use layout ourselves too
@@ -2331,7 +2338,7 @@ class Chaosbot(BotAI):
             barpos = self.loved_pos
             dist = self.circledist(barpos,self.enemy_pos)
             while (dist < 60) or (dist > 90):
-                barpos = self.random_mappoint()
+                barpos = self.random_mappoint_canstandon()
                 dist = self.circledist(barpos,self.enemy_pos)
             barpos = self.place_around(BARRACKS, barpos)
             self.chosenplaces.insert(0,(BARRACKS, barpos))
@@ -2361,7 +2368,7 @@ class Chaosbot(BotAI):
                     for times in [1,2]:
                         barpos = self.map_center
                         while not self.hoxy(barpos):
-                            barpos = self.random_mappoint()
+                            barpos = self.random_mappoint_canstandon()
                         barpos = self.place_around(BARRACKS, barpos)
                         self.chosenplaces.insert(0,(BARRACKS, barpos))
                         self.write_layout(BARRACKS, barpos)
@@ -2445,9 +2452,9 @@ class Chaosbot(BotAI):
             # factories random placing
             facs = 0
             while facs < 2:
-                around = self.random_mappoint()
+                around = self.random_mappoint_canstandon()
                 while self.proxy(around) or (not self.near(around,self.map_center,60)):
-                    around = self.random_mappoint()
+                    around = self.random_mappoint_canstandon()
                 place = self.place_around(FACTORY, around)
                 nearminerals = False
                 for (mimpos,mimt) in self.all_minerals:
@@ -2621,7 +2628,7 @@ class Chaosbot(BotAI):
             pos = self.nowhere
             ok = False
             while not ok:
-                pos = self.random_mappoint()
+                pos = self.random_mappoint_canstandon()
                 pos = self.place_around(STARPORT,pos)
                 ok = True
                 ok = ok and not self.proxy(pos)
@@ -2686,7 +2693,7 @@ class Chaosbot(BotAI):
                     for times in [1,2]:
                         barpos = self.map_center
                         while not self.hoxy(barpos):
-                            barpos = self.random_mappoint()
+                            barpos = self.random_mappoint_canstandon()
                         barpos = self.place_around(BARRACKS, barpos)
                         self.chosenplaces.insert(0,(BARRACKS, barpos))
                         self.write_layout(BARRACKS, barpos)
@@ -2887,7 +2894,7 @@ class Chaosbot(BotAI):
         ok = False
         while not ok:
             ok = True
-            place = self.random_mappoint()
+            place = self.random_mappoint_canstandon()
             if (not self.near(around, place, 25)):
                 ok = False
             place = self.place_around(BARRACKS, place)
@@ -2906,7 +2913,7 @@ class Chaosbot(BotAI):
         ok = False
         while not ok:
             ok = True
-            around = self.random_mappoint()
+            around = self.random_mappoint_canstandon()
             if self.proxy(around):
                 ok = False
             if not self.near(around,self.leftanchor,35):
@@ -3403,7 +3410,7 @@ class Chaosbot(BotAI):
             ok = False
             while not ok:
                 ok = True
-                point = self.random_mappoint()
+                point = self.random_mappoint_canstandon()
                 ok = ok and self.near(point,self.enemyramp_pos,dist+7)
                 ok = ok and not self.near(point,self.enemyramp_pos,dist-7)
                 if ok: # speedup
@@ -3925,7 +3932,7 @@ class Chaosbot(BotAI):
             maxam = 1
         else:
             # army
-            if thing in [RAVEN]:
+            if thing in [RAVEN,THOR]:
                 maxam = 5
             if thing in [SIEGETANK,WIDOWMINE,REAPER,HELLION]:
                 maxam = 15
@@ -3953,7 +3960,7 @@ class Chaosbot(BotAI):
             maxam = 1
         else:
             # army
-            if thing in [RAVEN]:
+            if thing in [RAVEN,THOR]:
                 maxam = 5
             if thing in [SIEGETANK,WIDOWMINE,REAPER,HELLION]:
                 maxam = 15
@@ -4649,6 +4656,11 @@ class Chaosbot(BotAI):
             self.create_block(gas.position,(3,3))
         for tow in self.watchtowers:
             self.create_block(tow.position, (2, 2))
+        for any in self.all_units:
+            if any.name.find('Inhibitor') >= 0:
+                gridpos = Point2((round(any.position.x+0.5)-0.5,round(any.position.y+0.5)-0.5))
+                #print(self.txt(gridpos))
+                layout_if.layout[round(gridpos.x-0.5)][round(gridpos.y-0.5)] = 2 # unbuildable
         for rock in self.destructables:  # copied from Sharpy
             rock_type = rock.type_id
             if rock.name == "MineralField450":
@@ -7083,6 +7095,9 @@ class Chaosbot(BotAI):
         if self.allow_throw(RAVEN):
             if (not self.we_started_a(RAVEN)) and (bcs >= 2):
                 self.throw_anywhere(RAVEN,'build_minima')
+        if self.allow_throw(THOR):
+            if (not self.we_started_a(THOR)) and (bcs >= 5):
+                self.throw_anywhere(THOR,'build_minima')
         if self.allow_throw(BARRACKSTECHLAB):
             if (not self.we_started_a(BARRACKSTECHLAB)):
                 self.throw_anywhere(BARRACKSTECHLAB,'build_minima')
@@ -7487,9 +7502,9 @@ class Chaosbot(BotAI):
                 self.thoughts.append((thing, place, 'idiot'))
                 self.build_thing_tobuildwalk(scvt, thing, place, 'idiot')
         elif thing in self.all_structures_tobuildwalk:
-            place = self.random_mappoint()
+            place = self.random_mappoint_canstandon()
             while self.proxy(place):
-                place = self.random_mappoint()
+                place = self.random_mappoint_canstandon()
             place = self.place_around(thing,place)
             if self.check_layout(thing,place):
                 self.write_layout(thing,place)
@@ -10048,7 +10063,7 @@ class Chaosbot(BotAI):
                     # find an army gather point
                     self.marine_goal = self.loved_pos
                     while not self.near(self.marine_goal, self.map_center, 15):
-                        around = self.random_mappoint()
+                        around = self.random_mappoint_canstandon()
                         self.marine_goal = self.place_around(ARMORY,around)
                     for mar in self.units(MARINE):
                         self.speciality_of_tag[mar.tag] = self.opening_name
@@ -10179,6 +10194,13 @@ class Chaosbot(BotAI):
 
     def random_mappoint(self) -> Point2:
         return Point2((random.randrange(self.map_left, self.map_right), random.randrange(self.map_bottom, self.map_top)))
+
+    def random_mappoint_canstandon(self) -> Point2:
+        canstand = False
+        while not canstand:
+            poi = Point2((random.randrange(self.map_left, self.map_right), random.randrange(self.map_bottom, self.map_top)))
+            canstand = self.canstandon(poi)
+        return poi
 
     def into_map(self, rawpoint) -> Point2:
         x = rawpoint.x
@@ -11391,7 +11413,7 @@ class Chaosbot(BotAI):
         for mar in self.units(MARINE):
             if mar.tag not in self.speciality_of_tag:
                 if mar.tag not in bunker_if.marinetags:
-                    tp = self.random_mappoint()
+                    tp = self.random_mappoint_canstandon()
                     if (STIMPACK, self.nowhere) in self.birds:
                         if (mar.weapon_cooldown > 0):
                             if mar.health > 30: # 1.5(x-10)=x
@@ -11404,6 +11426,18 @@ class Chaosbot(BotAI):
                             altpos = mar.position.towards(self.loved_pos, 0.4)
                             self.log_command('mar.move(altpos)')
                             mar.move(altpos)
+        # thors
+        for tor in self.units(THOR):
+            if tor.tag not in self.speciality_of_tag:
+                if tor.tag in self.idles:
+                    tp = self.random_mappoint_canstandon()
+                    minravtag = self.notag
+                    for rav in self.units(RAVEN):
+                        if not self.near(tor.position,rav.position,2):
+                            if (rav.tag < minravtag) or (minravtag == self.notag):
+                                minravtag = rav.tag
+                                tp = rav.position
+                    self.attackmove(tor.tag, tp, 7)
         # hellions random minerals
         for hel in self.units(HELLION):
             if hel.tag not in self.speciality_of_tag:
@@ -11413,7 +11447,7 @@ class Chaosbot(BotAI):
                             mim = random.choice(tuple(self.all_minerals))
                             (tp,mimt) = mim
                         else:
-                            tp = self.random_mappoint()
+                            tp = self.random_mappoint_canstandon()
                         self.attackmove(hel.tag, tp, 5)
                     else: # weak
                         safepos = self.loved_pos
@@ -11470,7 +11504,7 @@ class Chaosbot(BotAI):
                     else:
                         bun(AbilityId.EFFECT_SALVAGE)
             if (reached >= 5):
-                self.maraugho_goal = self.random_mappoint()
+                self.maraugho_goal = self.random_mappoint_canstandon()
                 self.marau_goal = self.place_around(AUTOTURRET,self.maraugho_goal)
                 allloc = []
                 for tp in self.enemy_structureinfo:
@@ -11491,7 +11525,7 @@ class Chaosbot(BotAI):
                 if self.marauder_retreat:
                     self.maraugho_goal = self.marauder_restpoint
                 else:
-                    self.maraugho_goal = self.random_mappoint()
+                    self.maraugho_goal = self.random_mappoint_canstandon()
                     self.marau_goal = self.place_around(AUTOTURRET,self.maraugho_goal)
                     if (self.random_chance(5)) or (reached >= 7):
                         allloc = []
@@ -13702,9 +13736,9 @@ class Chaosbot(BotAI):
             if len(self.expansion_locations) > 0:
                 place = random.choice(tuple(self.expansion_locations))
             else:
-                place = self.random_mappoint()
+                place = self.random_mappoint_canstandon()
             while self.proxy(place) or self.near(place, self.loved_pos, 60):
-                place = self.random_mappoint()
+                place = self.random_mappoint_canstandon()
             place = self.place_around(AUTOTURRET,place) # can stand on place
             bunker_if.hiding_spot = place
         if self.opening_name.find('cheese') < 0: # not
@@ -17322,7 +17356,7 @@ class Chaosbot(BotAI):
                         for tile in self.nine[mytile]:
                             for myn in self.goodguys_of_tile[tile]:
                                 if self.near(myn.position, stru.position, 7):
-                                    if myn.type_id in {MARINE,MARAUDER,SIEGETANK,HELLION}:
+                                    if myn.type_id in {MARINE,MARAUDER,SIEGETANK,HELLION,THOR}:
                                         around.add(myn.tag)
                         if len(around) > 0:
                             self.stuckhip[stru.tag] = around
@@ -17662,7 +17696,7 @@ class Chaosbot(BotAI):
         self.job_of_scvt[scvt] = new_job
         self.log_workers('promoted ' + old_job + ' to ' + new_job + ' ' + self.name(scvt))
         if new_job == 'fleeer':
-            place = self.random_mappoint()
+            place = self.random_mappoint_canstandon()
             self.log_command('scv(AbilityId.MOVE_MOVE,place)')
             scv(AbilityId.MOVE_MOVE, place)
         # for other new_job, code elsewhere
@@ -17888,9 +17922,9 @@ class Chaosbot(BotAI):
                 # fleeer runs to heaven
                 if job == 'fleeer':
                     if expo not in heaven:
-                        place = self.random_mappoint()
+                        place = self.random_mappoint_canstandon()
                         while self.expo_of_pos(place) not in heaven:
-                            place = self.random_mappoint()
+                            place = self.random_mappoint_canstandon()
                         self.log_command('scv(AbilityId.MOVE_MOVE,place)')
                         scv(AbilityId.MOVE_MOVE, place)
                 # may not idle
@@ -18281,9 +18315,9 @@ class Chaosbot(BotAI):
             scvt = scv.tag
             if self.job_of_scvt[scvt] == 'idler':
                 # get a point, not too far
-                tp = self.random_mappoint()
+                tp = self.random_mappoint_canstandon()
                 while not self.hoxy(tp):
-                    tp = self.random_mappoint()
+                    tp = self.random_mappoint_canstandon()
                 if self.hoxy(scv.position):
                     if scvt in self.idles:
                         self.log_command('scv.attack(tp)')
