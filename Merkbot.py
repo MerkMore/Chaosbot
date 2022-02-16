@@ -96,6 +96,7 @@ from sc2.ids.unit_typeid import STARPORTFLYING
 from sc2.ids.unit_typeid import COMMANDCENTERFLYING
 from sc2.ids.unit_typeid import SIEGETANKSIEGED
 from sc2.ids.unit_typeid import THOR
+from sc2.ids.unit_typeid import THORAP
 from sc2.ids.unit_typeid import BANSHEE
 from sc2.ids.unit_typeid import LIBERATOR
 from sc2.ids.unit_typeid import LIBERATORAG
@@ -189,7 +190,7 @@ from sc2.ids.unit_typeid import ZERGLING
 
 class Chaosbot(BotAI):
     #   ############### CHANGE VALUE AD LIB
-    versiontext = 'Chaosbot version 12 feb 2022, made by MerkMore'
+    versiontext = 'Chaosbot version 16 feb 2022, made by MerkMore'
     do_slowdown = False # do not while realtime
     slowdown_frames = 99999
     slowness = 0.02 # realtime is around 0.05
@@ -442,6 +443,8 @@ class Chaosbot(BotAI):
     neighbours = set()
     chosenplaces = []
     #   ############### ARMY AND STRUCTURE MANAGEMENT
+    thor_initframe = {}
+    #
     stuckhip = {} # per starport the near units
     stuckhip_frame = 999 # to seldomn do this
     #
@@ -827,9 +830,10 @@ class Chaosbot(BotAI):
     #   The existing minerals where we want to mine from, in this frame
     all_mim_to_mine = set() # of (gaspos,gast) with gast a postag
     #   job_of_scvt dictionary
-    good_jobs = ('builder','settler','fencer','traveller','repairer','fighter','escorter'
-                 ,'scout','cheeser','pilot','sacrifice')
-    bad_jobs = ('gasminer','mimminer','candidate','carrier','applicant','reporter','waiter')
+    good_jobs = ('builder','settler','fencer','traveller','repairer','fighter'
+                 ,'scout','cheeser','pilot')
+    middle_jobs = ('sacrifice','reporter','waiter','escorter','blocker')
+    bad_jobs = ('gasminer','mimminer','candidate','carrier','applicant')
     no_jobs = ('idler','suicider','volunteer','inshock','fleeer')
     #
     jobs_may_idle = ('mimminer','fencer','settler','scout','fighter','cheeser','applicant'
@@ -886,11 +890,16 @@ class Chaosbot(BotAI):
     scout2_tag = notag
     scout2_pole = 0
     scout2_direction = 1
-    # blocker
-    blocker_pos = []
-    blocker_tag = notag
+    # blockers
+    do_not_block = set() # expansion-positions I try to use
+    blocker_killed = {} # per expand-position the bloody history
+    blockable = set() # expand-positions with no close buildings
+    blocker_pos = {} # per blockertag a list of blockpositions
+    blocker_of_expo = {} # per blocked expand-position the blocking scvtag 
+    blocker_tags = set() # of scvtag (job scout) blocking 
     blocker_pole = 0
-    last_blocker_frame = 0
+    blocker_next_frame = 10 # framenumber when blockers get a new move
+    blocker_admin_frame = 100 # framenumber when to evaluate the blockers
     # checks
     minedirection_of_scvt = {}
     #   ############### PLAY CHOICES
@@ -1150,7 +1159,7 @@ class Chaosbot(BotAI):
         self.handle_ghost_requests()
         await self.do_rush_ghosts()
         await self.catch_a_bug()
-        self.blocker()
+        self.blockers()
         self.continue_fleecircle()
         await self.nuke_fun()
         bunker_if.step()
@@ -1218,6 +1227,7 @@ class Chaosbot(BotAI):
         self.init_expected_order('settler', AbilityId.MOVE)
         self.init_expected_order('fencer', AbilityId.MOVE)
         self.init_expected_order('waiter', AbilityId.MOVE)
+        self.init_expected_order('blocker', AbilityId.MOVE)
         self.init_expected_order('escorter', AbilityId.ATTACK)
         self.init_expected_order('reporter', AbilityId.ATTACK)
         self.init_expected_order('applicant', AbilityId.MOVE)
@@ -1257,6 +1267,7 @@ class Chaosbot(BotAI):
             self.init_bcenemy(VIKINGFIGHTER, 35, 5)
             self.init_bcenemy(MISSILETURRET, 60, 6)
             self.init_bcenemy(THOR, 40, 3)
+            self.init_bcenemy(THORAP, 40, 3)
             self.init_bcenemy(PHOENIX, 35, 5)
             self.init_bcenemy(RAVEN, 30, 5)
             self.init_bcenemy(MARINE, 10, 2)
@@ -1384,6 +1395,7 @@ class Chaosbot(BotAI):
         self.init_army(HELLION,21,2,'ground')
         self.init_army(HELLIONTANK,21,2,'ground')
         self.init_army(THOR,43,6,'ground')
+        self.init_army(THORAP,43,6,'ground')
         self.init_army(CYCLONE,32,3,'ground')
         self.init_army(WIDOWMINE,21,2,'ground')
         self.init_army(WIDOWMINEBURROWED,21,2,'ground')
@@ -1437,13 +1449,15 @@ class Chaosbot(BotAI):
         self.init_basekind(WIDOWMINEBURROWED,WIDOWMINE)
         self.init_basekind(LIBERATORAG,LIBERATOR)
         self.init_basekind(VIKINGASSAULT,VIKINGFIGHTER)
-        # chosen HELLIONTANK separate from HELLION
+        # chosen HELLIONTANK separate from HELLION, THORAP as derived.
+        self.init_basekind(THORAP,THOR)
         self.init_basekind(INFESTEDBARRACKS,BARRACKS)
         self.init_basekind(INFESTEDBUNKER,BUNKER)
         self.init_basekind(INFESTEDFACTORY,FACTORY)
         self.init_basekind(INFESTEDSTARPORT,STARPORT)
         # things that, to be built, need a cradle (a free building)
         # cradle is unique, so omitted are: SCV, freestanding REACTOR, TECHLAB
+        # THORAP has no cradle
         self.init_cradle(RAVEN,STARPORT)
         self.init_cradle(MEDIVAC,STARPORT)
         self.init_cradle(VIKINGFIGHTER,STARPORT)
@@ -1643,6 +1657,7 @@ class Chaosbot(BotAI):
         self.init_maxhealth(HELLION, 90)
         self.init_maxhealth(HELLIONTANK, 135)
         self.init_maxhealth(THOR, 400)
+        self.init_maxhealth(THORAP, 400)
         self.init_maxhealth(CYCLONE, 120)
         self.init_maxhealth(WIDOWMINE, 90)
         self.init_maxhealth(WIDOWMINEBURROWED, 90)
@@ -1988,8 +2003,6 @@ class Chaosbot(BotAI):
         # circle
         self.make_circle(10)
         self.flee_circle = self.circle.copy()
-        # blocker
-        self.init_blocker()
         # rally the first cc
         for cc in self.structures(COMMANDCENTER):
             cc(AbilityId.RALLY_BUILDING,self.loved_pos.towards(self.map_center,-3))
@@ -3932,7 +3945,7 @@ class Chaosbot(BotAI):
             maxam = 1
         else:
             # army
-            if thing in [RAVEN,THOR]:
+            if thing in [RAVEN,THOR,THORAP]:
                 maxam = 5
             if thing in [SIEGETANK,WIDOWMINE,REAPER,HELLION]:
                 maxam = 15
@@ -3960,7 +3973,7 @@ class Chaosbot(BotAI):
             maxam = 1
         else:
             # army
-            if thing in [RAVEN,THOR]:
+            if thing in [RAVEN,THOR,THORAP]:
                 maxam = 5
             if thing in [SIEGETANK,WIDOWMINE,REAPER,HELLION]:
                 maxam = 15
@@ -4731,7 +4744,7 @@ class Chaosbot(BotAI):
     #   call just before using count_of_job when precize numbers are important
     def fix_count_of_job(self):
         # count_of_job
-        for j in (self.good_jobs + self.bad_jobs + self.no_jobs):
+        for j in (self.good_jobs + self.middle_jobs + self.bad_jobs + self.no_jobs):
             self.count_of_job[j] = 0
         for scvt in self.job_of_scvt:
             j = self.job_of_scvt[scvt]
@@ -4834,6 +4847,12 @@ class Chaosbot(BotAI):
 
     # get nearest
     def get_scvt_for_goodjob(self,point) -> int:
+        return self.internal_get_scvt(point,True)
+
+    def get_scvt_for_middlejob(self,point) -> int:
+        return self.internal_get_scvt(point,False)
+
+    def internal_get_scvt(self,point,acceptmiddle) -> int:
         stuck = set() # scvt for scvs with too little movespace
         reachset = set() # reachable squares for the best scv
         hope = True
@@ -4846,19 +4865,20 @@ class Chaosbot(BotAI):
                 scvt = scv.tag
                 if (scvt in self.all_scvt) and (scvt not in stuck):
                     job = self.job_of_scvt[scvt]
-                    if job in (self.bad_jobs + self.no_jobs):
-                        if (job != 'suicider'):
-                            hope = True
-                            sd = self.sdist(scv.position,point)
-                            #  accept idler if 1.7 times as far
-                            if job in self.no_jobs:
-                                sd /= 3
-                            #   accept mimminer if 1.4 times as far
-                            if job in ['applicant','candidate','carrier','mimminer']:
-                                sd /= 2
-                            if (sd < best_sdist) and (sd > 0.5*0.5): # dont select an scv to repair itself
-                                best_sdist = sd
-                                best_scvt = scvt
+                    if job in (self.middle_jobs + self.bad_jobs + self.no_jobs):
+                        if (job in (self.bad_jobs + self.no_jobs)) or (acceptmiddle):
+                            if (job != 'suicider'):
+                                hope = True
+                                sd = self.sdist(scv.position,point)
+                                #  accept idler if 1.7 times as far
+                                if job in self.no_jobs:
+                                    sd /= 3
+                                #   accept miner if 1.4 times as far
+                                if job in self.bad_jobs:
+                                    sd /= 2
+                                if (sd < best_sdist) and (sd > 0.5*0.5): # dont select an scv to repair itself
+                                    best_sdist = sd
+                                    best_scvt = scvt
             scvt = best_scvt
             for scv in self.units(SCV):
                 if scv.tag == scvt:
@@ -4876,7 +4896,7 @@ class Chaosbot(BotAI):
                     if len(reachset) < 10:
                         stuck.add(scvt)
         if not hope:
-            self.log_success('no scv left for the good job')
+            self.log_success('no scv left for the job')
         return scvt
 
     def get_near_scvt_nojob(self,point) -> int:
@@ -6016,7 +6036,7 @@ class Chaosbot(BotAI):
         for scv in self.units(SCV):
             scvt = scv.tag
             if scvt in self.all_scvt:
-                if self.job_of_scvt[scvt] in (self.bad_jobs + self.no_jobs):
+                if self.job_of_scvt[scvt] in (self.middle_jobs + self.bad_jobs + self.no_jobs):
                     self.situation_freescvs.add((scvt,scv.position,0))
         # As the planning is remade often, builders should be included. They will appear at the buildposition.
         for (thing,scvt,pos,dura,owner) in self.preps:
@@ -7096,7 +7116,7 @@ class Chaosbot(BotAI):
             if (not self.we_started_a(RAVEN)) and (bcs >= 2):
                 self.throw_anywhere(RAVEN,'build_minima')
         if self.allow_throw(THOR):
-            if (not self.we_started_a(THOR)) and (bcs >= 5):
+            if (not self.we_started_a(THOR)) and (not self.we_started_a(THORAP)) and (bcs >= 5):
                 self.throw_anywhere(THOR,'build_minima')
         if self.allow_throw(BARRACKSTECHLAB):
             if (not self.we_started_a(BARRACKSTECHLAB)):
@@ -7634,6 +7654,13 @@ class Chaosbot(BotAI):
         # clean each _exe
         for (thing,place) in done:
             self.log_success('I have done a '+thing.name)
+            seen = False
+            for (martype,bart,pos,dura) in self.eggs:
+                if (thing == martype):
+                    if (place == pos) or (place == self.somewhere):
+                        seen = True
+            if not seen:
+                self.log_success('Alas it is not in eggs. A lost plan.')
             self.remove_from_planning_etc(thing,place)
 
 
@@ -9164,8 +9191,9 @@ class Chaosbot(BotAI):
                                 if not ok:
                                     self.log_success('Traveller ' + self.name(scvt) + ' went astray, rerouted')
                                     scv.move(goal)
-                                if self.near(scv.position, goal, 12):
-                                    self.clear_from_mines(goal)
+                                if building == COMMANDCENTER:
+                                    if self.near(scv.position, goal, 12):
+                                        self.clear_from_mines(goal)
                                 # settling
                                 if self.near(scv.position, goal, 3):
                                     self.log_success('build site of a '+building.name+' reached')
@@ -11427,17 +11455,21 @@ class Chaosbot(BotAI):
                             self.log_command('mar.move(altpos)')
                             mar.move(altpos)
         # thors
-        for tor in self.units(THOR):
+        for tor in self.units(THOR) | self.units(THORAP):
             if tor.tag not in self.speciality_of_tag:
                 if tor.tag in self.idles:
-                    tp = self.random_mappoint_canstandon()
-                    minravtag = self.notag
-                    for rav in self.units(RAVEN):
-                        if not self.near(tor.position,rav.position,2):
-                            if (rav.tag < minravtag) or (minravtag == self.notag):
-                                minravtag = rav.tag
-                                tp = rav.position
-                    self.attackmove(tor.tag, tp, 7)
+                    if tor.tag not in self.thor_initframe:
+                        self.thor_initframe[tor.tag] = self.frame + 40
+                        tor(AbilityId.MORPH_THORHIGHIMPACTMODE)
+                    if self.frame >= self.thor_initframe[tor.tag]:
+                        tp = self.random_mappoint_canstandon()
+                        minravtag = self.notag
+                        for rav in self.units(RAVEN):
+                            if not self.near(tor.position,rav.position,2):
+                                if (rav.tag < minravtag) or (minravtag == self.notag):
+                                    minravtag = rav.tag
+                                    tp = rav.position
+                        self.attackmove(tor.tag, tp, 7)
         # hellions random minerals
         for hel in self.units(HELLION):
             if hel.tag not in self.speciality_of_tag:
@@ -12737,7 +12769,7 @@ class Chaosbot(BotAI):
                         for myscv in self.units(SCV):
                             scvt = myscv.tag
                             job = self.job_of_scvt[scvt]
-                            if (job not in self.good_jobs):
+                            if (job in self.middle_jobs + self.bad_jobs + self.no_jobs):
                                 if todo > 0:
                                     todo -= 1
                                     self.promote(myscv,'fighter')
@@ -12787,7 +12819,7 @@ class Chaosbot(BotAI):
                         away = Point2((2*tow.position.x-next_center_enemies.x, 2*tow.position.y-next_center_enemies.y))
                         for myscv in self.scvs_of_expo[expo]:
                             job = self.job_of_scvt[myscv.tag]
-                            if (job in self.bad_jobs + self.no_jobs) and (job not in {'inshock','fleeer'}):
+                            if (job in self.middle_jobs + self.bad_jobs + self.no_jobs) and (job not in {'inshock','fleeer'}):
                                 self.promote(myscv,'inshock')
                                 self.log_command('my_scv.move(away)')
                                 myscv.move(away)
@@ -12821,7 +12853,7 @@ class Chaosbot(BotAI):
                                 if myscv.health >= 12:
                                     scvt = myscv.tag
                                     job = self.job_of_scvt[scvt]
-                                    if job in (self.bad_jobs + self.no_jobs):
+                                    if job in (self.middle_jobs + self.bad_jobs + self.no_jobs):
                                         candidates.add(myscv)
                             while (toget > 0) and (len(candidates) > 0):
                                 bestsd = 99999
@@ -13217,7 +13249,7 @@ class Chaosbot(BotAI):
                                     if ene.type_id in self.all_workertypes:
                                         enemiesnear = True
                         if enemiesnear:
-                            scvt = self.get_scvt_for_goodjob(builder.position)
+                            scvt = self.get_scvt_for_middlejob(builder.position)
                             self.escorter_of_builder[buildert] = scvt
                             for scv in self.units(SCV):
                                 if scv.tag == scvt:
@@ -13238,7 +13270,7 @@ class Chaosbot(BotAI):
                                 if cleanpos == itspos:
                                     cleaners += 1
                             if cleaners < 4:
-                                scvt = self.get_scvt_for_goodjob(itspos)
+                                scvt = self.get_scvt_for_middlejob(itspos)
                                 for scv in self.units(SCV):
                                     if scv.tag == scvt:
                                         self.promote(scv,'escorter')
@@ -14576,7 +14608,7 @@ class Chaosbot(BotAI):
                         for scv in self.units(SCV):
                             if self.near(scv.position,sp.position,7):
                                 scvt = scv.tag
-                                if self.job_of_scvt[scvt] not in self.good_jobs: # building
+                                if self.job_of_scvt[scvt] in self.middle_jobs + self.bad_jobs + self.no_jobs:
                                     self.promote(scv,'pilot')
                                     self.rushghost_scvs.add(scvt)
                                     scv.move(sp.position)
@@ -15311,7 +15343,7 @@ class Chaosbot(BotAI):
                             if hitworker:
                                 self.wa_ihitted += 5
                             else:
-                                print('hit a brick? '+str(minsd))
+                                self.log_success('hit a brick? '+str(minsd))
         # being hit
         for scv in self.units(SCV):
             for (scvt, lastscvpos, lastscvhealth) in self.wa_lastscvs:
@@ -15628,7 +15660,7 @@ class Chaosbot(BotAI):
                     todo = self.startworkerrushers
                     for scv in self.units(SCV):
                         job = self.job_of_scvt[scv.tag]
-                        if job in self.bad_jobs + self.no_jobs:
+                        if job in self.middle_jobs + self.bad_jobs + self.no_jobs:
                             if todo > 0:
                                 todo -= 1
                                 self.promote(scv,'cheeser')
@@ -16497,7 +16529,7 @@ class Chaosbot(BotAI):
                 # init
                 for scv in self.units(SCV):
                     scvt = scv.tag
-                    if self.job_of_scvt[scvt] not in self.good_jobs:
+                    if self.job_of_scvt[scvt] in self.middle_jobs + self.bad_jobs + self.no_jobs:
                         if len(self.workerattack_scvs) < self.workerattack_amount:
                             if scvt not in self.workerattack_scvs:
                                 self.workerattack_scvs.add(scvt)
@@ -17102,7 +17134,10 @@ class Chaosbot(BotAI):
 
     #*********************************************************************************************************************
     def clear_from_mines(self, goal):
-        # goal is an expansion_location that may have own widowmines
+        # goal is an expansion_location where a commandcenter will come.
+        self.do_not_block.add(goal)
+        if goal in self.blocker_of_expo:
+            self.del_blocker_of(goal)
         for wm in self.units(WIDOWMINEBURROWED):
             if self.near(wm.position, goal, 3):
                 self.log_command('wm(AbilityId.BURROWUP_WIDOWMINE)')
@@ -17356,7 +17391,7 @@ class Chaosbot(BotAI):
                         for tile in self.nine[mytile]:
                             for myn in self.goodguys_of_tile[tile]:
                                 if self.near(myn.position, stru.position, 7):
-                                    if myn.type_id in {MARINE,MARAUDER,SIEGETANK,HELLION,THOR}:
+                                    if myn.type_id in {MARINE,MARAUDER,SIEGETANK,HELLION,THOR,THORAP}:
                                         around.add(myn.tag)
                         if len(around) > 0:
                             self.stuckhip[stru.tag] = around
@@ -17538,7 +17573,7 @@ class Chaosbot(BotAI):
                             otherscvtag = self.notag
                             for scv in self.units(SCV):
                                 scvt = scv.tag
-                                if self.job_of_scvt[scvt] not in self.good_jobs:
+                                if self.job_of_scvt[scvt] in self.bad_jobs + self.no_jobs:
                                     if onescvtag == self.notag:
                                         onescvtag = scvt
                                         onescv = scv
@@ -17747,7 +17782,7 @@ class Chaosbot(BotAI):
                                             if scv in self.units(SCV):
                                                 scvt = scv.tag
                                                 job = self.job_of_scvt[scvt]
-                                                if (job in (self.bad_jobs + self.no_jobs)) or (job == 'cheeser'):
+                                                if (job in (self.middle_jobs + self.bad_jobs + self.no_jobs)) or (job == 'cheeser'):
                                                     if scvt not in self.thingtag_of_repairertag:
                                                         couldhaverep = True
                                     if (hasrepairers < 5) and (couldhaverep):
@@ -17775,7 +17810,7 @@ class Chaosbot(BotAI):
                                                 if scv.tag in self.all_scvt:
                                                     scvt = scv.tag
                                                     job = self.job_of_scvt[scvt]
-                                                    if (job in (self.bad_jobs + self.no_jobs)) or (job == 'cheeser'):
+                                                    if (job in (self.middle_jobs + self.bad_jobs + self.no_jobs)) or (job == 'cheeser'):
                                                         if scvt not in self.thingtag_of_repairertag:
                                                             couldhaverep = True
                                         if (hasrepairers < 1) and (couldhaverep):
@@ -17801,7 +17836,7 @@ class Chaosbot(BotAI):
                                             if scv.tag in self.all_scvt:
                                                 scvt = scv.tag
                                                 job = self.job_of_scvt[scvt]
-                                                if (job in (self.bad_jobs + self.no_jobs)) or (job == 'cheeser'):
+                                                if (job in (self.middle_jobs + self.bad_jobs + self.no_jobs)) or (job == 'cheeser'):
                                                     if scvt not in self.thingtag_of_repairertag:
                                                         if scvt != s.tag:
                                                             couldhaverep = True
@@ -17967,7 +18002,7 @@ class Chaosbot(BotAI):
                     self.scout1_pole = 0
                     self.go_move(scv,self.scout1_pos[0])
         # scout2 please
-        if (self.scout2_tag == self.notag) and (len(self.structures) >= 8) and (len(self.units) >= 12):
+        if (self.scout2_tag == self.notag) and (len(self.all_scvt) >= 40):
             scvt = self.get_scvt_for_goodjob(self.loved_pos)
             for scv in self.units(SCV):
                 if scv.tag == scvt:
@@ -17976,16 +18011,12 @@ class Chaosbot(BotAI):
                     self.scout2_tag = scvt
                     self.scout2_pole = 0
                     self.go_move(scv,self.scout2_pos[0])
-        # expansionblocker
+        # early expansionblocker
         if self.game_choice[61]:
             if not self.rushopening: # that would be a bad combination
-                if (self.blocker_tag == self.notag):
-                    self.blocker_tag = self.get_scvt_for_goodjob(self.enemy_pos)
-                    for scv in self.units(SCV):
-                        if scv.tag == self.blocker_tag:
-                            self.promote(scv,'scout')
-                            self.blocker_pole = 0
-                            scv.move(self.blocker_pos[0])
+                if len(self.blocker_tags) == 0:
+                    self.blockable = {self.enemynatural_pos}
+                    self.add_blocker()
 
 
     def protection(self):
@@ -17995,7 +18026,7 @@ class Chaosbot(BotAI):
                 if self.job_of_scvt[bui.tag] == 'builder':
                     if bui.health < self.last_health[bui.tag]:
                         if bui.tag not in self.reporter_of_scvt:
-                            repo_tag = self.get_scvt_for_goodjob(bui.position)
+                            repo_tag = self.get_scvt_for_middlejob(bui.position)
                             for repo in self.units(SCV):
                                 if repo.tag == repo_tag:
                                     self.reporter_of_scvt[bui.tag] = repo.tag
@@ -18011,42 +18042,96 @@ class Chaosbot(BotAI):
         for bui_tag in todel:
             del self.reporter_of_scvt[bui_tag]
 
-    def blocker(self):
-        if self.game_choice[61]:
-            if self.frame >= self.last_blocker_frame + 5:
+    def del_blocker_of(self, expopos):
+        blockert = self.blocker_of_expo[expopos]
+        del self.blocker_of_expo[expopos]
+        # ignore self.blocker_pos
+        self.blocker_tags.remove(blockert)
+        for scv in self.units(SCV):
+            if scv.tag == blockert:
+                if self.job_of_scvt[scv.tag] == 'blocker':
+                    self.promote(scv,'idler')
+
+    def blockers(self):
+        # move
+        if len(self.blocker_tags) > 0:
+            if self.frame >= self.blocker_next_frame:
                 circleframes = 96
-                self.last_blocker_frame = self.frame
-                self.blocker_pole = self.frame % circleframes
+                self.blocker_next_frame = self.frame + 5
+                blocker_pole = self.frame % circleframes
                 for scv in self.units(SCV):
-                    if scv.tag == self.blocker_tag:
-                        goal = self.blocker_pos[self.blocker_pole]
-                        # high APM command not logged
-                        scv.move(goal)
-                        if self.blocker_pole < 5:
-                            for tp in self.enemy_structureinfo:
-                                (typ,pos) = tp
-                                if self.near(pos,self.enemy_expand_pos,5):
-                                    self.next_blocker()
+                    if scv.tag in self.blocker_tags:
+                        if self.job_of_scvt[scv.tag] == 'blocker':
+                            goal = self.blocker_pos[scv.tag][blocker_pole]
+                            # high APM command not logged
+                            scv.move(goal)
+        if self.frame >= self.blocker_admin_frame:
+            self.blocker_admin_frame = self.frame + 55
+            # do administration
+            # self.blockable
+            self.blockable = set()
+            for bp in self.expansion_locations:
+                canblock = True
+                for tp in self.enemy_structureinfo:
+                    (typ,pos) = tp
+                    if self.near(pos,bp,5):
+                        canblock = False
+                for stru in self.structures:
+                    if self.near(stru.position,bp,5):
+                        canblock = False
+                if canblock:
+                    self.blockable.add(bp)
+            # end blockers
+            todel = set() # of expopos
+            for bp in self.blocker_of_expo:
+                blockert = self.blocker_of_expo[bp]
+                if blockert not in self.all_scvt: # died
+                    todel.add(bp)
+                    if bp in self.blocker_killed:
+                        self.blocker_killed[bp] += 1
+                    else:
+                        self.blocker_killed[bp] = 1
+                    if self.blocker_killed[bp] >= 3:
+                        self.do_not_block.add(bp)
+                elif self.job_of_scvt[blockert] != 'blocker':
+                    todel.add(bp)
+                if bp not in self.blockable:
+                    todel.add(bp)
+                if bp in self.do_not_block:
+                    todel.add(bp)
+            for expopos in todel:
+                self.del_blocker_of(expopos)
+            # wantedblockers
+            wantedblockers = max(0,(len(self.all_scvt)-18) // 7) # first at 25 scvs
+            if self.game_choice[61]:
+                wantedblockers += 1
+            # add blocker
+            if len(self.blocker_tags) < wantedblockers:
+                self.add_blocker()
 
-    def init_blocker(self):
-        self.enemy_expansions = []
-        self.enemy_expand_pos = self.enemy_pos
-        self.next_blocker()
-
-    def next_blocker(self):
+    def add_blocker(self):
         circleframes = 96
-        self.enemy_expansions.append(self.enemy_expand_pos)
         bestsd = 99999
-        for pos in self.expansion_locations:
-            if pos not in self.enemy_expansions:
-                sd = self.sdist(pos,self.enemyramp_pos)
-                if sd < bestsd:
-                    self.enemy_expand_pos = pos
-                    bestsd = sd
-        self.blocker_pos = []
-        self.make_circle(circleframes)
-        for point in self.circle:
-            self.blocker_pos.append(Point2((self.enemy_expand_pos.x+4*point.x,self.enemy_expand_pos.y+4*point.y)))
+        expopos = self.nowhere
+        for pos in self.blockable:
+            if pos not in self.do_not_block:
+                if pos not in self.blocker_of_expo:
+                    sd = self.sdist(pos,self.enemyramp_pos)
+                    if sd < bestsd:
+                        expopos = pos
+                        bestsd = sd
+        if bestsd < 99999:
+            blockert = self.get_scvt_for_middlejob(expopos)
+            if blockert != self.notag:
+                self.blocker_tags.add(blockert)
+                self.blocker_of_expo[expopos] = blockert
+                for scv in self.units(SCV):
+                    if scv.tag == blockert:
+                        self.promote(scv,'blocker')
+                self.blocker_pos[blockert] = []
+                self.make_circle(circleframes)
+                for point in self.circle:
+                    self.blocker_pos[blockert].append(Point2((expopos.x+4*point.x,expopos.y+4*point.y)))
 
     def continue_fleecircle(self):
         if len(self.fleecirclers) > 0:
@@ -18067,15 +18152,14 @@ class Chaosbot(BotAI):
     def start_annoy_circle(self):
         circleframes = 123
         center = self.annoy_bunpos1
-        self.blocker_pos = []
         self.make_circle(circleframes)
         for point in self.circle:
             self.annoy_c_pos.append(Point2((center.x+4*point.x,center.y+4*point.y)))
-        scvt = self.get_scvt_for_goodjob(center)
+        scvt = self.get_scvt_for_middlejob(center)
         self.annoy_c_tag = scvt
         for scv in self.units(SCV):
             if scv.tag == scvt:
-                self.promote(scv,'cheeser')
+                self.promote(scv,'escorter')
 
     def annoy_circle(self):
         if self.annoy_c_tag != self.notag:
